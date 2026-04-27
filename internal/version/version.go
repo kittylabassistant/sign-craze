@@ -1,18 +1,16 @@
 package version
 
 import (
-	_ "embed"
 	"runtime/debug"
 	"strings"
 	"time"
 )
 
-//go:embed ../../VERSION
-var raw string
-
-// Version — версия sign-craze из файла VERSION в корне репозитория.
-// Ведущие/завершающие пробелы и переносы строк обрезаются.
-var Version = strings.TrimSpace(raw)
+// Version — версия sign-craze.
+// В dev-сборке равна "dev". В релизе перезаписывается через:
+//
+//	go build -ldflags="-X github.com/kittylabassistant/sign-craze/internal/version.Version=<tag>"
+var Version = "dev"
 
 // BuildInfo содержит метаданные сборки, извлечённые через runtime/debug.
 type BuildInfo struct {
@@ -23,7 +21,7 @@ type BuildInfo struct {
 }
 
 // Get возвращает информацию о сборке.
-// При сборке через `go build` поля могут быть пустыми — это ожидаемое поведение в dev-среде.
+// В dev-сборке без VCS-тегов поля Commit/BuildTime могут быть пустыми.
 func Get() BuildInfo {
 	info, ok := debug.ReadBuildInfo()
 	if !ok {

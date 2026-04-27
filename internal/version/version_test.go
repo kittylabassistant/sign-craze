@@ -7,7 +7,7 @@ import (
 
 func TestVersion_NotEmpty(t *testing.T) {
 	if Version == "" {
-		t.Fatal("Version пустой — файл VERSION не встроен или пустой")
+		t.Fatal("Version пустой")
 	}
 }
 
@@ -29,7 +29,6 @@ func TestString_ContainsVersion(t *testing.T) {
 
 func TestGet_GoVersionNotEmpty(t *testing.T) {
 	bi := Get()
-	// в тестовом окружении GoVersion всегда заполнен
 	if bi.GoVersion == "" {
 		t.Error("BuildInfo.GoVersion пустой")
 	}
