@@ -66,9 +66,12 @@ func (s *Server) clashTrafficWS(w http.ResponseWriter, r *http.Request) {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 
-	frame, _ := json.Marshal(map[string]int{"up": 0, "down": 0})
+	frame, marshalErr := json.Marshal(map[string]int{"up": 0, "down": 0})
+	if marshalErr != nil {
+		return
+	}
 	for range tick.C {
-		if err := conn.SendText(frame); err != nil {
+		if sendErr := conn.SendText(frame); sendErr != nil {
 			return
 		}
 	}

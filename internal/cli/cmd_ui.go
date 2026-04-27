@@ -9,8 +9,8 @@ import (
 
 func init() {
 	Register(Cmd{
-		Long: "--ui",
-		Help: "запустить/остановить Web UI (on|off)",
+		Long:    "--ui",
+		Help:    "запустить/остановить Web UI (on|off)",
 		Handler: handleUI,
 	})
 }

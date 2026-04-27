@@ -81,7 +81,9 @@ func (s *Server) Start(ctx context.Context) error {
 	case <-ctx.Done():
 		return s.Stop(context.Background())
 	case err := <-errCh:
-		_ = s.Stop(context.Background())
+		if stopErr := s.Stop(context.Background()); stopErr != nil {
+			slog.Warn("web: ошибка остановки", "err", stopErr)
+		}
 		return err
 	}
 }

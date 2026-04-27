@@ -22,8 +22,8 @@ func makeTestServer(t *testing.T) (*Server, string) {
 	if err != nil {
 		t.Fatalf("bcrypt: %v", err)
 	}
-	if err := os.WriteFile(path, append(hash, '\n'), 0o600); err != nil {
-		t.Fatalf("WriteFile: %v", err)
+	if wErr := os.WriteFile(path, append(hash, '\n'), 0o600); wErr != nil {
+		t.Fatalf("WriteFile: %v", wErr)
 	}
 
 	s, err := NewServer(ServerConfig{CredsPath: path})

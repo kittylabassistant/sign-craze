@@ -82,6 +82,6 @@ func makeWSHeader(n int) []byte {
 
 func wsAcceptKey(key string) string {
 	h := sha1.New() //nolint:gosec
-	io.WriteString(h, key+wsGUID)
+	_, _ = io.WriteString(h, key+wsGUID)
 	return base64.StdEncoding.EncodeToString(h.Sum(nil))
 }

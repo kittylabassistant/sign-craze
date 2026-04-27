@@ -45,6 +45,8 @@ jobs:
         run: go mod tidy
 
       - uses: golangci/golangci-lint-action@v6
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
         with:
           version: latest
           install-mode: goinstall

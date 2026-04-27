@@ -25,8 +25,8 @@ func LoadOrCreateCreds(path string) ([]byte, error) {
 	}
 
 	raw := make([]byte, 18)
-	if _, err := rand.Read(raw); err != nil {
-		return nil, fmt.Errorf("web auth: генерация пароля: %w", err)
+	if _, randErr := rand.Read(raw); randErr != nil {
+		return nil, fmt.Errorf("web auth: генерация пароля: %w", randErr)
 	}
 	password := base64.RawURLEncoding.EncodeToString(raw)
 
@@ -35,8 +35,8 @@ func LoadOrCreateCreds(path string) ([]byte, error) {
 		return nil, fmt.Errorf("web auth: bcrypt: %w", err)
 	}
 
-	if err := os.WriteFile(path, append(hash, '\n'), 0o600); err != nil {
-		return nil, fmt.Errorf("web auth: сохранение %s: %w", path, err)
+	if writeErr := os.WriteFile(path, append(hash, '\n'), 0o600); writeErr != nil {
+		return nil, fmt.Errorf("web auth: сохранение %s: %w", path, writeErr)
 	}
 
 	fmt.Printf("sign-craze: пароль admin UI (показан один раз): %s\n", password)
