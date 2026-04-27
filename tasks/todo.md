@@ -35,22 +35,24 @@
 - [x] `internal/service/shim.go` — генерация /opt/etc/init.d/S05signcraze, idempotency
 - [x] `internal/service/lifecycle.go` — Start/Stop/Status/Restart, PID-файлы, Setpgid detach
 
-## Phase 3 — firewall (высокий риск)
+## Phase 3 — firewall (высокий риск) ✅
 
-- [ ] `internal/firewall/iptables.go` — интерфейс IPTables, EnsureRule/DeleteRule/ListRules
-- [ ] `internal/firewall/ipset.go` — AtomicReplace через ipset restore stdin
-- [ ] `internal/firewall/modes/tproxy.go`
-- [ ] `internal/firewall/modes/redirect.go`
-- [ ] `internal/firewall/modes/hybrid.go`
-- [ ] `testdata/docker/Dockerfile.iptables` + интеграционные тесты
+- [x] `internal/firewall/iptables.go` — интерфейс IPTables, EnsureRule/DeleteRule/ListRules
+- [x] `internal/firewall/ipset.go` — AtomicReplace через create-swap-destroy
+- [x] `internal/firewall/applier.go` — Apply/Remove, откат при ошибке
+- [x] `internal/firewall/route.go` — EnsureIPRule/DeleteIPRule/EnsureLocalRoute/DeleteLocalRoute
+- [x] `internal/firewall/modes/tproxy.go`
+- [x] `internal/firewall/modes/redirect.go` (заглушка — отложено)
+- [x] `internal/firewall/modes/hybrid.go`
+- [x] `testdata/docker/Dockerfile.iptables` + integration_test.go (тег integration)
 
-## Phase 4 — DPI/nfqws2
+## Phase 4 — DPI/nfqws2 ✅
 
-- [ ] `internal/dpi/download.go`
-- [ ] `internal/dpi/install.go`
-- [ ] `internal/dpi/config.go` — nfqws2.conf.tmpl
-- [ ] `internal/dpi/nfqueue.go` — интеграция цепочек NFQUEUE
-- [ ] `internal/dpi/lifecycle.go`
+- [x] `internal/dpi/download.go` — GitHub releases, ETag, SHA256, атомарная запись
+- [x] `internal/dpi/install.go` — untar, chmod, backup+replace
+- [x] `internal/dpi/config.go` + `templates/nfqws2.conf.tmpl` — text/template, DetectISPInterface
+- [x] `internal/dpi/nfqueue.go` — Enable/Disable NFQUEUE в signcraze_dpi
+- [x] `internal/dpi/lifecycle.go` — обёртка над service.NewLifecycle для nfqws2
 
 ## Phase 5 — Гео-файлы (параллельно с 2/3)
 

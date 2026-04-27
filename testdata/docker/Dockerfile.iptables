@@ -1,0 +1,20 @@
+FROM golang:1.25
+
+# Устанавливаем iptables, ipset и iproute2 для интеграционных тестов
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    iptables \
+    ipset \
+    iproute2 \
+    kmod \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+# Запускаем интеграционные тесты с тегом integration.
+# Контейнер должен быть запущен с --privileged для доступа к iptables/ipset/ip.
+CMD ["go", "test", "-tags", "integration", "-v", "-timeout", "60s", "./internal/firewall/..."]

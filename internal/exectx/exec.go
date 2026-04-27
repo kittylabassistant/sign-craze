@@ -70,7 +70,7 @@ func (m *mockRunner) Run(_ context.Context, name string, args ...string) (Result
 		return Result{ExitCode: 1}, fmt.Errorf("mock: нет записи для %q", key)
 	}
 	if res.ExitCode != 0 {
-		return res, fmt.Errorf("mock: команда %q завершилась с кодом %d", key, res.ExitCode)
+		return res, fmt.Errorf("mock: команда %q завершилась с кодом %d (stderr: %s)", key, res.ExitCode, res.Stderr)
 	}
 	return res, nil
 }
