@@ -155,8 +155,8 @@ func downloadFile(ctx context.Context, url, dstFile, savedETag string) (bool, st
 		return false, "", fmt.Errorf("HTTP %d для %s", resp.StatusCode, url)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(dstFile), 0o755); err != nil {
-		return false, "", fmt.Errorf("mkdir: %w", err)
+	if mkErr := os.MkdirAll(filepath.Dir(dstFile), 0o755); mkErr != nil {
+		return false, "", fmt.Errorf("mkdir: %w", mkErr)
 	}
 
 	tmp, err := os.CreateTemp(filepath.Dir(dstFile), ".dl-*")
@@ -167,13 +167,13 @@ func downloadFile(ctx context.Context, url, dstFile, savedETag string) (bool, st
 	defer func() { _ = os.Remove(tmpName) }()
 
 	h := sha256.New()
-	if _, err := io.Copy(io.MultiWriter(tmp, h), resp.Body); err != nil {
+	if _, cpErr := io.Copy(io.MultiWriter(tmp, h), resp.Body); cpErr != nil {
 		_ = tmp.Close()
-		return false, "", fmt.Errorf("чтение тела ответа: %w", err)
+		return false, "", fmt.Errorf("чтение тела ответа: %w", cpErr)
 	}
-	if err := tmp.Sync(); err != nil {
+	if syncErr := tmp.Sync(); syncErr != nil {
 		_ = tmp.Close()
-		return false, "", fmt.Errorf("fsync: %w", err)
+		return false, "", fmt.Errorf("fsync: %w", syncErr)
 	}
 	_ = tmp.Close()
 

@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    name: build (${{ matrix.suffix }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goarch: arm64
+            goarm: ""
+            gomips: ""
+            suffix: arm64
+          - goarch: arm
+            goarm: "7"
+            gomips: ""
+            suffix: arm7
+          - goarch: mipsle
+            goarm: ""
+            gomips: softfloat
+            suffix: mipsle
+          - goarch: mips
+            goarm: ""
+            gomips: softfloat
+            suffix: mips
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: go mod tidy
+        run: go mod tidy
+
+      - name: build
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
+          GOMIPS: ${{ matrix.gomips }}
+        run: |
+          mkdir -p dist
+          go build \
+            -ldflags="-s -w -X github.com/kittylabassistant/sign-craze/internal/version.Version=${{ github.ref_name }}" \
+            -trimpath \
+            -o dist/sign-craze-${{ matrix.suffix }} \
+            ./cmd/sign-craze
+
+      - name: install upx
+        run: sudo apt-get install -y upx
+
+      - name: compress
+        # UPX не поддерживает mips big-endian — пропускать без ошибки
+        run: upx --lzma dist/sign-craze-${{ matrix.suffix }} || true
+
+      - name: checksum
+        run: |
+          cd dist
+          sha256sum sign-craze-${{ matrix.suffix }} > sign-craze-${{ matrix.suffix }}.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sign-craze-${{ matrix.suffix }}
+          path: dist/
+
+  publish:
+    name: publish release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+
+      - name: create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**
+          generate_release_notes: true

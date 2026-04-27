@@ -2,3 +2,4 @@
 	path = internal/web/assets/zashboard
 	url = https://github.com/MetaCubeX/metacubexd
 	branch = gh-pages
+	shallow = true

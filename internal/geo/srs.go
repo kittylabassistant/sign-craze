@@ -1,0 +1,167 @@
+package geo
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
+	"github.com/kittylabassistant/sign-craze/internal/log"
+)
+
+const (
+	// DefaultGeoDir — директория хранения .srs файлов на роутере.
+	DefaultGeoDir = "/opt/var/lib/sign-craze/geo/"
+
+	// manifestURL и downloadBaseURL переопределяются в тестах через var.
+)
+
+// manifestURLVar и downloadBaseURLVar — var для подмены в тестах через httptest.Server.
+var (
+	manifestURLVar     = "https://github.com/kittylabassistant/sign-craze-dat/releases/latest/download/manifest.json"
+	downloadBaseURLVar = "https://github.com/kittylabassistant/sign-craze-dat/releases/latest/download/"
+)
+
+var geoHTTPClient = &http.Client{
+	Timeout: 10 * time.Minute,
+	Transport: &http.Transport{
+		ResponseHeaderTimeout: 30 * time.Second,
+	},
+}
+
+// ManifestEntry описывает один файл в manifest.json.
+type ManifestEntry struct {
+	Name   string `json:"name"`
+	SHA256 string `json:"sha256"`
+	Size   int64  `json:"size"`
+}
+
+// Manifest — корневая структура manifest.json из репозитория sign-craze-dat.
+type Manifest struct {
+	Version   string          `json:"version"`
+	UpdatedAt string          `json:"updated_at"`
+	Files     []ManifestEntry `json:"files"`
+}
+
+// FetchManifest скачивает manifest.json из релиза sign-craze-dat и парсит его.
+func FetchManifest(ctx context.Context) (Manifest, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, manifestURLVar, nil)
+	if err != nil {
+		return Manifest{}, fmt.Errorf("geo: формирование запроса manifest: %w", err)
+	}
+	req.Header.Set("User-Agent", "sign-craze")
+
+	resp, err := geoHTTPClient.Do(req)
+	if err != nil {
+		return Manifest{}, fmt.Errorf("geo: запрос manifest: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return Manifest{}, fmt.Errorf("geo: manifest HTTP %d", resp.StatusCode)
+	}
+
+	var m Manifest
+	if decErr := json.NewDecoder(resp.Body).Decode(&m); decErr != nil {
+		return Manifest{}, fmt.Errorf("geo: декодирование manifest: %w", decErr)
+	}
+	return m, nil
+}
+
+// Update скачивает только те .srs файлы из needed, чей локальный SHA256 не совпадает с манифестом.
+// Атомарно записывает файлы в geoDir. Возвращает количество обновлённых файлов.
+func Update(ctx context.Context, needed []string, geoDir string) (int, error) {
+	if err := os.MkdirAll(geoDir, 0o755); err != nil {
+		return 0, fmt.Errorf("geo: создание директории %s: %w", geoDir, err)
+	}
+
+	m, err := FetchManifest(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	// Строим индекс manifest по имени файла.
+	index := make(map[string]ManifestEntry, len(m.Files))
+	for _, e := range m.Files {
+		index[e.Name] = e
+	}
+
+	updated := 0
+	for _, name := range needed {
+		entry, ok := index[name]
+		if !ok {
+			return updated, fmt.Errorf("geo: файл %q отсутствует в манифесте (версия %s)", name, m.Version)
+		}
+
+		localPath := filepath.Join(geoDir, name)
+		if localSHA256(localPath) == entry.SHA256 {
+			log.L().Debug("geo: файл актуален, пропускаем", "name", name)
+			continue
+		}
+
+		log.L().Info("geo: скачиваем файл", "name", name, "version", m.Version)
+		data, err := downloadSRS(ctx, entry.Name)
+		if err != nil {
+			return updated, fmt.Errorf("geo: загрузка %s: %w", name, err)
+		}
+
+		// Верифицируем SHA256 скачанного файла.
+		gotHash := hashBytes(data)
+		if gotHash != entry.SHA256 {
+			return updated, fmt.Errorf("geo: SHA256 не совпадает для %s: ожидался %s, получен %s",
+				name, entry.SHA256, gotHash)
+		}
+
+		if wErr := atomicfs.WriteFileAtomic(localPath, data, 0o644); wErr != nil {
+			return updated, fmt.Errorf("geo: запись %s: %w", localPath, wErr)
+		}
+
+		log.L().Info("geo: файл обновлён", "name", name, "sha256", gotHash[:12]+"...")
+		updated++
+	}
+
+	return updated, nil
+}
+
+// downloadSRS скачивает один .srs файл из release sign-craze-dat.
+func downloadSRS(ctx context.Context, name string) ([]byte, error) {
+	url := downloadBaseURLVar + name
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "sign-craze")
+
+	resp, err := geoHTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d для %s", resp.StatusCode, url)
+	}
+
+	return io.ReadAll(resp.Body)
+}
+
+// localSHA256 вычисляет SHA256 файла по пути. Возвращает пустую строку если файл не существует.
+func localSHA256(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return hashBytes(data)
+}
+
+func hashBytes(data []byte) string {
+	h := sha256.Sum256(data)
+	return hex.EncodeToString(h[:])
+}

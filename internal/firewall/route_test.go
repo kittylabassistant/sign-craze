@@ -58,7 +58,7 @@ func TestDeleteIPRule_ПропускаетЕслиОтсутствует(t *test
 
 func TestEnsureLocalRoute_ДобавляетЕслиОтсутствует(t *testing.T) {
 	r := exectx.Mock(map[string]exectx.Result{
-		"ip route show table 83": {ExitCode: 0, Stdout: []byte("")},
+		"ip route show table 83":                       {ExitCode: 0, Stdout: []byte("")},
 		"ip route add local 0.0.0.0/0 dev lo table 83": {ExitCode: 0},
 	})
 	err := EnsureLocalRoute(context.Background(), r, 83)
@@ -79,7 +79,7 @@ func TestEnsureLocalRoute_ПропускаетЕслиСуществует(t *te
 
 func TestDeleteLocalRoute_УдаляетЕслиСуществует(t *testing.T) {
 	r := exectx.Mock(map[string]exectx.Result{
-		"ip route show table 83": {ExitCode: 0, Stdout: []byte("local 0.0.0.0/0 dev lo scope host\n")},
+		"ip route show table 83":                       {ExitCode: 0, Stdout: []byte("local 0.0.0.0/0 dev lo scope host\n")},
 		"ip route del local 0.0.0.0/0 dev lo table 83": {ExitCode: 0},
 	})
 	err := DeleteLocalRoute(context.Background(), r, 83)

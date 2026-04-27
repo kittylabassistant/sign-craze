@@ -10,7 +10,7 @@ import (
 
 func TestIPSet_EnsureSet_СоздаётНовый(t *testing.T) {
 	r := exectx.Mock(map[string]exectx.Result{
-		"ipset list signcraze_ipv4": {ExitCode: 1, Stderr: []byte("The set with the given name does not exist")},
+		"ipset list signcraze_ipv4":                        {ExitCode: 1, Stderr: []byte("The set with the given name does not exist")},
 		"ipset create signcraze_ipv4 hash:net family inet": {ExitCode: 0},
 	})
 	s := NewIPSet(r)
@@ -62,8 +62,8 @@ func TestIPSet_AtomicReplace_ЗаменяетСодержимое(t *testing.T) 
 	}
 	r := exectx.Mock(map[string]exectx.Result{
 		"ipset create signcraze_ipv4_tmp hash:net family inet": {ExitCode: 0},
-		"ipset add signcraze_ipv4_tmp 1.2.3.0/24":             {ExitCode: 0},
-		"ipset add signcraze_ipv4_tmp 10.0.0.0/8":             {ExitCode: 0},
+		"ipset add signcraze_ipv4_tmp 1.2.3.0/24":              {ExitCode: 0},
+		"ipset add signcraze_ipv4_tmp 10.0.0.0/8":              {ExitCode: 0},
 		"ipset swap signcraze_ipv4 signcraze_ipv4_tmp":         {ExitCode: 0},
 		"ipset destroy signcraze_ipv4_tmp":                     {ExitCode: 0},
 	})
@@ -78,7 +78,7 @@ func TestIPSet_AtomicReplace_ОткатПриОшибке(t *testing.T) {
 	cidrs := []netip.Prefix{netip.MustParsePrefix("1.2.3.0/24")}
 	r := exectx.Mock(map[string]exectx.Result{
 		"ipset create signcraze_ipv4_tmp hash:net family inet": {ExitCode: 0},
-		"ipset add signcraze_ipv4_tmp 1.2.3.0/24":             {ExitCode: 1, Stderr: []byte("hash is full")},
+		"ipset add signcraze_ipv4_tmp 1.2.3.0/24":              {ExitCode: 1, Stderr: []byte("hash is full")},
 		"ipset destroy signcraze_ipv4_tmp":                     {ExitCode: 0},
 	})
 	s := NewIPSet(r)

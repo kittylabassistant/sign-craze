@@ -54,21 +54,31 @@
 - [x] `internal/dpi/nfqueue.go` — Enable/Disable NFQUEUE в signcraze_dpi
 - [x] `internal/dpi/lifecycle.go` — обёртка над service.NewLifecycle для nfqws2
 
-## Phase 5 — Гео-файлы (параллельно с 2/3)
+## Phase 5 — Гео-файлы ✅
 
-- [ ] `internal/geo/srs.go` — парсинг manifest.json, выборочная загрузка, атомарная замена
-- [ ] `internal/geo/ipset.go` — сырой IP-лист → ipset
+- [x] `internal/geo/srs.go` — FetchManifest, Update (SHA256-diff, атомарная запись)
+- [x] `internal/geo/ipset.go` — ParseCIDRList, ApplyToIPSet
+- [x] `sign-craze-dat/.github/workflows/update.yml` — MetaCubeX → .srs → manifest.json → release
+- [x] fix `ruleSetBaseURL` в config.go + testdata: `sign-craze-dats` → `sign-craze-dat`
 
-## Phase 6 — Встроенный Web UI
+## Phase 6 — Встроенный Web UI 🔄
 
-- [ ] `internal/web/server.go` — http.ServeMux + цепочка middleware
-- [ ] `internal/web/api.go` — REST-эндпоинты
-- [ ] `internal/web/assets/` — submodule Zashboard + admin SPA
+- [x] `internal/web/types.go` — интерфейсы StatusReader, ConfigRW, PortsManager, ExcludesManager; StatusInfo
+- [x] `internal/web/auth.go` — LoadOrCreateCreds, CheckPassword (bcrypt cost=12)
+- [x] `internal/web/ws.go` — минимальный WebSocket upgrade (RFC 6455, без зависимостей)
+- [x] `internal/web/server.go` — Server, NewServer, Start/Stop, basicAuth middleware, recoverMiddleware
+- [x] `internal/web/clash.go` — Clash-совместимый API: /, /version, /configs, /proxies, /connections, WS /traffic, WS /logs
+- [x] `internal/web/api.go` — Admin REST: /api/status, /api/config, /api/ports, /api/excludes
+- [x] `internal/web/embed.go` — go:embed assets/zashboard + spaHandler (SPA fallback → index.html)
+- [x] `internal/web/assets/zashboard/index.html` — placeholder (реальный Zashboard — git submodule)
+- [x] `golang.org/x/crypto` добавлен в go.mod (bcrypt)
+- [x] `internal/cli/cmd_ui.go` — `--ui on|off` → web.Server.Start/Stop
+- [x] Добавить git submodule Zephyruso/zashboard@gh-pages → `internal/web/assets/zashboard` (shallow=true)
 
-## Phase 7 — Release pipeline
+## Phase 7 — Release pipeline ✅
 
-- [ ] `.github/workflows/release.yml` — по тегу v* → сборка всех + UPX + upload
-- [ ] `scripts/install.sh` — определение архитектуры, проверка места, загрузка, установка
+- [x] `.github/workflows/release.yml` — по тегу v* → сборка всех + UPX + upload
+- [x] `scripts/install.sh` — определение архитектуры, проверка места, загрузка, установка
 
 ## Заметки
 

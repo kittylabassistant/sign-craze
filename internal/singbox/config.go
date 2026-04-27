@@ -120,7 +120,7 @@ func WriteConfig(ctx context.Context, runner exectx.Runner, p ConfigParams, binP
 // buildRuleSets формирует список rule_set дескрипторов для секции route.
 func buildRuleSets(r types.RoutingRules) []ruleSetRef {
 	const (
-		ruleSetBaseURL = "https://github.com/kittylabassistant/sign-craze-dats/releases/latest/download/"
+		ruleSetBaseURL = "https://github.com/kittylabassistant/sign-craze-dat/releases/latest/download/"
 		detour         = "direct"
 	)
 

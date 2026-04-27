@@ -4,10 +4,11 @@
 Исходники XKeen не читались. Только публичные источники.
 
 Использованные источники:
-- https://sing-box.sagernet.org/configuration/
+
+- <https://sing-box.sagernet.org/configuration/>
 - `man iptables`, `man iptables-extensions`, `man ipset`, `man iproute2`
-- https://help.keenetic.com (Entware, OPKG, контракты init.d)
-- https://www.kernel.org/doc/html/latest/networking/netfilter.html
+- <https://help.keenetic.com> (Entware, OPKG, контракты init.d)
+- <https://www.kernel.org/doc/html/latest/networking/netfilter.html>
 - README nfqws2-keenetic (MIT, публичный)
 - Документация zapret2 (MIT, публичная)
 
@@ -20,6 +21,7 @@
 **Входные данные**: нет (интерактивные подсказки для URL прокси / outbound, если не настроены).
 
 **Эффекты в системе**:
+
 - Скачивает бинарь sing-box с `github.com/SagerNet/sing-box/releases` под текущую архитектуру.
 - Устанавливает бинарь в `/opt/sbin/sing-box`, права `0755`.
 - Создаёт директорию конфигов `/opt/etc/sign-craze/`, права `0755`.
@@ -32,6 +34,7 @@
 **Идемпотентность**: безопасно повторять; текущий бинарь резервируется перед заменой.
 
 **Ошибки**:
+
 - Нет сети → загрузка завершается с понятной ошибкой.
 - `/opt` не смонтирован / недостаточно места (<30 МБ) → явная ошибка до начала загрузки.
 - `sing-box check -c <config>` падает → откат бинаря из резервной копии, возврат ошибки.
@@ -55,6 +58,7 @@
 **Входные данные**: нет.
 
 **Эффекты в системе**:
+
 - Захватывает `/opt/var/lock/sign-craze.lock` (flock LOCK_EX|LOCK_NB).
 - Проверяет установку (`/opt/sbin/sing-box` существует, конфиг существует).
 - Применяет правила iptables (см. §3).
@@ -73,6 +77,7 @@
 **Входные данные**: нет.
 
 **Эффекты в системе**:
+
 - Захватывает блокировку.
 - Читает PID-файлы; отправляет SIGTERM процессу sing-box (и nfqws2, если запущен).
 - Ждёт до 10 с; отправляет SIGKILL, если процесс ещё жив.
@@ -93,7 +98,8 @@
 ### `--status` / `-s`
 
 **Вывод** (stdout):
-```
+
+```plain
 sing-box:  запущен  (pid 1234)
 nfqws2:    остановлен
 режим:     proxy
@@ -112,7 +118,7 @@ nfqws2:    остановлен
 
 ### `--update-geo` / `-g`
 
-Скачивает обновлённые SRS rule-set файлы из манифеста релиза `sign-craze-dats`. Загружает только файлы, чей SHA256 отличается от локального. Сохраняет в `/opt/var/lib/sign-craze/geo/`. Атомарная замена каждого файла.
+Скачивает обновлённые SRS rule-set файлы из манифеста релиза `sign-craze-dat`. Загружает только файлы, чей SHA256 отличается от локального. Сохраняет в `/opt/var/lib/sign-craze/geo/`. Атомарная замена каждого файла.
 
 ---
 
@@ -137,7 +143,8 @@ nfqws2:    остановлен
 ### `--version` / `-v`
 
 Выводит:
-```
+
+```plain
 sign-craze v<VERSION> (собран <дата>, <коммит>)
 sing-box   v<VERSION>  (установлен в /opt/sbin/sing-box)
 ```
@@ -147,6 +154,7 @@ sing-box   v<VERSION>  (установлен в /opt/sbin/sing-box)
 ### `--diag` / `-D`
 
 Запускает диагностику. Для каждого пункта выводит PASS/WARN/FAIL:
+
 - Бинарь sign-craze существует и исполняемый
 - Бинарь sing-box существует, версия читается
 - Конфиг валиден (`sing-box check -c`)
@@ -220,9 +228,10 @@ sing-box   v<VERSION>  (установлен в /opt/sbin/sing-box)
 
 ### `/opt/etc/sign-craze/config.json` (sing-box)
 
-Источник: https://sing-box.sagernet.org/configuration/
+Источник: <https://sing-box.sagernet.org/configuration/>
 
 Минимальная структура tproxy inbound:
+
 ```json
 {
   "log": { "level": "info", "output": "/opt/var/log/sign-craze/sing-box.log" },
@@ -245,6 +254,7 @@ sing-box   v<VERSION>  (установлен в /opt/sbin/sing-box)
 ```
 
 Ключевые параметры (настраиваются через sign-craze):
+
 - `listen_port`: по умолчанию `7895`
 - `mark`: `83` (= `0x53`) — пакеты от sing-box перемаркируются для предотвращения петли
 - Уровень логирования: зеркалирует `SIGNCRAZE_LOG_LEVEL`
@@ -286,7 +296,7 @@ Chain signcraze_dpi  # пустая в режиме proxy; правила NFQUEU
 
 ### iptables (таблица mangle, TPROXY)
 
-```
+```plain
 Chain PREROUTING
   -m mark --mark 0x53 -p tcp -j TPROXY --tproxy-port 7895 --tproxy-mark 0x53
   -m mark --mark 0x53 -p udp -j TPROXY --tproxy-port 7895 --tproxy-mark 0x53
@@ -294,19 +304,19 @@ Chain PREROUTING
 
 ### ip rules
 
-```
+```plain
 32765: from all fwmark 0x53 lookup 83
 ```
 
 ### ip route (таблица 83)
 
-```
+```plain
 local 0.0.0.0/0 dev lo
 ```
 
 ### ipset-наборы
 
-```
+```plain
 Name: signcraze_ipv4   Type: hash:net  Family: inet
 Name: signcraze_ipv6   Type: hash:net  Family: inet6
 ```
@@ -314,7 +324,8 @@ Name: signcraze_ipv6   Type: hash:net  Family: inet6
 ### Дополнения DPI (режимы dpi / hybrid)
 
 В цепочке `signcraze_dpi` (mangle:PREROUTING, до signcraze):
-```
+
+```plain
 -m mark ! --mark 0x53 -p tcp -j NFQUEUE --queue-num 200 --queue-bypass -m comment --comment "signcraze:dpi-tcp"
 -m mark ! --mark 0x53 -p udp -j NFQUEUE --queue-num 200 --queue-bypass -m comment --comment "signcraze:dpi-udp"
 ```
@@ -333,6 +344,7 @@ Shim делегирует в `sign-craze --service-start` (внутренняя 
 ### `--service-start` (внутренняя)
 
 Аналог `--start` для контекста init.d:
+
 - Без интерактивного вывода (всё в slog).
 - Ждёт сети: опрашивает `ip route show default` до 30 с.
 - При ошибке: логирует ERROR, выходит с ненулевым кодом (init.d не будет повторять, syslog зафиксирует).
@@ -363,7 +375,7 @@ SIGHUP-перезагрузки нет. Изменения конфига тре
 
 ## 5. Файловая система (полная схема)
 
-```
+```plain
 /opt/
 ├── sbin/
 │   ├── sign-craze          # основной бинарь
@@ -390,3 +402,59 @@ SIGHUP-перезагрузки нет. Изменения конфига тре
         ├── sign-craze-singbox.pid
         └── sign-craze-nfqws2.pid
 ```
+
+---
+
+## 6. Web UI API
+
+Запускается командой `--ui on`, останавливается `--ui off`. HTTP-серверы встроены в основной процесс — отдельный процесс не создаётся.
+
+### Аутентификация
+
+Все эндпоинты обоих портов требуют HTTP Basic Auth.
+
+- Логин: `admin`
+- Пароль: задаётся при первом запуске (`--ui on` → случайный пароль выводится один раз на stdout)
+- Хэш bcrypt (cost=12) хранится в `/opt/etc/sign-craze/admin.creds`
+- При повторном `--ui on` пароль не меняется; для сброса — удалить `admin.creds`
+
+### Порт 9090 — Clash-совместимый API (для Zashboard)
+
+```plain
+GET  /            — {"hello":"clash","version":"sign-craze/<ver>"}
+GET  /version     — {"version":"<ver>","premium":false}
+GET  /configs     — {"mode":"proxy|dpi|hybrid","port":7895,"log-level":"info"}
+GET  /proxies     — {"proxies":{}}
+GET  /connections — {"downloadTotal":0,"uploadTotal":0,"connections":[]}
+WS   /traffic     — {"up":0,"down":0} каждые 1 с
+WS   /logs        — {"type":"info","payload":"..."} поток slog
+GET  /*           — SPA fallback → index.html (встроенный Zashboard)
+```
+
+### Порт 9091 — Admin REST API
+
+```plain
+GET    /api/status              — состояние сервисов и версии
+GET    /api/config              — текущий config.json sing-box (raw JSON)
+POST   /api/config              — обновить config.json (валидация sing-box check -c перед сохранением)
+GET    /api/ports               — список проксируемых портов
+POST   /api/ports               — добавить порт, body: {"port": 80}
+DELETE /api/ports/{port}        — удалить порт
+GET    /api/excludes            — список IP/CIDR-исключений
+POST   /api/excludes            — добавить исключение, body: {"cidr": "192.168.1.0/24"}
+DELETE /api/excludes/{cidr}     — удалить исключение
+```
+
+Формат ответа `GET /api/status`:
+
+```json
+{
+  "singbox":  {"running": true,  "pid": 1234},
+  "nfqws2":   {"running": false, "pid": 0},
+  "mode":     "proxy",
+  "version":  {"sign_craze": "v0.1.0", "sing_box": "v1.10.0"},
+  "uptime_s": 3600
+}
+```
+
+Коды ответов: `200 OK`, `400 Bad Request` (ошибка валидации), `401 Unauthorized`, `500 Internal Server Error`.

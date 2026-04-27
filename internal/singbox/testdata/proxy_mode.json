@@ -73,14 +73,14 @@
         "format": "binary",
         "tag": "geosite-blocked",
         "type": "remote",
-        "url": "https://github.com/kittylabassistant/sign-craze-dats/releases/latest/download/geosite-blocked.srs"
+        "url": "https://github.com/kittylabassistant/sign-craze-dat/releases/latest/download/geosite-blocked.srs"
       },
       {
         "download_detour": "direct",
         "format": "binary",
         "tag": "geosite-ru",
         "type": "remote",
-        "url": "https://github.com/kittylabassistant/sign-craze-dats/releases/latest/download/geosite-ru.srs"
+        "url": "https://github.com/kittylabassistant/sign-craze-dat/releases/latest/download/geosite-ru.srs"
       }
     ],
     "rules": [

@@ -174,21 +174,21 @@ func downloadFile(ctx context.Context, url, dstFile, savedETag string) (bool, st
 	defer func() { _ = os.Remove(tmpName) }()
 
 	h := sha256.New()
-	if _, err := io.Copy(io.MultiWriter(tmp, h), resp.Body); err != nil {
+	if _, cpErr := io.Copy(io.MultiWriter(tmp, h), resp.Body); cpErr != nil {
 		_ = tmp.Close()
-		return false, "", fmt.Errorf("чтение тела ответа: %w", err)
+		return false, "", fmt.Errorf("чтение тела ответа: %w", cpErr)
 	}
-	if err := tmp.Sync(); err != nil {
+	if syncErr := tmp.Sync(); syncErr != nil {
 		_ = tmp.Close()
-		return false, "", fmt.Errorf("fsync: %w", err)
+		return false, "", fmt.Errorf("fsync: %w", syncErr)
 	}
 	_ = tmp.Close()
 
 	checksum := hex.EncodeToString(h.Sum(nil))
 	log.L().Debug("загрузка завершена", "sha256", checksum)
 
-	if err := atomicfs.WriteFileAtomic(dstFile, mustReadFile(tmpName), 0o644); err != nil {
-		return false, "", fmt.Errorf("атомарная запись: %w", err)
+	if wErr := atomicfs.WriteFileAtomic(dstFile, mustReadFile(tmpName), 0o644); wErr != nil {
+		return false, "", fmt.Errorf("атомарная запись: %w", wErr)
 	}
 
 	return true, resp.Header.Get("ETag"), nil

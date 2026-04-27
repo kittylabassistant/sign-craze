@@ -64,7 +64,7 @@ func (a *applierImpl) Apply(ctx context.Context, mode types.Mode) error {
 	if err := a.applyInternal(ctx, mode); err != nil {
 		log.L().Warn("firewall: ошибка применения, откат", "err", err)
 		if removeErr := a.Remove(ctx); removeErr != nil {
-			return fmt.Errorf("firewall: ошибка применения: %w; ошибка отката: %v", err, removeErr)
+			return fmt.Errorf("firewall: ошибка применения: %w; ошибка отката: %w", err, removeErr)
 		}
 		return err
 	}

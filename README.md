@@ -154,10 +154,10 @@ internal/cli  (диспетчер команд)
 | Phase 0 — подготовка | ✅ | go.mod, Makefile, CI, BEHAVIOR_SPEC.md, docs |
 | Phase 1 — scaffold | ✅ | cli, log, locks, exectx, errors, atomicfs, version, types |
 | Phase 2 — sing-box | ✅ | download, install, config template, service shim, lifecycle |
-| Phase 3 — firewall | 🔄 | iptables/ipset, режимы tproxy/redirect/hybrid, Docker тесты |
-| Phase 4 — DPI/nfqws2 | ⏳ | download, config, NFQUEUE lifecycle |
-| Phase 5 — гео-файлы | ⏳ | SRS manifest, выборочная загрузка, ipset |
-| Phase 6 — Web UI | ⏳ | HTTP-сервер, REST API, Zashboard embed |
+| Phase 3 — firewall | ✅ | iptables/ipset, режимы tproxy/redirect/hybrid, Docker тесты |
+| Phase 4 — DPI/nfqws2 | ✅ | download, config, NFQUEUE lifecycle |
+| Phase 5 — гео-файлы | ✅ | SRS manifest, выборочная загрузка, ipset |
+| Phase 6 — Web UI | 🔄 | HTTP-сервер, REST API, Zashboard embed |
 | Phase 7 — release | ⏳ | GitHub Actions pipeline, install.sh |
 
 ## Структура файлов на роутере

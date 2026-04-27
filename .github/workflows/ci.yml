@@ -46,10 +46,31 @@ jobs:
           install-mode: goinstall
 
   build:
-    name: cross-compile
+    name: cross-compile (${{ matrix.suffix }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goarch: arm64
+            goarm: ""
+            gomips: ""
+            suffix: arm64
+          - goarch: arm
+            goarm: "7"
+            gomips: ""
+            suffix: arm7
+          - goarch: mipsle
+            goarm: ""
+            gomips: softfloat
+            suffix: mipsle
+          - goarch: mips
+            goarm: ""
+            gomips: softfloat
+            suffix: mips
     steps:
       - uses: actions/checkout@v6
+        with:
+          submodules: recursive
 
       - uses: actions/setup-go@v6
         with:
@@ -59,5 +80,17 @@ jobs:
       - name: go mod tidy
         run: go mod tidy
 
-      - name: build all targets
-        run: make all
+      - name: build
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
+          GOMIPS: ${{ matrix.gomips }}
+        run: |
+          mkdir -p dist
+          go build -buildvcs=false \
+            -ldflags="-s -w" \
+            -trimpath \
+            -o dist/sign-craze-${{ matrix.suffix }} \
+            ./cmd/sign-craze

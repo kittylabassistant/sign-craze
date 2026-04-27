@@ -35,8 +35,8 @@ func TestIPTables_EnsureRule_ПропускаетЕслиСуществует(t 
 
 func TestIPTables_DeleteRule_УдаляетЕслиСуществует(t *testing.T) {
 	r := exectx.Mock(map[string]exectx.Result{
-		"iptables -t mangle -C CHAIN -j ACCEPT":  {ExitCode: 0},
-		"iptables -t mangle -D CHAIN -j ACCEPT":  {ExitCode: 0},
+		"iptables -t mangle -C CHAIN -j ACCEPT": {ExitCode: 0},
+		"iptables -t mangle -D CHAIN -j ACCEPT": {ExitCode: 0},
 	})
 	ipt := New(r)
 	err := ipt.DeleteRule(context.Background(), "mangle", "CHAIN", "-j", "ACCEPT")
