@@ -2,7 +2,7 @@
 
 ## Диаграмма слоёв
 
-```
+```plain
 ┌─────────────────────────────────────────────────────┐
 │  cmd/sign-craze/main.go  (точка входа, сигналы)     │
 └───────────────────────┬─────────────────────────────┘
@@ -48,7 +48,7 @@ singbox         dpi             firewall
 
 ## Поток данных: `--install`
 
-```
+```plain
 cli/install.Run
   → locks.Acquire          (запрет параллельной установки)
   → singbox.Download       (GitHub releases, ETag-кэш, проверка SHA256)
@@ -61,7 +61,7 @@ cli/install.Run
 
 ## Поток данных: `--start`
 
-```
+```plain
 cli/service.Run
   → locks.Acquire
   → service.compositeLifecycle.Start
@@ -79,6 +79,7 @@ cli/service.Run
 | `hybrid` | да | да | per-domain: proxy-marked → TPROXY; dpi-marked → NFQUEUE |
 
 Приоритет цепочек в `mangle:PREROUTING`:
+
 1. `signcraze_dpi` (NFQUEUE, `--queue-bypass`) — обрабатывается первой
 2. `signcraze` (mark-маршрутизация для TPROXY) — обрабатывается второй
 
