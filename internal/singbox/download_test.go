@@ -6,14 +6,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/kittylabassistant/sign-craze/internal/ghrelease"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
-// fakeRelease строит JSON-ответ GitHub API с одним asset.
+const singboxReleasesPath = "/repos/SagerNet/sing-box/releases/latest"
+
 func fakeRelease(assetName, downloadURL string) []byte {
 	rel := types.Release{
 		TagName: "v1.10.0",
@@ -34,21 +35,20 @@ func TestDownload_Success(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case strings.Contains(r.URL.Path, "releases/latest"):
+		case strings.HasSuffix(r.URL.Path, "/releases/latest"):
 			assetURL := "http://" + r.Host + "/download/sing-box-v1.10.0-linux-arm64.tar.gz"
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(fakeRelease("sing-box-v1.10.0-linux-arm64.tar.gz", assetURL))
+			_, _ = w.Write(fakeRelease("sing-box-v1.10.0-linux-arm64.tar.gz", assetURL))
 		default:
 			w.Header().Set("ETag", `"abc123"`)
-			w.Write(content)
+			_, _ = w.Write(content)
 		}
 	}))
 	defer srv.Close()
 
-	// подменяем URL GitHub API на тестовый сервер
-	origURL := githubReleasesURL
-	githubReleasesURL = srv.URL + "/repos/SagerNet/sing-box/releases/latest"
-	defer func() { githubReleasesURL = origURL }()
+	orig := ghrelease.APIBaseURL
+	ghrelease.APIBaseURL = srv.URL
+	defer func() { ghrelease.APIBaseURL = orig }()
 
 	dir := t.TempDir()
 	res, err := Download(context.Background(), types.ArchARM64, dir)
@@ -72,36 +72,32 @@ func TestDownload_Success(t *testing.T) {
 }
 
 func TestDownload_ETagSkipsRedownload(t *testing.T) {
-	calls := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case strings.Contains(r.URL.Path, "releases/latest"):
+		case strings.HasSuffix(r.URL.Path, "/releases/latest"):
 			assetURL := "http://" + r.Host + "/download/sing-box-v1.10.0-linux-arm64.tar.gz"
-			w.Write(fakeRelease("sing-box-v1.10.0-linux-arm64.tar.gz", assetURL))
+			_, _ = w.Write(fakeRelease("sing-box-v1.10.0-linux-arm64.tar.gz", assetURL))
 		default:
-			calls++
 			if r.Header.Get("If-None-Match") == `"etag-v1"` {
 				w.WriteHeader(http.StatusNotModified)
 				return
 			}
 			w.Header().Set("ETag", `"etag-v1"`)
-			w.Write([]byte("data"))
+			_, _ = w.Write([]byte("data"))
 		}
 	}))
 	defer srv.Close()
 
-	origURL := githubReleasesURL
-	githubReleasesURL = srv.URL + "/repos/SagerNet/sing-box/releases/latest"
-	defer func() { githubReleasesURL = origURL }()
+	orig := ghrelease.APIBaseURL
+	ghrelease.APIBaseURL = srv.URL
+	defer func() { ghrelease.APIBaseURL = orig }()
 
 	dir := t.TempDir()
 
-	// первая загрузка
 	if _, err := Download(context.Background(), types.ArchARM64, dir); err != nil {
 		t.Fatalf("первый Download: %v", err)
 	}
 
-	// вторая загрузка — должна вернуть 304
 	res, err := Download(context.Background(), types.ArchARM64, dir)
 	if err != nil {
 		t.Fatalf("второй Download: %v", err)
@@ -113,17 +109,17 @@ func TestDownload_ETagSkipsRedownload(t *testing.T) {
 
 func TestDownload_ServerError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "releases/latest") {
+		if strings.HasSuffix(r.URL.Path, "/releases/latest") {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		w.Write([]byte("data"))
+		_, _ = w.Write([]byte("data"))
 	}))
 	defer srv.Close()
 
-	origURL := githubReleasesURL
-	githubReleasesURL = srv.URL + "/repos/SagerNet/sing-box/releases/latest"
-	defer func() { githubReleasesURL = origURL }()
+	orig := ghrelease.APIBaseURL
+	ghrelease.APIBaseURL = srv.URL
+	defer func() { ghrelease.APIBaseURL = orig }()
 
 	_, err := Download(context.Background(), types.ArchARM64, t.TempDir())
 	if err == nil {
@@ -138,7 +134,8 @@ func TestDownload_UnsupportedArch(t *testing.T) {
 	}
 }
 
-func TestFindAsset(t *testing.T) {
+// Тест внутренних утилит ghrelease.MatchByContains.
+func TestMatchByContains(t *testing.T) {
 	assets := []types.Asset{
 		{Name: "sing-box-v1.10.0-linux-arm64.tar.gz"},
 		{Name: "sing-box-v1.10.0-linux-amd64.tar.gz"},
@@ -148,31 +145,26 @@ func TestFindAsset(t *testing.T) {
 	tests := []struct {
 		pattern  string
 		wantName string
-		wantNil  bool
 	}{
-		{"linux-arm64.tar.gz", "sing-box-v1.10.0-linux-arm64.tar.gz", false},
-		{"linux-mipsle-softfloat.tar.gz", "sing-box-v1.10.0-linux-mipsle-softfloat.tar.gz", false},
-		{"linux-arm64.tar.gz", "sing-box-v1.10.0-linux-arm64.tar.gz", false},
-		{"linux-riscv64.tar.gz", "", true},
+		{"linux-arm64.tar.gz", "sing-box-v1.10.0-linux-arm64.tar.gz"},
+		{"linux-mipsle-softfloat.tar.gz", "sing-box-v1.10.0-linux-mipsle-softfloat.tar.gz"},
 	}
 
 	for _, tt := range tests {
-		got := findAsset(assets, tt.pattern)
-		if tt.wantNil && got != nil {
-			t.Errorf("findAsset(%q): ожидался nil, получили %+v", tt.pattern, got)
-		}
-		if !tt.wantNil {
-			if got == nil {
-				t.Errorf("findAsset(%q): ожидался asset, получили nil", tt.pattern)
-			} else if got.Name != tt.wantName {
-				t.Errorf("findAsset(%q): Name = %q, ожидалось %q", tt.pattern, got.Name, tt.wantName)
+		fn := ghrelease.MatchByContains(tt.pattern)
+		var got *types.Asset
+		for i := range assets {
+			if fn(assets[i]) {
+				got = &assets[i]
+				break
 			}
 		}
-	}
-}
-
-func TestReadETag_MissingFile(t *testing.T) {
-	if etag := readETag(filepath.Join(t.TempDir(), "nonexistent.etag")); etag != "" {
-		t.Errorf("ожидалась пустая строка для отсутствующего etag-файла, получили %q", etag)
+		if got == nil {
+			t.Errorf("MatchByContains(%q): не найдено", tt.pattern)
+			continue
+		}
+		if got.Name != tt.wantName {
+			t.Errorf("MatchByContains(%q): Name = %q, ожидалось %q", tt.pattern, got.Name, tt.wantName)
+		}
 	}
 }

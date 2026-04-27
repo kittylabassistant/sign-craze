@@ -3,6 +3,7 @@ package types
 import (
 	"fmt"
 	"net/netip"
+	"runtime"
 )
 
 // Mode — режим маршрутизации трафика.
@@ -42,6 +43,25 @@ func (a Arch) Validate() error {
 		return nil
 	default:
 		return fmt.Errorf("неподдерживаемая архитектура %q", a)
+	}
+}
+
+// DetectHostArch возвращает архитектуру текущего бинаря через runtime.GOARCH.
+// Используется для выбора правильного asset при загрузке (sing-box, nfqws2).
+func DetectHostArch() (Arch, error) {
+	switch runtime.GOARCH {
+	case "arm64":
+		return ArchARM64, nil
+	case "arm":
+		return ArchARM7, nil
+	case "mipsle":
+		return ArchMIPSLE, nil
+	case "mips":
+		return ArchMIPS, nil
+	case "amd64":
+		return ArchAMD64, nil
+	default:
+		return "", fmt.Errorf("неподдерживаемая host-архитектура %q", runtime.GOARCH)
 	}
 }
 
@@ -104,11 +124,11 @@ const (
 
 // Outbound описывает исходящее соединение sing-box.
 type Outbound struct {
-	Tag      string // уникальный тег (обязателен)
-	Type     string // "socks", "vmess", "vless", "shadowsocks" и т.д.
-	Server   string
-	Port     Port
-	Settings map[string]any // тип-специфичные параметры
+	Tag      string         `json:"tag"`                // уникальный тег (обязателен)
+	Type     string         `json:"type"`               // "socks", "vmess", "vless", "shadowsocks" и т.д.
+	Server   string         `json:"server,omitempty"`   // не требуется для type=direct
+	Port     Port           `json:"port,omitempty"`     // не требуется для type=direct
+	Settings map[string]any `json:"settings,omitempty"` // тип-специфичные параметры
 }
 
 // Validate проверяет обязательные поля Outbound.

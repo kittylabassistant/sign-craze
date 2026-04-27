@@ -3,6 +3,7 @@ package firewall
 import (
 	"context"
 	"fmt"
+	"net/netip"
 
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/firewall/modes"
@@ -22,12 +23,17 @@ type Applier interface {
 
 // Config содержит параметры брандмауэра. Все значения из BEHAVIOR_SPEC §3.
 type Config struct {
-	FWMark     uint32 // 0x53 (83)
-	Table      int    // 83
-	Priority   int    // 32765
-	Port       uint16 // 7895
-	NFQueueNum int    // 200
+	FWMark     uint32         // 0x53 (83)
+	Table      int            // 83
+	Priority   int            // 32765
+	Port       uint16         // 7895
+	NFQueueNum int            // 200
+	Ports      []uint16       // дополнительные порты для маркировки в signcraze_ports
+	Excludes   []netip.Prefix // CIDR-исключения (RETURN из signcraze)
 }
+
+// IPSetExcludes — имя ipset для bypass-исключений.
+const IPSetExcludes = "signcraze_excludes"
 
 // DefaultConfig возвращает конфигурацию по умолчанию согласно BEHAVIOR_SPEC §3.
 func DefaultConfig() Config {
@@ -73,15 +79,25 @@ func (a *applierImpl) Apply(ctx context.Context, mode types.Mode) error {
 }
 
 func (a *applierImpl) applyInternal(ctx context.Context, mode types.Mode) error {
-	// 1. Создать ipset-наборы
+	// 1. Создать ipset-наборы (включая signcraze_excludes).
 	if err := a.ipset.EnsureSet(ctx, string(types.IPSetIPv4), "hash:net", "inet"); err != nil {
 		return err
 	}
 	if err := a.ipset.EnsureSet(ctx, string(types.IPSetIPv6), "hash:net", "inet6"); err != nil {
 		return err
 	}
+	if err := a.ipset.EnsureSet(ctx, IPSetExcludes, "hash:net", "inet"); err != nil {
+		return err
+	}
 
-	// 2. ip rule + ip route (маршрутизация помеченного трафика)
+	// Заполнить signcraze_excludes из cfg.Excludes (atomic replace).
+	if len(a.cfg.Excludes) > 0 {
+		if err := a.ipset.AtomicReplace(ctx, IPSetExcludes, "hash:net", "inet", a.cfg.Excludes); err != nil {
+			return fmt.Errorf("firewall: заполнение excludes: %w", err)
+		}
+	}
+
+	// 2. ip rule + ip route (маршрутизация помеченного трафика).
 	if err := EnsureIPRule(ctx, a.runner, a.cfg.FWMark, a.cfg.Table, a.cfg.Priority); err != nil {
 		return err
 	}
@@ -89,14 +105,23 @@ func (a *applierImpl) applyInternal(ctx context.Context, mode types.Mode) error 
 		return err
 	}
 
-	// 3. Создать цепочки в mangle
-	for _, chain := range []string{"signcraze", "signcraze_full", "signcraze_dpi"} {
+	// 3. Создать цепочки в mangle (signcraze_ports добавлена для port-based маркировки).
+	for _, chain := range []string{"signcraze", "signcraze_full", "signcraze_dpi", "signcraze_ports"} {
 		if err := a.ipt.EnsureChain(ctx, "mangle", chain); err != nil {
 			return err
 		}
 	}
 
-	// 4. Применить правила режима
+	// 4. RETURN-bypass из signcraze для excludes — должно идти ПЕРВЫМ правилом.
+	if len(a.cfg.Excludes) > 0 {
+		for _, spec := range modes.ExcludeRules() {
+			if err := a.ipt.EnsureRule(ctx, spec.Table, spec.Chain, spec.Args...); err != nil {
+				return err
+			}
+		}
+	}
+
+	// 5. Правила режима (TProxy / Hybrid).
 	var ruleSpecs []modes.RuleSpec
 	switch mode {
 	case types.ModeProxy:
@@ -106,8 +131,14 @@ func (a *applierImpl) applyInternal(ctx context.Context, mode types.Mode) error 
 	default:
 		return fmt.Errorf("firewall: неподдерживаемый режим %q", mode)
 	}
-
 	for _, spec := range ruleSpecs {
+		if err := a.ipt.EnsureRule(ctx, spec.Table, spec.Chain, spec.Args...); err != nil {
+			return err
+		}
+	}
+
+	// 6. Port-based маркировка (signcraze_ports).
+	for _, spec := range modes.PortRules(a.cfg.Ports, a.cfg.FWMark) {
 		if err := a.ipt.EnsureRule(ctx, spec.Table, spec.Chain, spec.Args...); err != nil {
 			return err
 		}
@@ -125,8 +156,8 @@ func (a *applierImpl) Remove(ctx context.Context) error {
 		log.L().Warn("firewall: ошибка при удалении правил по комментарию", "err", err)
 	}
 
-	// 2. Удалить цепочки
-	for _, chain := range []string{"signcraze_dpi", "signcraze_full", "signcraze"} {
+	// 2. Удалить цепочки (включая signcraze_ports).
+	for _, chain := range []string{"signcraze_dpi", "signcraze_ports", "signcraze_full", "signcraze"} {
 		if err := a.ipt.FlushAndDeleteChain(ctx, "mangle", chain); err != nil {
 			log.L().Warn("firewall: ошибка удаления цепочки", "chain", chain, "err", err)
 		}
@@ -146,6 +177,9 @@ func (a *applierImpl) Remove(ctx context.Context) error {
 	}
 	if err := a.ipset.DestroySet(ctx, string(types.IPSetIPv6)); err != nil {
 		log.L().Warn("firewall: ошибка удаления ipset", "name", types.IPSetIPv6, "err", err)
+	}
+	if err := a.ipset.DestroySet(ctx, IPSetExcludes); err != nil {
+		log.L().Warn("firewall: ошибка удаления ipset", "name", IPSetExcludes, "err", err)
 	}
 
 	log.L().Info("firewall: правила удалены")

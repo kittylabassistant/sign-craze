@@ -10,7 +10,11 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const pollInterval = 100 * time.Millisecond
+const (
+	pollInterval = 100 * time.Millisecond
+	// DefaultPath — стандартный путь к flock-файлу sign-craze.
+	DefaultPath = "/opt/var/lock/sign-craze.lock"
+)
 
 // Lock представляет удерживаемую эксклюзивную блокировку flock.
 type Lock struct {

@@ -9,15 +9,17 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/kittylabassistant/sign-craze/internal/ghrelease"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
+
+const releasesPath = "/repos/bol-van/nfqws2-keenetic/releases/latest"
 
 func TestDownload_СкачиваетТарбол(t *testing.T) {
 	fakeContent := []byte("fake-nfqws2-tarball")
 
-	// Сервер отдаёт метаданные релиза и файл
 	mux := http.NewServeMux()
-	mux.HandleFunc("/releases/latest", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(releasesPath, func(w http.ResponseWriter, r *http.Request) {
 		release := types.Release{
 			TagName: "v1.0.0",
 			Assets: []types.Asset{
@@ -27,19 +29,19 @@ func TestDownload_СкачиваетТарбол(t *testing.T) {
 				},
 			},
 		}
-		json.NewEncoder(w).Encode(release) //nolint:errcheck
+		_ = json.NewEncoder(w).Encode(release)
 	})
-	mux.HandleFunc("/download/nfqws2.tar.gz", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/download/nfqws2.tar.gz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("ETag", `"etag-v1"`)
-		w.Write(fakeContent) //nolint:errcheck
+		_, _ = w.Write(fakeContent)
 	})
 
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	old := nfqws2ReleasesURL
-	nfqws2ReleasesURL = srv.URL + "/releases/latest"
-	defer func() { nfqws2ReleasesURL = old }()
+	old := ghrelease.APIBaseURL
+	ghrelease.APIBaseURL = srv.URL
+	defer func() { ghrelease.APIBaseURL = old }()
 
 	dstDir := t.TempDir()
 	res, err := Download(context.Background(), types.ArchARM64, dstDir)
@@ -63,9 +65,8 @@ func TestDownload_СкачиваетТарбол(t *testing.T) {
 }
 
 func TestDownload_ПропускаетПриСовпаденииETag(t *testing.T) {
-	callCount := 0
 	mux := http.NewServeMux()
-	mux.HandleFunc("/releases/latest", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(releasesPath, func(w http.ResponseWriter, r *http.Request) {
 		release := types.Release{
 			TagName: "v1.0.0",
 			Assets: []types.Asset{
@@ -75,33 +76,30 @@ func TestDownload_ПропускаетПриСовпаденииETag(t *testing.
 				},
 			},
 		}
-		json.NewEncoder(w).Encode(release) //nolint:errcheck
+		_ = json.NewEncoder(w).Encode(release)
 	})
 	mux.HandleFunc("/download/nfqws2.tar.gz", func(w http.ResponseWriter, r *http.Request) {
-		callCount++
 		if r.Header.Get("If-None-Match") == `"etag-v1"` {
 			w.WriteHeader(http.StatusNotModified)
 			return
 		}
 		w.Header().Set("ETag", `"etag-v1"`)
-		w.Write([]byte("content")) //nolint:errcheck
+		_, _ = w.Write([]byte("content"))
 	})
 
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	old := nfqws2ReleasesURL
-	nfqws2ReleasesURL = srv.URL + "/releases/latest"
-	defer func() { nfqws2ReleasesURL = old }()
+	old := ghrelease.APIBaseURL
+	ghrelease.APIBaseURL = srv.URL
+	defer func() { ghrelease.APIBaseURL = old }()
 
 	dstDir := t.TempDir()
 	dstFile := filepath.Join(dstDir, "nfqws2-v1.0.0-aarch64.tar.gz")
 
-	// Сохраняем ETag заранее (имитируем предыдущую загрузку)
 	if err := os.WriteFile(dstFile+".etag", []byte(`"etag-v1"`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// Создаём файл, чтобы он «существовал»
 	if err := os.WriteFile(dstFile, []byte("content"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +111,6 @@ func TestDownload_ПропускаетПриСовпаденииETag(t *testing.
 	if res.Downloaded {
 		t.Error("ожидался Downloaded=false при совпадении ETag")
 	}
-	_ = callCount
 }
 
 func TestDownload_НеизвестнаяАрхитектура(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
 	"text/template"
 
 	_ "embed"
@@ -66,7 +67,7 @@ func GenerateConfig(params ConfigParams, dstPath string) error {
 		return fmt.Errorf("dpi config: рендеринг шаблона: %w", err)
 	}
 
-	if err := os.MkdirAll(DefaultConfigDir, 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {
 		return fmt.Errorf("dpi config: создание директории конфига: %w", err)
 	}
 
