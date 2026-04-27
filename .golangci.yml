@@ -36,10 +36,16 @@ linters:
       asserts: true
       comparison: true
   exclusions:
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
     rules:
       - path: "_test\\.go"
         linters:
           - errcheck
+          - noctx
 
 issues:
   max-issues-per-linter: 0

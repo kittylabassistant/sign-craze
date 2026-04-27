@@ -58,10 +58,10 @@ func wsUpgrade(w http.ResponseWriter, r *http.Request) (*wsConn, error) {
 // SendText отправляет один WebSocket text-фрейм (FIN=1, opcode=0x1).
 func (c *wsConn) SendText(data []byte) error {
 	header := makeWSHeader(len(data))
-	if _, err := c.Conn.Write(header); err != nil {
+	if _, err := c.Write(header); err != nil {
 		return err
 	}
-	_, err := c.Conn.Write(data)
+	_, err := c.Write(data)
 	return err
 }
 
@@ -81,7 +81,7 @@ func makeWSHeader(n int) []byte {
 }
 
 func wsAcceptKey(key string) string {
-	h := sha1.New() //nolint:gosec
+	h := sha1.New()                      //nolint:gosec
 	_, _ = io.WriteString(h, key+wsGUID) //nolint:errcheck // hash.Hash.Write never errors
 	return base64.StdEncoding.EncodeToString(h.Sum(nil))
 }
