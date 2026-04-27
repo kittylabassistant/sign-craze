@@ -1,0 +1,96 @@
+package atomicfs
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+)
+
+// WriteFileAtomic записывает данные в dst атомарно через write→fsync→rename.
+// Гарантирует, что читатели никогда не увидят частично записанный файл.
+// perm применяется к финальному файлу.
+func WriteFileAtomic(dst string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(dst)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("atomicfs: mkdir %s: %w", dir, err)
+	}
+
+	tmp, err := os.CreateTemp(dir, ".atomic-*")
+	if err != nil {
+		return fmt.Errorf("atomicfs: создание temp-файла: %w", err)
+	}
+	tmpName := tmp.Name()
+
+	// удаляем temp-файл при любой ошибке до rename
+	success := false
+	defer func() {
+		if !success {
+			_ = os.Remove(tmpName)
+		}
+	}()
+
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("atomicfs: запись в temp-файл: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("atomicfs: fsync temp-файла: %w", err)
+	}
+	if err := tmp.Chmod(perm); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("atomicfs: chmod temp-файла: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("atomicfs: закрытие temp-файла: %w", err)
+	}
+
+	if err := os.Rename(tmpName, dst); err != nil {
+		return fmt.Errorf("atomicfs: rename %s → %s: %w", tmpName, dst, err)
+	}
+
+	success = true
+	return nil
+}
+
+// BackupAndReplace создаёт резервную копию dst (если существует) с суффиксом .bak.<unix>,
+// затем атомарно записывает newData в dst.
+// Возвращает путь к созданной резервной копии (пустую строку если файл не существовал).
+func BackupAndReplace(dst string, newData []byte, perm os.FileMode) (backupPath string, err error) {
+	if _, statErr := os.Stat(dst); statErr == nil {
+		backupPath = fmt.Sprintf("%s.bak.%d", dst, time.Now().Unix())
+		existing, readErr := os.ReadFile(dst)
+		if readErr != nil {
+			return "", fmt.Errorf("atomicfs: чтение текущего файла для бэкапа: %w", readErr)
+		}
+		if writeErr := WriteFileAtomic(backupPath, existing, perm); writeErr != nil {
+			return "", fmt.Errorf("atomicfs: запись резервной копии: %w", writeErr)
+		}
+	}
+
+	if err := WriteFileAtomic(dst, newData, perm); err != nil {
+		return backupPath, err
+	}
+	return backupPath, nil
+}
+
+// RestoreBackup восстанавливает dst из резервной копии backupPath и удаляет резервный файл.
+func RestoreBackup(backupPath, dst string) error {
+	data, err := os.ReadFile(backupPath)
+	if err != nil {
+		return fmt.Errorf("atomicfs: чтение резервной копии %s: %w", backupPath, err)
+	}
+
+	info, err := os.Stat(backupPath)
+	if err != nil {
+		return fmt.Errorf("atomicfs: stat резервной копии: %w", err)
+	}
+
+	if err := WriteFileAtomic(dst, data, info.Mode()); err != nil {
+		return fmt.Errorf("atomicfs: восстановление из бэкапа: %w", err)
+	}
+
+	_ = os.Remove(backupPath)
+	return nil
+}

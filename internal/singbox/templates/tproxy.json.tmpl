@@ -1,0 +1,87 @@
+{
+  "log": {
+    "level": "{{ .LogLevel }}",
+    "output": "/opt/var/log/sign-craze/sing-box.log",
+    "timestamp": true
+  },
+  "inbounds": [
+    {
+      "type": "tproxy",
+      "tag": "tproxy-in",
+      "listen": "::",
+      "listen_port": {{ .InboundPort }},
+      "tcp_fast_open": false,
+      "sniff": true,
+      "sniff_override_destination": false,
+      "domain_strategy": "prefer_ipv4",
+      "mark": {{ .Mark }}
+    }
+  ],
+  "outbounds": [
+{{ range $i, $o := .Outbounds }}{{ if $i }},{{ end }}
+    {
+      "type": "{{ $o.Type }}",
+      "tag": "{{ $o.Tag }}",
+      "server": "{{ $o.Server }}",
+      "server_port": {{ $o.Port }}{{ if $o.Settings }},
+      "settings": {{ jsonMarshal $o.Settings }}{{ end }}
+    }
+{{ end }},
+    {
+      "type": "direct",
+      "tag": "direct"
+    },
+    {
+      "type": "block",
+      "tag": "block"
+    },
+    {
+      "type": "dns",
+      "tag": "dns-out"
+    }
+  ],
+  "route": {
+    "rules": [
+      {
+        "protocol": "dns",
+        "outbound": "dns-out"
+      }{{ if .Routing.GeoSiteDirect }},
+      {
+        "rule_set": {{ jsonMarshal .Routing.GeoSiteDirect }},
+        "outbound": "direct"
+      }{{ end }}{{ if .Routing.GeoSiteProxy }},
+      {
+        "rule_set": {{ jsonMarshal .Routing.GeoSiteProxy }},
+        "outbound": "{{ .DefaultOutboundTag }}"
+      }{{ end }}
+    ],
+    "rule_set": {{ jsonMarshal .RuleSets }},
+    "final": "{{ if .Routing.FinalOutbound }}{{ .Routing.FinalOutbound }}{{ else }}{{ .DefaultOutboundTag }}{{ end }}",
+    "auto_detect_interface": true
+  },
+  "dns": {
+    "servers": [
+      {
+        "tag": "remote",
+        "address": "tls://8.8.8.8",
+        "detour": "{{ .DefaultOutboundTag }}"
+      },
+      {
+        "tag": "local",
+        "address": "223.5.5.5",
+        "detour": "direct"
+      }
+    ],
+    "rules": [
+      {
+        "outbound": "any",
+        "server": "local"
+      }{{ if .Routing.GeoSiteDirect }},
+      {
+        "rule_set": {{ jsonMarshal .Routing.GeoSiteDirect }},
+        "server": "local"
+      }{{ end }}
+    ],
+    "final": "remote"
+  }
+}
