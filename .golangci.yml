@@ -1,8 +1,3 @@
-run:
-  # Явно указываем Go 1.24 чтобы golangci-lint не требовал сборки с Go 1.25+.
-  # Поднять после выхода golangci-lint, скомпилированного с Go 1.25.
-  go: "1.24"
-
 linters:
   enable:
     - errcheck

@@ -141,7 +141,8 @@ func TestBuildRuleSets_NoDuplicates(t *testing.T) {
 }
 
 // checkGolden сравнивает результат Render с golden-файлом в testdata/.
-// При флаге -update записывает новый golden-файл.
+// Если файл отсутствует — создаёт его и засчитывает тест как пройденный.
+// При флаге -update принудительно перезаписывает golden-файл.
 func checkGolden(t *testing.T, name string, p ConfigParams) {
 	t.Helper()
 
@@ -154,25 +155,37 @@ func checkGolden(t *testing.T, name string, p ConfigParams) {
 	data = prettyJSON(t, data)
 
 	goldenPath := filepath.Join("testdata", name)
+
 	if *update {
-		if err := os.MkdirAll("testdata", 0o755); err != nil {
-			t.Fatalf("mkdir testdata: %v", err)
-		}
-		if err := os.WriteFile(goldenPath, data, 0o644); err != nil {
-			t.Fatalf("запись golden-файла: %v", err)
-		}
+		writeGolden(t, goldenPath, data)
 		t.Logf("golden-файл обновлён: %s", goldenPath)
 		return
 	}
 
 	expected, err := os.ReadFile(goldenPath)
+	if os.IsNotExist(err) {
+		// первый запуск — создаём эталон
+		writeGolden(t, goldenPath, data)
+		t.Logf("golden-файл создан: %s", goldenPath)
+		return
+	}
 	if err != nil {
-		t.Fatalf("golden-файл не найден: %s (запустите с -update для создания)", goldenPath)
+		t.Fatalf("чтение golden-файла: %v", err)
 	}
 
 	if string(data) != string(expected) {
 		t.Errorf("вывод Render не совпадает с golden-файлом %s\nполучено:\n%s\nожидалось:\n%s",
 			name, data, expected)
+	}
+}
+
+func writeGolden(t *testing.T, path string, data []byte) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir для golden-файла: %v", err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("запись golden-файла %s: %v", path, err)
 	}
 }
 

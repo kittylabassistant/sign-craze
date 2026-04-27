@@ -85,9 +85,11 @@ func (l *processLifecycle) Start(ctx context.Context) error {
 		return fmt.Errorf("service %s: процесс не запустился: %w", l.cfg.Name, err)
 	}
 
-	// cmd.Wait() не вызываем — процесс живёт дольше нас
-	// ресурсы процесса будут освобождены ядром при его завершении
-	_ = cmd.Process.Release()
+	// Асинхронно подбираем зомби-статус чтобы не засорять таблицу процессов.
+	// В production sign-craze завершится раньше sing-box и init усыновит его,
+	// но в тестах родитель живёт дольше — без Wait() убитый дочерний процесс
+	// остаётся зомби в /proc и ломает проверку processAlive.
+	go func() { _ = cmd.Wait() }()
 	return nil
 }
 
