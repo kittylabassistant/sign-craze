@@ -157,8 +157,8 @@ internal/cli  (диспетчер команд)
 | Phase 3 — firewall | ✅ | iptables/ipset, режимы tproxy/redirect/hybrid, Docker тесты |
 | Phase 4 — DPI/nfqws2 | ✅ | download, config, NFQUEUE lifecycle |
 | Phase 5 — гео-файлы | ✅ | SRS manifest, выборочная загрузка, ipset |
-| Phase 6 — Web UI | 🔄 | HTTP-сервер, REST API, Zashboard embed |
-| Phase 7 — release | ⏳ | GitHub Actions pipeline, install.sh |
+| Phase 6 — Web UI | ✅ | HTTP-сервер, REST API, Zashboard embed |
+| Phase 7 — release | 🔄 | GitHub Actions pipeline, install.sh |
 
 ## Структура файлов на роутере
 
