@@ -1,6 +1,6 @@
 # sign-craze
 
-Go-утилита для управления межсетевым экраном на роутерах Keenetic. Замена XKeen: чистая реализация BSD 3-Clause без использования исходников XKeen.
+Go-утилита для управления межсетевым экраном на роутерах Keenetic.
 
 Использует [sing-box](https://github.com/SagerNet/sing-box) как прокси-ядро и опционально [nfqws2.](https://github.com/nfqws/nfqws2-keenetic)
 
