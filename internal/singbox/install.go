@@ -47,15 +47,11 @@ func Install(ctx context.Context, runner exectx.Runner, tarPath, binDst, configP
 			log.L().Warn("конфиг невалиден, откат бинаря", "backup", backupPath, "err", err)
 			if backupPath != "" {
 				if restoreErr := atomicfs.RestoreBackup(backupPath, binDst); restoreErr != nil {
-					return fmt.Errorf("singbox install: конфиг невалиден И откат не удался: %v (откат: %w)", err, restoreErr)
+					return fmt.Errorf("singbox install: конфиг невалиден И откат не удался: %w (откат: %w)", err, restoreErr)
 				}
 			}
 			return fmt.Errorf("singbox install: проверка конфига: %w", err)
 		}
-	}
-
-	if err := os.MkdirAll(DefaultConfigDir, 0o755); err != nil {
-		return fmt.Errorf("singbox install: создание директории конфигов: %w", err)
 	}
 
 	log.L().Info("sing-box установлен", "path", binDst)

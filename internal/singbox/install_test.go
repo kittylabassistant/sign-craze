@@ -2,8 +2,8 @@ package singbox
 
 import (
 	"archive/tar"
-	"compress/gzip"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"os"
 	"path/filepath"

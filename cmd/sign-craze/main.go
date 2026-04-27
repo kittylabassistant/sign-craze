@@ -11,13 +11,16 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		log.L().Error("dispatch failed", "err", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	log.Init(os.Getenv("SIGNCRAZE_LOG_LEVEL"))
 	ctx, stop := signal.NotifyContext(context.Background(),
 		syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-
-	if err := cli.Dispatch(ctx, os.Args[1:]); err != nil {
-		log.L().Error("dispatch failed", "err", err)
-		os.Exit(1)
-	}
+	return cli.Dispatch(ctx, os.Args[1:])
 }

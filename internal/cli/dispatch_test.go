@@ -37,8 +37,8 @@ func TestValidateFlag(t *testing.T) {
 		{"-xbr", true},
 		{"-ugc", true},
 		// degenerate cases
-		{"-", true},   // just a dash, len == 1 → not a flag but still weird
-		{"--", true},  // incomplete long
+		{"-", true},           // just a dash, len == 1 → not a flag but still weird
+		{"--", true},          // incomplete long
 		{"---install", false}, // technically len > 2 with --, treated as long; no rule
 	}
 

@@ -1,0 +1,72 @@
+{
+  "dns": {
+    "final": "remote",
+    "rules": [
+      {
+        "outbound": "any",
+        "server": "local"
+      }
+    ],
+    "servers": [
+      {
+        "address": "tls://8.8.8.8",
+        "detour": "out",
+        "tag": "remote"
+      },
+      {
+        "address": "223.5.5.5",
+        "detour": "direct",
+        "tag": "local"
+      }
+    ]
+  },
+  "inbounds": [
+    {
+      "domain_strategy": "prefer_ipv4",
+      "listen": "::",
+      "listen_port": 7895,
+      "mark": 83,
+      "sniff": true,
+      "sniff_override_destination": false,
+      "tag": "tproxy-in",
+      "tcp_fast_open": false,
+      "type": "tproxy"
+    }
+  ],
+  "log": {
+    "level": "info",
+    "output": "/opt/var/log/sign-craze/sing-box.log",
+    "timestamp": true
+  },
+  "outbounds": [
+    {
+      "server": "0.0.0.0",
+      "server_port": 1,
+      "tag": "out",
+      "type": "direct"
+    },
+    {
+      "tag": "direct",
+      "type": "direct"
+    },
+    {
+      "tag": "block",
+      "type": "block"
+    },
+    {
+      "tag": "dns-out",
+      "type": "dns"
+    }
+  ],
+  "route": {
+    "auto_detect_interface": true,
+    "final": "out",
+    "rule_set": null,
+    "rules": [
+      {
+        "outbound": "dns-out",
+        "protocol": "dns"
+      }
+    ]
+  }
+}

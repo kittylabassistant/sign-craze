@@ -2,6 +2,7 @@ package locks
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -34,7 +35,7 @@ func Acquire(ctx context.Context, path string) (*Lock, error) {
 		if err == nil {
 			return &Lock{path: path, f: f}, nil
 		}
-		if err != unix.EWOULDBLOCK {
+		if !errors.Is(err, unix.EWOULDBLOCK) {
 			f.Close()
 			return nil, fmt.Errorf("locks: flock %s: %w", path, err)
 		}

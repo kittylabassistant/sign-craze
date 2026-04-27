@@ -87,7 +87,9 @@ func Download(ctx context.Context, arch types.Arch, dstDir string) (DownloadResu
 	}
 
 	if downloaded && newETag != "" {
-		_ = os.WriteFile(etagFile, []byte(newETag), 0o644)
+		if err := os.WriteFile(etagFile, []byte(newETag), 0o644); err != nil {
+			log.L().Warn("не удалось сохранить ETag", "file", etagFile, "err", err)
+		}
 	}
 
 	return DownloadResult{
@@ -160,8 +162,8 @@ func downloadFile(ctx context.Context, url, dstFile, savedETag string) (bool, st
 		return false, "", fmt.Errorf("HTTP %d для %s", resp.StatusCode, url)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(dstFile), 0o755); err != nil {
-		return false, "", fmt.Errorf("mkdir: %w", err)
+	if mkdirErr := os.MkdirAll(filepath.Dir(dstFile), 0o755); mkdirErr != nil {
+		return false, "", fmt.Errorf("mkdir: %w", mkdirErr)
 	}
 
 	tmp, err := os.CreateTemp(filepath.Dir(dstFile), ".dl-*")

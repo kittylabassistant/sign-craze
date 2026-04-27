@@ -92,9 +92,9 @@ func TestPortRange_Validate(t *testing.T) {
 	}{
 		{PortRange{80, 80}, false},
 		{PortRange{80, 443}, false},
-		{PortRange{443, 80}, true},  // from > to
-		{PortRange{0, 80}, true},    // from == 0
-		{PortRange{80, 0}, true},    // to == 0
+		{PortRange{443, 80}, true}, // from > to
+		{PortRange{0, 80}, true},   // from == 0
+		{PortRange{80, 0}, true},   // to == 0
 	}
 	for _, tt := range tests {
 		err := tt.r.Validate()

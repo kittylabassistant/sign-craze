@@ -21,12 +21,12 @@ var tproxyTmpl string
 // ConfigParams задаёт параметры для генерации конфига sing-box.
 type ConfigParams struct {
 	Mode               types.Mode
-	InboundPort        uint16          // по умолчанию 7895
-	Mark               uint32          // fwmark; по умолчанию 0x53 = 83
-	LogLevel           string          // "info", "debug", "warn", "error"
+	InboundPort        uint16 // по умолчанию 7895
+	Mark               uint32 // fwmark; по умолчанию 0x53 = 83
+	LogLevel           string // "info", "debug", "warn", "error"
 	Outbounds          []types.Outbound
 	Routing            types.RoutingRules
-	DefaultOutboundTag string          // тег первого outbound, используемый как final
+	DefaultOutboundTag string // тег первого outbound, используемый как final
 	// RuleSets — список дескрипторов rule_set для секции route.rule_set.
 	// Генерируется автоматически из Routing.GeoSiteProxy + GeoSiteDirect.
 	RuleSets []ruleSetRef

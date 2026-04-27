@@ -110,9 +110,15 @@ func (rw *rotatingWriter) open() error {
 
 func (rw *rotatingWriter) rotate() {
 	archived := rw.path + "." + time.Now().Format("20060102T150405")
-	_ = rw.f.Close()
-	_ = os.Rename(rw.path, archived)
-	_ = rw.open()
+	if err := rw.f.Close(); err != nil {
+		return
+	}
+	if err := os.Rename(rw.path, archived); err != nil {
+		return
+	}
+	if err := rw.open(); err != nil {
+		rw.f = nil
+	}
 }
 
 func dirOf(path string) string {

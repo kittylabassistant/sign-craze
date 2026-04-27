@@ -74,14 +74,20 @@ func (l *processLifecycle) Start(ctx context.Context) error {
 
 	if err := writePID(l.cfg.PIDFile, pid); err != nil {
 		// PID-файл не записан — убиваем процесс, чтобы не потерять его
-		_ = cmd.Process.Kill()
+		if killErr := cmd.Process.Kill(); killErr != nil {
+			log.L().Warn("не удалось завершить процесс при ошибке PID-файла", "service", l.cfg.Name, "err", killErr)
+		}
 		return fmt.Errorf("service %s: запись PID-файла: %w", l.cfg.Name, err)
 	}
 
 	// ждём, пока процесс появится в /proc
 	if err := waitAlive(ctx, pid, startTimeout); err != nil {
-		_ = cmd.Process.Kill()
-		_ = os.Remove(l.cfg.PIDFile)
+		if killErr := cmd.Process.Kill(); killErr != nil {
+			log.L().Warn("не удалось завершить процесс при таймауте старта", "service", l.cfg.Name, "err", killErr)
+		}
+		if rmErr := os.Remove(l.cfg.PIDFile); rmErr != nil {
+			log.L().Warn("не удалось удалить PID-файл", "service", l.cfg.Name, "err", rmErr)
+		}
 		return fmt.Errorf("service %s: процесс не запустился: %w", l.cfg.Name, err)
 	}
 
@@ -89,7 +95,11 @@ func (l *processLifecycle) Start(ctx context.Context) error {
 	// В production sign-craze завершится раньше sing-box и init усыновит его,
 	// но в тестах родитель живёт дольше — без Wait() убитый дочерний процесс
 	// остаётся зомби в /proc и ломает проверку processAlive.
-	go func() { _ = cmd.Wait() }()
+	go func() {
+		if err := cmd.Wait(); err != nil {
+			// статус выхода дочернего процесса не важен при пожинании зомби
+		}
+	}()
 	return nil
 }
 
@@ -124,10 +134,14 @@ func (l *processLifecycle) Stop(ctx context.Context) error {
 
 	if processAlive(st.PID) {
 		log.L().Warn("процесс не завершился по SIGTERM, отправляем SIGKILL", "service", l.cfg.Name)
-		_ = proc.Signal(syscall.SIGKILL)
+		if err := proc.Signal(syscall.SIGKILL); err != nil {
+			log.L().Warn("не удалось отправить SIGKILL", "service", l.cfg.Name, "err", err)
+		}
 	}
 
-	_ = os.Remove(l.cfg.PIDFile)
+	if err := os.Remove(l.cfg.PIDFile); err != nil {
+		log.L().Warn("не удалось удалить PID-файл при остановке", "service", l.cfg.Name, "err", err)
+	}
 	log.L().Info("сервис остановлен", "service", l.cfg.Name)
 	return nil
 }

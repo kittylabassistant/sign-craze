@@ -1,0 +1,105 @@
+{
+  "dns": {
+    "final": "remote",
+    "rules": [
+      {
+        "outbound": "any",
+        "server": "local"
+      },
+      {
+        "rule_set": [
+          "geosite-ru"
+        ],
+        "server": "local"
+      }
+    ],
+    "servers": [
+      {
+        "address": "tls://8.8.8.8",
+        "detour": "proxy-out",
+        "tag": "remote"
+      },
+      {
+        "address": "223.5.5.5",
+        "detour": "direct",
+        "tag": "local"
+      }
+    ]
+  },
+  "inbounds": [
+    {
+      "domain_strategy": "prefer_ipv4",
+      "listen": "::",
+      "listen_port": 7895,
+      "mark": 83,
+      "sniff": true,
+      "sniff_override_destination": false,
+      "tag": "tproxy-in",
+      "tcp_fast_open": false,
+      "type": "tproxy"
+    }
+  ],
+  "log": {
+    "level": "info",
+    "output": "/opt/var/log/sign-craze/sing-box.log",
+    "timestamp": true
+  },
+  "outbounds": [
+    {
+      "server": "1.2.3.4",
+      "server_port": 1080,
+      "tag": "proxy-out",
+      "type": "socks"
+    },
+    {
+      "tag": "direct",
+      "type": "direct"
+    },
+    {
+      "tag": "block",
+      "type": "block"
+    },
+    {
+      "tag": "dns-out",
+      "type": "dns"
+    }
+  ],
+  "route": {
+    "auto_detect_interface": true,
+    "final": "proxy-out",
+    "rule_set": [
+      {
+        "download_detour": "direct",
+        "format": "binary",
+        "tag": "geosite-blocked",
+        "type": "remote",
+        "url": "https://github.com/kittylabassistant/sign-craze-dats/releases/latest/download/geosite-blocked.srs"
+      },
+      {
+        "download_detour": "direct",
+        "format": "binary",
+        "tag": "geosite-ru",
+        "type": "remote",
+        "url": "https://github.com/kittylabassistant/sign-craze-dats/releases/latest/download/geosite-ru.srs"
+      }
+    ],
+    "rules": [
+      {
+        "outbound": "dns-out",
+        "protocol": "dns"
+      },
+      {
+        "outbound": "direct",
+        "rule_set": [
+          "geosite-ru"
+        ]
+      },
+      {
+        "outbound": "proxy-out",
+        "rule_set": [
+          "geosite-blocked"
+        ]
+      }
+    ]
+  }
+}
