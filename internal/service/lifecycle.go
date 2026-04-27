@@ -96,9 +96,7 @@ func (l *processLifecycle) Start(ctx context.Context) error {
 	// но в тестах родитель живёт дольше — без Wait() убитый дочерний процесс
 	// остаётся зомби в /proc и ломает проверку processAlive.
 	go func() {
-		if err := cmd.Wait(); err != nil {
-			// статус выхода дочернего процесса не важен при пожинании зомби
-		}
+		_ = cmd.Wait() //nolint:errcheck // статус выхода не важен при пожинании зомби
 	}()
 	return nil
 }
