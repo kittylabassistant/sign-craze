@@ -1,0 +1,4 @@
+[submodule "internal/web/assets/zashboard"]
+	path = internal/web/assets/zashboard
+	url = https://github.com/MetaCubeX/metacubexd
+	branch = gh-pages
