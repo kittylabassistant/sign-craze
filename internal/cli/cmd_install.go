@@ -1,0 +1,304 @@
+package cli
+
+import (
+	"bufio"
+	"context"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"syscall"
+
+	"github.com/kittylabassistant/sign-craze/internal/log"
+	"github.com/kittylabassistant/sign-craze/internal/proxyparse"
+	"github.com/kittylabassistant/sign-craze/internal/service"
+	"github.com/kittylabassistant/sign-craze/internal/singbox"
+	"github.com/kittylabassistant/sign-craze/internal/state"
+	"github.com/kittylabassistant/sign-craze/pkg/types"
+)
+
+const minFreeBytes = 30 * 1024 * 1024
+
+func init() {
+	Register(Cmd{Short: "-i", Long: "--install", Help: "установка с интерактивной настройкой outbound", Handler: handleInstall})
+	Register(Cmd{Long: "--install-auto", Help: "установка без интерактива (stub direct outbound)", Handler: handleInstallAuto})
+	Register(Cmd{Long: "--install-offline", Help: "установка из локального tarball <путь>", Handler: handleInstallOffline})
+}
+
+type installMode int
+
+const (
+	installInteractive installMode = iota
+	installAuto
+	installOffline
+)
+
+func handleInstall(ctx context.Context, _ []string) error {
+	return withLock(ctx, func() error { return doInstall(ctx, installInteractive, "") })
+}
+
+func handleInstallAuto(ctx context.Context, _ []string) error {
+	return withLock(ctx, func() error { return doInstall(ctx, installAuto, "") })
+}
+
+func handleInstallOffline(ctx context.Context, args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("--install-offline: требуется путь к tarball")
+	}
+	return withLock(ctx, func() error { return doInstall(ctx, installOffline, args[0]) })
+}
+
+func doInstall(ctx context.Context, mode installMode, offlineTar string) error {
+	// 1. Pre-check: /opt существует и есть место.
+	if err := checkOptMounted(); err != nil {
+		return fmt.Errorf("--install: %w", err)
+	}
+
+	// 2. Создать директории.
+	for _, d := range []string{
+		"/opt/sbin",
+		singbox.DefaultConfigDir,
+		"/opt/var/lib/sign-craze",
+		"/opt/var/lib/sign-craze/geo",
+		"/opt/var/lib/sign-craze/backups",
+		"/opt/var/log/sign-craze",
+		"/opt/var/run",
+		"/opt/var/lock",
+		"/opt/etc/init.d",
+	} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			return fmt.Errorf("--install: mkdir %s: %w", d, err)
+		}
+	}
+
+	// 3. Получить tarball sing-box.
+	var tarPath string
+	switch mode {
+	case installOffline:
+		if _, err := os.Stat(offlineTar); err != nil {
+			return fmt.Errorf("--install-offline: tarball %s: %w", offlineTar, err)
+		}
+		tarPath = offlineTar
+	default:
+		arch, err := types.DetectHostArch()
+		if err != nil {
+			return fmt.Errorf("--install: %w", err)
+		}
+		fmt.Printf("Загрузка sing-box (arch=%s)...\n", arch)
+		res, err := singbox.Download(ctx, arch, "/tmp")
+		if err != nil {
+			return fmt.Errorf("--install: %w", err)
+		}
+		fmt.Printf("Скачан %s (%s)\n", res.Path, res.Version)
+		tarPath = res.Path
+	}
+
+	// 4. Собрать outbounds.
+	var outbounds []types.Outbound
+	if mode == installInteractive {
+		ob, err := runProxyWizard(os.Stdin, os.Stdout)
+		if err != nil {
+			return fmt.Errorf("--install: wizard: %w", err)
+		}
+		outbounds = ob
+	}
+	if len(outbounds) == 0 {
+		// Стаб direct, чтобы sing-box check прошёл.
+		outbounds = []types.Outbound{{Tag: "direct", Type: "direct"}}
+	}
+
+	// 5. Сохранить state перед установкой бинаря.
+	st := state.Default()
+	st.Outbounds = outbounds
+	if err := state.Save(state.DefaultPath, st); err != nil {
+		return fmt.Errorf("--install: state: %w", err)
+	}
+
+	// 6. Установить бинарь sing-box (с rollback при ошибке config check).
+	if err := singbox.Install(ctx, newRunner(), tarPath, singbox.DefaultBinPath, ""); err != nil {
+		return fmt.Errorf("--install: singbox: %w", err)
+	}
+
+	// 7. Сгенерировать config.json (валидируется через sing-box check внутри regenerateConfig).
+	if err := regenerateConfig(ctx, st); err != nil {
+		return fmt.Errorf("--install: config: %w", err)
+	}
+
+	// 8. Создать init.d shim.
+	if err := service.WriteShim(service.DefaultShimPath, service.ShimParams{BinPath: service.DefaultSignCrazeBin}); err != nil {
+		return fmt.Errorf("--install: init.d shim: %w", err)
+	}
+
+	fmt.Println()
+	fmt.Println("Установка завершена.")
+	if outbounds[0].Type == "direct" {
+		fmt.Println("ВНИМАНИЕ: outbound настроен как 'direct' — проксирования нет.")
+		fmt.Println("Запустите: sign-craze --ui on  и настройте через admin UI на :9091.")
+	}
+	fmt.Println("Запуск сервиса: sign-craze --start")
+	return nil
+}
+
+func checkOptMounted() error {
+	info, err := os.Stat("/opt")
+	if err != nil {
+		return fmt.Errorf("/opt не доступен: %w", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("/opt не директория")
+	}
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs("/opt", &stat); err != nil {
+		return fmt.Errorf("/opt statfs: %w", err)
+	}
+	free := uint64(stat.Bavail) * uint64(stat.Bsize)
+	if free < minFreeBytes {
+		return fmt.Errorf("недостаточно места в /opt: %d МБ < 30 МБ", free/1024/1024)
+	}
+	log.L().Debug("/opt: свободно", "bytes", free)
+	return nil
+}
+
+// runProxyWizard опрашивает пользователя и возвращает список outbound'ов.
+func runProxyWizard(in io.Reader, out io.Writer) ([]types.Outbound, error) {
+	r := bufio.NewReader(in)
+
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Настройка outbound прокси:")
+	fmt.Fprintln(out, "  1) Полный URL (socks5://, http://, vless://, vmess://, ss://)")
+	fmt.Fprintln(out, "  2) Ручной ввод (тип + параметры)")
+	fmt.Fprintln(out, "  3) Пропустить (создаст stub direct — sing-box без проксирования)")
+	fmt.Fprint(out, "Выбор [1/2/3]: ")
+	choice := readLine(r)
+
+	switch choice {
+	case "1":
+		return wizardURL(r, out)
+	case "2":
+		return wizardManual(r, out)
+	case "3", "":
+		return nil, nil
+	default:
+		fmt.Fprintln(out, "Неизвестный выбор, пропускаем.")
+		return nil, nil
+	}
+}
+
+func wizardURL(r *bufio.Reader, out io.Writer) ([]types.Outbound, error) {
+	fmt.Fprint(out, "URL: ")
+	url := readLine(r)
+	if url == "" {
+		return nil, nil
+	}
+	o, err := proxyparse.Parse(url)
+	if err != nil {
+		return nil, fmt.Errorf("парсинг URL: %w", err)
+	}
+	if err := o.Validate(); err != nil {
+		return nil, fmt.Errorf("валидация: %w", err)
+	}
+	fmt.Fprintf(out, "Outbound: type=%s server=%s port=%d\n", o.Type, o.Server, o.Port)
+	return []types.Outbound{o}, nil
+}
+
+func wizardManual(r *bufio.Reader, out io.Writer) ([]types.Outbound, error) {
+	fmt.Fprintln(out, "Тип:")
+	fmt.Fprintln(out, "  1) socks (socks5)")
+	fmt.Fprintln(out, "  2) http")
+	fmt.Fprintln(out, "  3) vless")
+	fmt.Fprintln(out, "  4) vmess")
+	fmt.Fprintln(out, "  5) shadowsocks")
+	fmt.Fprint(out, "Выбор [1-5]: ")
+	choice := readLine(r)
+
+	var typ string
+	switch choice {
+	case "1":
+		typ = "socks"
+	case "2":
+		typ = "http"
+	case "3":
+		typ = "vless"
+	case "4":
+		typ = "vmess"
+	case "5":
+		typ = "shadowsocks"
+	default:
+		return nil, fmt.Errorf("неизвестный тип")
+	}
+
+	fmt.Fprint(out, "Сервер (host): ")
+	server := readLine(r)
+	if server == "" {
+		return nil, fmt.Errorf("сервер не указан")
+	}
+
+	fmt.Fprint(out, "Порт: ")
+	portStr := readLine(r)
+	port, err := strconv.Atoi(portStr)
+	if err != nil || port <= 0 || port > 65535 {
+		return nil, fmt.Errorf("некорректный порт %q", portStr)
+	}
+
+	o := types.Outbound{Tag: typ + "-proxy", Type: typ, Server: server, Port: types.Port(port)}
+	settings := map[string]any{}
+
+	switch typ {
+	case "socks", "http":
+		fmt.Fprint(out, "Логин (Enter — пропустить): ")
+		user := readLine(r)
+		if user != "" {
+			settings["username"] = user
+			fmt.Fprint(out, "Пароль: ")
+			settings["password"] = readLine(r)
+		}
+	case "vless":
+		fmt.Fprint(out, "UUID: ")
+		settings["uuid"] = readLine(r)
+		fmt.Fprint(out, "Flow (Enter — без flow): ")
+		if f := readLine(r); f != "" {
+			settings["flow"] = f
+		}
+	case "vmess":
+		fmt.Fprint(out, "UUID: ")
+		settings["uuid"] = readLine(r)
+		fmt.Fprint(out, "alterId [0]: ")
+		aid := readLine(r)
+		if aid == "" {
+			aid = "0"
+		}
+		settings["alterId"] = aid
+	case "shadowsocks":
+		fmt.Fprint(out, "Метод (например aes-256-gcm): ")
+		settings["method"] = readLine(r)
+		fmt.Fprint(out, "Пароль: ")
+		settings["password"] = readLine(r)
+	}
+
+	if len(settings) > 0 {
+		o.Settings = settings
+	}
+	if err := o.Validate(); err != nil {
+		return nil, err
+	}
+	return []types.Outbound{o}, nil
+}
+
+func readLine(r *bufio.Reader) string {
+	s, err := r.ReadString('\n')
+	if err != nil && s == "" {
+		return ""
+	}
+	return strings.TrimSpace(s)
+}
+
+// configFilePath возвращает /opt/etc/sign-craze/config.json.
+// Дублирует cli.configPath() для совместимости с тестами; будет удалён, когда
+// тесты переедут на пакетный configPath.
+func configFilePath() string {
+	return filepath.Join(singbox.DefaultConfigDir, "config.json")
+}
+
+var _ = configFilePath // silence unused if no test references

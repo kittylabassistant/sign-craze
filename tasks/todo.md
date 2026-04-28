@@ -61,7 +61,7 @@
 - [x] `sign-craze-dat/.github/workflows/update.yml` — MetaCubeX → .srs → manifest.json → release
 - [x] fix `ruleSetBaseURL` в config.go + testdata: `sign-craze-dats` → `sign-craze-dat`
 
-## Phase 6 — Встроенный Web UI 🔄
+## Phase 6 — Встроенный Web UI ✅
 
 - [x] `internal/web/types.go` — интерфейсы StatusReader, ConfigRW, PortsManager, ExcludesManager; StatusInfo
 - [x] `internal/web/auth.go` — LoadOrCreateCreds, CheckPassword (bcrypt cost=12)
@@ -79,6 +79,50 @@
 
 - [x] `.github/workflows/release.yml` — по тегу v* → сборка всех + UPX + upload
 - [x] `scripts/install.sh` — определение архитектуры, проверка места, загрузка, установка
+
+## Phase 8 — CLI-команды ✅ (план: ~/.claude/plans/7-hashed-dewdrop.md)
+
+### Инфраструктура (Phase 0+1 плана)
+
+- [x] `internal/ghrelease/` — общий загрузчик GitHub Releases с ETag и SHA256
+- [x] `internal/state/` — State + Load/Save + конкретные web.* managers
+- [x] `internal/cli/{deps,lock}.go` — общие хелперы и withLock
+- [x] `internal/locks/file.go` — DefaultPath
+- [x] `internal/singbox/lifecycle.go` — DefaultPIDFile + конструкторы
+- [x] `internal/firewall.Config.Ports/Excludes` + chain signcraze_ports + ipset signcraze_excludes
+- [x] `pkg/types`: DetectHostArch + JSON-теги Outbound
+
+### Новые пакеты (Phase 2 плана)
+
+- [x] `internal/diag/` — самодиагностика (бинари, конфиг, iptables, geo, lock)
+- [x] `internal/backup/` — tar.gz Create/Restore с защитой от path traversal
+- [x] `internal/selfupdate/` — обновление через ghrelease + atomicfs
+- [x] `internal/proxyparse/` — socks5/http/vless/vmess/ss URL → Outbound
+
+### CLI-команды (Phase 4 плана)
+
+- [x] `cmd_install.go` — `--install` (interactive wizard), `--install-auto`, `--install-offline`
+- [x] `cmd_lifecycle.go` — `--start`, `--stop`, `--restart`, `--service-start` (Hidden)
+- [x] `cmd_status.go` — `--status`, `--version`
+- [x] `cmd_diag.go` — `--diag`
+- [x] `cmd_update.go` — `--update`, `--update-geo`, `--update-core`
+- [x] `cmd_uninstall.go` — `--uninstall`, `--purge`
+- [x] `cmd_dpi.go` — `--dpi on|off`, `--dpi-strategy`, `--dpi-update`
+- [x] `cmd_mode.go` — `--mode proxy|dpi|hybrid`
+- [x] `cmd_ports.go` — `--port-add`, `--port-del`, `--port-list`
+- [x] `cmd_excludes.go` — `--exclude-add`, `--exclude-del`, `--exclude-list`
+- [x] `cmd_backup.go` — `--backup`, `--restore`, `--config-backup`, `--config-restore`
+- [x] `cmd_ui.go` — рефактор: подключены state-managers
+- [x] `dispatch.go` — `Cmd.Hidden` + `--help`/`-h`
+- [x] `smoke_test.go` — проверка регистрации всех команд + Hidden
+
+### Тесты на роутере (Phase 5 плана) — TODO
+
+- [ ] SCP бинаря на Keenetic, проверка `--install` → `--start` → `--status`
+- [ ] Проверка трафика через прокси с клиентского устройства
+- [ ] `--diag` все PASS
+- [ ] `--ui on` → доступ к Zashboard на 9090
+- [ ] Перезагрузка роутера → автостарт через init.d shim
 
 ## Заметки
 

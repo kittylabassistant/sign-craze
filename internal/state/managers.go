@@ -17,7 +17,8 @@ import (
 )
 
 // SingboxVersion — функция получения версии sing-box; var для подмены в тестах.
-var SingboxVersion = func(ctx context.Context, runner exectx.Runner, binPath string) (string, error) {
+// По умолчанию вызывает singbox.BinaryVersion (внедряется в init()).
+var SingboxVersion = func(_ context.Context, _ exectx.Runner, _ string) (string, error) {
 	return "", nil
 }
 

@@ -15,6 +15,7 @@ type Cmd struct {
 	Long    string // длинный флаг, например "--install"
 	Help    string
 	Handler Handler
+	Hidden  bool // если true — не показывать в --help (для --service-start)
 }
 
 var registry []Cmd
@@ -32,6 +33,9 @@ func Dispatch(ctx context.Context, args []string) error {
 	}
 
 	arg := args[0]
+	if arg == "--help" || arg == "-h" {
+		return showHelp()
+	}
 
 	if err := validateFlag(arg); err != nil {
 		return err
@@ -69,6 +73,9 @@ func showHelp() error {
 	fmt.Println()
 	fmt.Println("Команды:")
 	for _, c := range registry {
+		if c.Hidden {
+			continue
+		}
 		short := "  "
 		if c.Short != "" {
 			short = c.Short
