@@ -89,6 +89,25 @@ func findComment(args []string) string {
 	return ""
 }
 
+// TestTProxyRules_BypassLoopback проверяет что TPROXY-правила не применяются
+// к loopback и link-local трафику — иначе TCP/UDP-стек роутера ломается
+// (safety-fixes #6).
+func TestTProxyRules_BypassLoopback(t *testing.T) {
+	rules := TProxyRules(7895, 0x53)
+	for _, r := range rules {
+		comment := findComment(r.Args)
+		if comment != "signcraze:tproxy-tcp" && comment != "signcraze:tproxy-udp" {
+			continue
+		}
+		args := strings.Join(r.Args, " ")
+		for _, want := range []string{"! -s 127.0.0.0/8", "! -s 169.254.0.0/16", "! -i lo"} {
+			if !strings.Contains(args, want) {
+				t.Errorf("правило %s не содержит %q:\n%s", comment, want, args)
+			}
+		}
+	}
+}
+
 func TestTProxyRules_ВсеПравилаИмеютКомментарийSigncraze(t *testing.T) {
 	rules := TProxyRules(7895, 0x53)
 	for _, r := range rules {
