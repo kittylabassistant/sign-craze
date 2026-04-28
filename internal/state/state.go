@@ -13,25 +13,49 @@ import (
 // DefaultPath — стандартное расположение state.json.
 const DefaultPath = "/opt/etc/sign-craze/state.json"
 
+// DefaultExcludes — безопасные CIDR-исключения, добавляемые в Default().
+// Покрывают: loopback, link-local, multicast, зарезервированные, RFC1918.
+// Защищают от потери LAN-доступа и SSH-lockout при первом запуске,
+// если в signcraze_ipv4 окажется широкий префикс (см. safety-fixes.md #2).
+var DefaultExcludes = []string{
+	"127.0.0.0/8",    // loopback
+	"169.254.0.0/16", // link-local
+	"224.0.0.0/4",    // multicast
+	"240.0.0.0/4",    // reserved
+	"10.0.0.0/8",     // RFC1918
+	"172.16.0.0/12",  // RFC1918
+	"192.168.0.0/16", // RFC1918
+}
+
+// DefaultAdminPort — порт SSH/админки, исключаемый из проксирования по умолчанию.
+const DefaultAdminPort uint16 = 22
+
 // State — персистентное состояние sign-craze.
 type State struct {
 	Mode        types.Mode       `json:"mode"`
 	Outbounds   []types.Outbound `json:"outbounds"`
 	Ports       []uint16         `json:"ports"`
 	Excludes    []string         `json:"excludes"`
+	AdminPort   uint16           `json:"admin_port,omitempty"`
+	AdminIPs    []string         `json:"admin_ips,omitempty"`
 	DPIEnabled  bool             `json:"dpi_enabled"`
 	DPIStrategy string           `json:"dpi_strategy,omitempty"`
 }
 
-// Default возвращает state с настройками по умолчанию: режим proxy, stub direct outbound.
+// Default возвращает state с настройками по умолчанию: режим proxy, stub direct outbound,
+// безопасные локальные исключения и admin port 22.
 func Default() *State {
+	excludes := make([]string, len(DefaultExcludes))
+	copy(excludes, DefaultExcludes)
 	return &State{
 		Mode: types.ModeProxy,
 		Outbounds: []types.Outbound{
 			{Tag: "direct", Type: "direct"},
 		},
-		Ports:    []uint16{},
-		Excludes: []string{},
+		Ports:     []uint16{},
+		Excludes:  excludes,
+		AdminPort: DefaultAdminPort,
+		AdminIPs:  []string{},
 	}
 }
 
@@ -57,6 +81,9 @@ func Load(path string) (*State, error) {
 	}
 	if s.Excludes == nil {
 		s.Excludes = []string{}
+	}
+	if s.AdminIPs == nil {
+		s.AdminIPs = []string{}
 	}
 	return &s, nil
 }

@@ -50,6 +50,10 @@ func TestPortsManager_InvalidPort(t *testing.T) {
 
 func TestExcludesManager_AddListDelete(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
+	// Стартуем с пустым Excludes, чтобы изолировать тест от DefaultExcludes.
+	if err := Save(path, &State{Excludes: []string{}}); err != nil {
+		t.Fatalf("Save initial: %v", err)
+	}
 	em := NewExcludesManager(path)
 	ctx := context.Background()
 

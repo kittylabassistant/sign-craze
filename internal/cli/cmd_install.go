@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -97,21 +98,33 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string) error {
 
 	// 4. Собрать outbounds.
 	var outbounds []types.Outbound
+	var adminPort uint16 = state.DefaultAdminPort
+	var adminIPs []string
 	if mode == installInteractive {
 		ob, err := runProxyWizard(os.Stdin, os.Stdout)
 		if err != nil {
 			return fmt.Errorf("--install: wizard: %w", err)
 		}
 		outbounds = ob
+
+		port, ips, err := runAdminBypassWizard(bufio.NewReader(os.Stdin), os.Stdout)
+		if err != nil {
+			return fmt.Errorf("--install: admin bypass: %w", err)
+		}
+		adminPort = port
+		adminIPs = ips
 	}
 	if len(outbounds) == 0 {
 		// Стаб direct, чтобы sing-box check прошёл.
 		outbounds = []types.Outbound{{Tag: "direct", Type: "direct"}}
 	}
 
-	// 5. Сохранить state перед установкой бинаря.
+	// 5. Сохранить state перед установкой бинаря. Default() содержит безопасные
+	// CIDR-исключения (RFC1918 + loopback + multicast) — защита от SSH-lockout.
 	st := state.Default()
 	st.Outbounds = outbounds
+	st.AdminPort = adminPort
+	st.AdminIPs = adminIPs
 	if err := state.Save(state.DefaultPath, st); err != nil {
 		return fmt.Errorf("--install: state: %w", err)
 	}
@@ -284,6 +297,58 @@ func wizardManual(r *bufio.Reader, out io.Writer) ([]types.Outbound, error) {
 		return nil, err
 	}
 	return []types.Outbound{o}, nil
+}
+
+// runAdminBypassWizard опрашивает admin port (default 22) и список admin CIDR/IP
+// для исключения из проксирования. Защищает от SSH-lockout (safety-fixes #2).
+// Одиночные IP нормализуются в /32 (IPv4) или /128 (IPv6).
+func runAdminBypassWizard(r *bufio.Reader, out io.Writer) (uint16, []string, error) {
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Настройка admin bypass (защита SSH/web admin от проксирования):")
+	fmt.Fprint(out, "Admin port [22]: ")
+	portStr := readLine(r)
+	port := uint16(state.DefaultAdminPort)
+	if portStr != "" {
+		v, err := strconv.Atoi(portStr)
+		if err != nil || v < 1 || v > 65535 {
+			return 0, nil, fmt.Errorf("admin port: некорректный %q", portStr)
+		}
+		port = uint16(v)
+	}
+
+	fmt.Fprint(out, "Admin IP/CIDR через запятую (Enter — пропустить): ")
+	cidrStr := readLine(r)
+	var ips []string
+	if cidrStr != "" {
+		for _, raw := range strings.Split(cidrStr, ",") {
+			tok := strings.TrimSpace(raw)
+			if tok == "" {
+				continue
+			}
+			normalized, err := normalizeCIDR(tok)
+			if err != nil {
+				return 0, nil, fmt.Errorf("admin IP %q: %w", tok, err)
+			}
+			ips = append(ips, normalized)
+		}
+	}
+	return port, ips, nil
+}
+
+// normalizeCIDR принимает CIDR или одиночный IP и возвращает CIDR-форму.
+func normalizeCIDR(s string) (string, error) {
+	if _, err := netip.ParsePrefix(s); err == nil {
+		return s, nil
+	}
+	ip, err := netip.ParseAddr(s)
+	if err != nil {
+		return "", fmt.Errorf("не CIDR и не IP: %w", err)
+	}
+	bits := 32
+	if ip.Is6() {
+		bits = 128
+	}
+	return fmt.Sprintf("%s/%d", ip.String(), bits), nil
 }
 
 func readLine(r *bufio.Reader) string {

@@ -73,6 +73,40 @@ func TestSave_NilStateReturnsError(t *testing.T) {
 	}
 }
 
+// TestDefault_LocalNetsExcluded проверяет что Default() включает безопасные
+// исключения для loopback, link-local, multicast, reserved и RFC1918, а также
+// дефолтный admin port 22 — это защищает от SSH-lockout при первом запуске
+// (см. tasks/safety-fixes.md #2).
+func TestDefault_LocalNetsExcluded(t *testing.T) {
+	s := Default()
+
+	required := []string{
+		"127.0.0.0/8",
+		"169.254.0.0/16",
+		"224.0.0.0/4",
+		"240.0.0.0/4",
+		"10.0.0.0/8",
+		"172.16.0.0/12",
+		"192.168.0.0/16",
+	}
+	for _, want := range required {
+		found := false
+		for _, got := range s.Excludes {
+			if got == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Default().Excludes не содержит %q (полученные: %v)", want, s.Excludes)
+		}
+	}
+
+	if s.AdminPort != 22 {
+		t.Errorf("Default().AdminPort = %d, ожидалось 22", s.AdminPort)
+	}
+}
+
 func TestLoad_NormalisesNilSlices(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
 	if err := os.WriteFile(path, []byte(`{"mode":"proxy"}`), 0o600); err != nil {
