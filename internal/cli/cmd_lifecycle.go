@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kittylabassistant/sign-craze/internal/firewall"
 	"github.com/kittylabassistant/sign-craze/internal/log"
 	"github.com/kittylabassistant/sign-craze/internal/singbox"
 	"github.com/kittylabassistant/sign-craze/internal/state"
@@ -45,6 +46,13 @@ func doStart(ctx context.Context) error {
 	}
 	if applyErr := applier.Apply(ctx, st.Mode); applyErr != nil {
 		return fmt.Errorf("--start: firewall: %w", applyErr)
+	}
+
+	// Восстановить дамп ipset (после ребута). Не фатально — может быть
+	// первый запуск до --update-geo, тогда ipset остаются пустыми
+	// (safety-fixes #17).
+	if rstErr := firewall.RestoreIPSet(ctx, newRunner(), firewall.DefaultDumpFile); rstErr != nil {
+		log.L().Warn("--start: восстановление ipset не удалось", "err", rstErr)
 	}
 
 	// Старт sing-box.
