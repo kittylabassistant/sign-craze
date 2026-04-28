@@ -19,9 +19,9 @@ func writeBadArchive(path, name string) error {
 	tw := tar.NewWriter(gz)
 	defer tw.Close()
 	hdr := &tar.Header{Name: name, Mode: 0o644, Size: 5, Typeflag: tar.TypeReg}
-	if err := tw.WriteHeader(hdr); err != nil {
-		return err
+	if hdrErr := tw.WriteHeader(hdr); hdrErr != nil {
+		return hdrErr
 	}
-	_, err = tw.Write([]byte("hello"))
-	return err
+	_, wrErr := tw.Write([]byte("hello"))
+	return wrErr
 }

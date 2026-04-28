@@ -13,8 +13,6 @@ import (
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
-const singboxReleasesPath = "/repos/SagerNet/sing-box/releases/latest"
-
 func fakeRelease(assetName, downloadURL string) []byte {
 	rel := types.Release{
 		TagName: "v1.10.0",

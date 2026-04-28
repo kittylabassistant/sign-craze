@@ -146,18 +146,21 @@ func parseVMess(s string) (types.Outbound, error) {
 		return types.Outbound{}, fmt.Errorf("proxyparse vmess: base64: %w", err)
 	}
 	var raw map[string]any
-	if err := json.Unmarshal(decoded, &raw); err != nil {
-		return types.Outbound{}, fmt.Errorf("proxyparse vmess: json: %w", err)
+	if jsErr := json.Unmarshal(decoded, &raw); jsErr != nil {
+		return types.Outbound{}, fmt.Errorf("proxyparse vmess: json: %w", jsErr)
 	}
 
-	host, _ := raw["add"].(string)
-	if host == "" {
-		host, _ = raw["address"].(string)
+	host, ok := raw["add"].(string)
+	if !ok || host == "" {
+		host, ok = raw["address"].(string)
+		if !ok {
+			host = ""
+		}
 	}
 	portStr := fmt.Sprintf("%v", raw["port"])
-	port, err := parsePort(portStr)
-	if err != nil {
-		return types.Outbound{}, fmt.Errorf("proxyparse vmess: port: %w", err)
+	port, parseErr := parsePort(portStr)
+	if parseErr != nil {
+		return types.Outbound{}, fmt.Errorf("proxyparse vmess: port: %w", parseErr)
 	}
 
 	o := types.Outbound{

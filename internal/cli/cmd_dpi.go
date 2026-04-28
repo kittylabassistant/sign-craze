@@ -37,18 +37,18 @@ func dpiEnable(ctx context.Context) error {
 	}
 
 	// Установка бинаря, если отсутствует.
-	if _, err := os.Stat(dpi.DefaultBinPath); err != nil {
+	if _, statErr := os.Stat(dpi.DefaultBinPath); statErr != nil {
 		arch, archErr := types.DetectHostArch()
 		if archErr != nil {
 			return fmt.Errorf("--dpi on: %w", archErr)
 		}
 		fmt.Printf("Загрузка nfqws2 (arch=%s)...\n", arch)
-		res, err := dpi.Download(ctx, arch, "/tmp")
-		if err != nil {
-			return fmt.Errorf("--dpi on: download: %w", err)
+		res, dlErr := dpi.Download(ctx, arch, "/tmp")
+		if dlErr != nil {
+			return fmt.Errorf("--dpi on: download: %w", dlErr)
 		}
-		if err := dpi.Install(res.Path, dpi.DefaultBinPath); err != nil {
-			return fmt.Errorf("--dpi on: install: %w", err)
+		if instErr := dpi.Install(res.Path, dpi.DefaultBinPath); instErr != nil {
+			return fmt.Errorf("--dpi on: install: %w", instErr)
 		}
 	}
 

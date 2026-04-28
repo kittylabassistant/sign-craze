@@ -31,10 +31,10 @@ func doStart(ctx context.Context) error {
 	}
 
 	// Pre-check установки.
-	if _, err := os.Stat(singbox.DefaultBinPath); err != nil {
+	if _, statErr := os.Stat(singbox.DefaultBinPath); statErr != nil {
 		return fmt.Errorf("--start: sing-box не установлен (запустите --install)")
 	}
-	if _, err := os.Stat(configPath()); err != nil {
+	if _, statErr := os.Stat(configPath()); statErr != nil {
 		return fmt.Errorf("--start: конфиг %s не найден", configPath())
 	}
 
@@ -43,26 +43,31 @@ func doStart(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := applier.Apply(ctx, st.Mode); err != nil {
-		return fmt.Errorf("--start: firewall: %w", err)
+	if applyErr := applier.Apply(ctx, st.Mode); applyErr != nil {
+		return fmt.Errorf("--start: firewall: %w", applyErr)
 	}
 
 	// Старт sing-box.
 	sbLC := newSingboxLifecycle()
-	if err := sbLC.Start(ctx); err != nil {
-		_ = applier.Remove(ctx) // откат firewall при ошибке
-		return fmt.Errorf("--start: sing-box: %w", err)
+	if startErr := sbLC.Start(ctx); startErr != nil {
+		if rmErr := applier.Remove(ctx); rmErr != nil {
+			log.L().Warn("--start: откат firewall не удался", "err", rmErr)
+		}
+		return fmt.Errorf("--start: sing-box: %w", startErr)
 	}
 
 	// Опциональный старт nfqws2.
 	if st.DPIEnabled {
 		dpiLC := newDPILifecycle()
-		if err := dpiLC.Start(ctx); err != nil {
-			log.L().Warn("--start: nfqws2 не стартовал, продолжаем без DPI", "err", err)
+		if dpiErr := dpiLC.Start(ctx); dpiErr != nil {
+			log.L().Warn("--start: nfqws2 не стартовал, продолжаем без DPI", "err", dpiErr)
 		}
 	}
 
-	sbStat, _ := sbLC.Status(ctx)
+	sbStat, statErr := sbLC.Status(ctx)
+	if statErr != nil {
+		log.L().Warn("--start: чтение статуса sing-box", "err", statErr)
+	}
 	fmt.Printf("Сервис запущен (sing-box pid=%d, режим=%s)\n", sbStat.PID, st.Mode)
 	return nil
 }

@@ -46,11 +46,11 @@ func New() *Downloader {
 
 // FetchOptions описывает параметры загрузки.
 type FetchOptions struct {
-	Owner      string                  // владелец репозитория (например "SagerNet")
-	Repo       string                  // имя репозитория (например "sing-box")
-	AssetMatch func(types.Asset) bool  // выбор нужного asset из релиза
-	DstDir     string                  // директория для записи
-	VerifySHA  bool                    // если true — ищет рядом asset с суффиксом .sha256 и сверяет
+	Owner      string                 // владелец репозитория (например "SagerNet")
+	Repo       string                 // имя репозитория (например "sing-box")
+	AssetMatch func(types.Asset) bool // выбор нужного asset из релиза
+	DstDir     string                 // директория для записи
+	VerifySHA  bool                   // если true — ищет рядом asset с суффиксом .sha256 и сверяет
 }
 
 // FetchResult описывает результат загрузки.

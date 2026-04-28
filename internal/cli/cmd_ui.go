@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/singbox"
 	"github.com/kittylabassistant/sign-craze/internal/state"
 	"github.com/kittylabassistant/sign-craze/internal/web"
@@ -20,9 +19,7 @@ func init() {
 	})
 
 	// Подключаем реальный get-version sing-box для StatusReader.
-	state.SingboxVersion = func(ctx context.Context, runner exectx.Runner, binPath string) (string, error) {
-		return singbox.BinaryVersion(ctx, runner, binPath)
-	}
+	state.SingboxVersion = singbox.BinaryVersion
 }
 
 func handleUI(ctx context.Context, args []string) error {

@@ -67,7 +67,10 @@ func (r *statusReader) Status(ctx context.Context) (web.StatusInfo, error) {
 
 	sbVer := ""
 	if _, errStat := os.Stat(r.singboxBin); errStat == nil {
-		sbVer, _ = SingboxVersion(ctx, r.runner, r.singboxBin)
+		v, vErr := SingboxVersion(ctx, r.runner, r.singboxBin)
+		if vErr == nil {
+			sbVer = v
+		}
 	}
 
 	uptime := int64(0)
@@ -88,9 +91,7 @@ func (r *statusReader) Status(ctx context.Context) (web.StatusInfo, error) {
 }
 
 // nowUnix — var для подмены в тестах.
-var nowUnix = func() int64 {
-	return timeNowSec()
-}
+var nowUnix = timeNowSec
 
 // configRW реализует web.ConfigRW: чтение/запись /opt/etc/sign-craze/config.json
 // с валидацией через `sing-box check -c`.

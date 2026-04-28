@@ -34,15 +34,15 @@ type Check func(ctx context.Context) Result
 
 // Deps — зависимости для построения списка проверок.
 type Deps struct {
-	Runner          exectx.Runner
-	SingboxLC       service.Lifecycle
-	DPILC           service.Lifecycle
-	SignCrazeBin    string // /opt/sbin/sign-craze
-	SingboxBin      string // /opt/sbin/sing-box
-	ConfigPath      string // /opt/etc/sign-craze/config.json
-	GeoDir          string // /opt/var/lib/sign-craze/geo
-	LockPath        string // /opt/var/lock/sign-craze.lock
-	GeoMaxAgeDays   int    // 7 — после превышения WARN
+	Runner        exectx.Runner
+	SingboxLC     service.Lifecycle
+	DPILC         service.Lifecycle
+	SignCrazeBin  string // /opt/sbin/sign-craze
+	SingboxBin    string // /opt/sbin/sing-box
+	ConfigPath    string // /opt/etc/sign-craze/config.json
+	GeoDir        string // /opt/var/lib/sign-craze/geo
+	LockPath      string // /opt/var/lock/sign-craze.lock
+	GeoMaxAgeDays int    // 7 — после превышения WARN
 }
 
 // DefaultDeps возвращает Deps со стандартными путями.
@@ -229,7 +229,9 @@ func checkLockFree(path string) Check {
 		if err != nil {
 			return Result{Name: "lock-free", Status: FAIL, Detail: "удерживается другим процессом"}
 		}
-		_ = l.Release()
+		if relErr := l.Release(); relErr != nil {
+			return Result{Name: "lock-free", Status: WARN, Detail: fmt.Sprintf("Release: %v", relErr)}
+		}
 		return Result{Name: "lock-free", Status: PASS, Detail: "свободна"}
 	}
 }

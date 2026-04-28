@@ -20,12 +20,22 @@ func handleStatus(ctx context.Context, _ []string) error {
 		return fmt.Errorf("--status: %w", err)
 	}
 
-	sb, _ := newSingboxLifecycle().Status(ctx)
-	dpi, _ := newDPILifecycle().Status(ctx)
+	sb, sbErr := newSingboxLifecycle().Status(ctx)
+	if sbErr != nil {
+		fmt.Fprintf(os.Stderr, "warn: статус sing-box: %v\n", sbErr)
+	}
+	dpi, dpiErr := newDPILifecycle().Status(ctx)
+	if dpiErr != nil {
+		fmt.Fprintf(os.Stderr, "warn: статус nfqws2: %v\n", dpiErr)
+	}
 
 	sbVer := ""
 	if _, errStat := os.Stat(singbox.DefaultBinPath); errStat == nil {
-		sbVer, _ = singbox.BinaryVersion(ctx, newRunner(), singbox.DefaultBinPath)
+		v, vErr := singbox.BinaryVersion(ctx, newRunner(), singbox.DefaultBinPath)
+		if vErr != nil {
+			fmt.Fprintf(os.Stderr, "warn: версия sing-box: %v\n", vErr)
+		}
+		sbVer = v
 	}
 
 	fmt.Printf("sing-box:  %s\n", formatService(sb.Running, sb.PID))

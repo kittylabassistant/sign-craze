@@ -32,11 +32,11 @@ func archAssetName(arch types.Arch) (string, error) {
 
 // Options описывает параметры обновления.
 type Options struct {
-	Owner    string // "kittylabassistant"
-	Repo     string // "sign-craze"
-	Arch     types.Arch
-	BinPath  string // /opt/sbin/sign-craze
-	DstDir   string // временная директория для скачивания (по умолчанию os.TempDir())
+	Owner   string // "kittylabassistant"
+	Repo    string // "sign-craze"
+	Arch    types.Arch
+	BinPath string // /opt/sbin/sign-craze
+	DstDir  string // временная директория для скачивания (по умолчанию os.TempDir())
 }
 
 // Update скачивает последний релиз sign-craze, проверяет SHA256 и заменяет бинарь.
