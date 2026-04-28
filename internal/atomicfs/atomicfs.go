@@ -2,6 +2,7 @@ package atomicfs
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -50,6 +51,52 @@ func WriteFileAtomic(dst string, data []byte, perm os.FileMode) error {
 		return fmt.Errorf("atomicfs: rename %s → %s: %w", tmpName, dst, err)
 	}
 
+	success = true
+	return nil
+}
+
+// WriteFileAtomicFromReader пишет содержимое r в dst через temp-файл с
+// io.Copy (потоково, без буферизации всего содержимого в RAM).
+// perm применяется к финальному файлу. Защищает от пика памяти при
+// загрузке больших файлов на роутере с 128MB RAM (safety-fixes #14).
+func WriteFileAtomicFromReader(dst string, r io.Reader, perm os.FileMode) error {
+	dir := filepath.Dir(dst)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("atomicfs: mkdir %s: %w", dir, err)
+	}
+
+	tmp, err := os.CreateTemp(dir, ".atomic-*")
+	if err != nil {
+		return fmt.Errorf("atomicfs: создание temp-файла: %w", err)
+	}
+	tmpName := tmp.Name()
+
+	success := false
+	defer func() {
+		if !success {
+			_ = os.Remove(tmpName)
+		}
+	}()
+
+	buf := make([]byte, 32*1024)
+	if _, err := io.CopyBuffer(tmp, r, buf); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("atomicfs: копирование в temp: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("atomicfs: fsync temp: %w", err)
+	}
+	if err := tmp.Chmod(perm); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("atomicfs: chmod temp: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("atomicfs: закрытие temp: %w", err)
+	}
+	if err := os.Rename(tmpName, dst); err != nil {
+		return fmt.Errorf("atomicfs: rename %s → %s: %w", tmpName, dst, err)
+	}
 	success = true
 	return nil
 }

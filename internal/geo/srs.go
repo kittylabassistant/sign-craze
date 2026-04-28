@@ -107,20 +107,14 @@ func Update(ctx context.Context, needed []string, geoDir string) (int, error) {
 		}
 
 		log.L().Info("geo: скачиваем файл", "name", name, "version", m.Version)
-		data, err := downloadSRS(ctx, entry.Name)
+		gotHash, err := streamDownloadAndWrite(ctx, entry.Name, localPath)
 		if err != nil {
 			return updated, fmt.Errorf("geo: загрузка %s: %w", name, err)
 		}
-
-		// Верифицируем SHA256 скачанного файла.
-		gotHash := hashBytes(data)
 		if gotHash != entry.SHA256 {
+			_ = os.Remove(localPath)
 			return updated, fmt.Errorf("geo: SHA256 не совпадает для %s: ожидался %s, получен %s",
 				name, entry.SHA256, gotHash)
-		}
-
-		if wErr := atomicfs.WriteFileAtomic(localPath, data, 0o644); wErr != nil {
-			return updated, fmt.Errorf("geo: запись %s: %w", localPath, wErr)
 		}
 
 		log.L().Info("geo: файл обновлён", "name", name, "sha256", gotHash[:12]+"...")
@@ -130,26 +124,33 @@ func Update(ctx context.Context, needed []string, geoDir string) (int, error) {
 	return updated, nil
 }
 
-// downloadSRS скачивает один .srs файл из release sign-craze-dat.
-func downloadSRS(ctx context.Context, name string) ([]byte, error) {
+// streamDownloadAndWrite скачивает .srs потоково в localPath, считая SHA256
+// через io.MultiWriter — без буферизации в RAM (safety-fixes #14).
+// Возвращает hex SHA256 успешно записанного файла.
+func streamDownloadAndWrite(ctx context.Context, name, localPath string) (string, error) {
 	url := downloadBaseURLVar + name
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	req.Header.Set("User-Agent", "sign-craze")
 
 	resp, err := geoHTTPClient.Do(req)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d для %s", resp.StatusCode, url)
+		return "", fmt.Errorf("HTTP %d для %s", resp.StatusCode, url)
 	}
 
-	return io.ReadAll(resp.Body)
+	hasher := sha256.New()
+	tee := io.TeeReader(resp.Body, hasher)
+	if err := atomicfs.WriteFileAtomicFromReader(localPath, tee, 0o644); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
 // localSHA256 вычисляет SHA256 файла по пути. Возвращает пустую строку если файл не существует.
