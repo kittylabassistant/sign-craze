@@ -70,9 +70,18 @@ func (s *Server) clashTrafficWS(w http.ResponseWriter, r *http.Request) {
 	if marshalErr != nil {
 		return
 	}
-	for range tick.C {
-		if sendErr := conn.SendText(frame); sendErr != nil {
+
+	// 5s write deadline ловит застрявших клиентов (slowloris) на 128MB роутере
+	// без накопления горутин в TCP-буферах (safety-fixes #15).
+	for {
+		select {
+		case <-r.Context().Done():
 			return
+		case <-tick.C:
+			_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			if sendErr := conn.SendText(frame); sendErr != nil {
+				return
+			}
 		}
 	}
 }
