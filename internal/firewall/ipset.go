@@ -33,10 +33,16 @@ func (s *IPSet) EnsureSet(ctx context.Context, name, setType, family string) err
 }
 
 // AtomicReplace заменяет содержимое набора атомарно через create-swap-destroy.
-// Алгоритм: создать tmp → добавить cidrs → swap(name, tmp) → destroy tmp.
+// Алгоритм: sweep старых tmp → создать tmp → добавить cidrs → swap(name, tmp) → destroy tmp.
 // При ошибке добавления — tmp уничтожается без swap.
 func (s *IPSet) AtomicReplace(ctx context.Context, name, setType, family string, cidrs []netip.Prefix) error {
 	tmp := name + "_tmp"
+
+	// Sweep stale tmp от прошлых неудачных Apply (safety-fixes #13). Идемпотентно.
+	if _, err := s.runner.Run(ctx, "ipset", "destroy", tmp); err != nil {
+		// Не ошибка если tmp не существует — просто очищаем на всякий случай.
+		log.L().Debug("firewall: sweep tmp ipset (no-op если отсутствует)", "tmp", tmp)
+	}
 
 	if _, err := s.runner.Run(ctx, "ipset", "create", tmp, setType, "family", family); err != nil {
 		return fmt.Errorf("firewall: создание tmp ipset %s: %w", tmp, err)
