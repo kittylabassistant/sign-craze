@@ -41,6 +41,28 @@ func TestRenderShim_DefaultBinPath(t *testing.T) {
 	}
 }
 
+// TestRenderShim_HasErrorHandling — шим должен использовать set -eu и логировать
+// ошибки в boot.log, иначе init молча игнорирует фейл --service-start
+// (safety-fixes #5).
+func TestRenderShim_HasErrorHandling(t *testing.T) {
+	data, err := RenderShim(ShimParams{BinPath: "/opt/sbin/sign-craze"})
+	if err != nil {
+		t.Fatalf("RenderShim: %v", err)
+	}
+	s := string(data)
+
+	if !strings.Contains(s, "set -eu") {
+		t.Errorf("shim должен начинаться с set -eu:\n%s", s)
+	}
+	if !strings.Contains(s, "/opt/var/log/sign-craze/boot.log") {
+		t.Errorf("shim должен логировать в boot.log:\n%s", s)
+	}
+	// Должен быть код, выводящий ошибку и завершающийся с exit 1
+	if !strings.Contains(s, "exit 1") {
+		t.Errorf("shim должен явно exit 1 при ошибке:\n%s", s)
+	}
+}
+
 func TestWriteShim_CreatesFile(t *testing.T) {
 	dir := t.TempDir()
 	shimPath := filepath.Join(dir, "S05signcraze")

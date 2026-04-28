@@ -18,16 +18,30 @@ const (
 	DefaultSignCrazeBin = "/opt/sbin/sign-craze"
 )
 
-// shimTemplate — шаблон init.d shim (~20 строк, генерируется sign-craze).
+// shimTemplate — шаблон init.d shim (~30 строк, генерируется sign-craze).
+// set -eu + логирование stderr в boot.log: иначе init молча игнорирует
+// падение --service-start, и юзер думает что сервис стартовал (safety-fixes #5).
+// status не пишет в boot.log — он опрашивается часто и полезен в stderr.
 var shimTemplate = template.Must(template.New("shim").Parse(`#!/bin/sh
 # Сгенерировано sign-craze. Не редактировать вручную.
+set -eu
 SC={{ .BinPath }}
-case "$1" in
-    start)   exec "$SC" --service-start ;;
-    stop)    exec "$SC" --service-stop ;;
-    restart) exec "$SC" --service-restart ;;
+LOG=/opt/var/log/sign-craze/boot.log
+mkdir -p "$(dirname "$LOG")" 2>/dev/null || true
+
+run() {
+    if ! "$SC" "$1" 2>>"$LOG"; then
+        echo "sign-craze $1 завершился с ошибкой (см. $LOG)" >&2
+        exit 1
+    fi
+}
+
+case "${1:-}" in
+    start)   run --service-start ;;
+    stop)    run --service-stop ;;
+    restart) run --service-restart ;;
     status)  exec "$SC" --service-status ;;
-    *)       echo "Использование: $0 {start|stop|restart|status}"; exit 1 ;;
+    *)       echo "Использование: $0 {start|stop|restart|status}" >&2; exit 1 ;;
 esac
 `))
 
