@@ -123,8 +123,14 @@ func handleRestart(ctx context.Context, _ []string) error {
 
 func handleServiceStart(ctx context.Context, _ []string) error {
 	// init.d-вариант --start: ждём сети, без stdout-вывода.
-	log.L().Info("service-start: ожидание сети")
-	if err := waitDefaultRoute(ctx, 30*time.Second); err != nil {
+	// Таймаут читается из state.BootTimeoutSec (default 60s) — на медленных
+	// роутерах с USB-mount после init.d 30s могло не хватать (safety-fixes #12).
+	timeout := 60 * time.Second
+	if st, err := loadState(); err == nil && st.BootTimeoutSec > 0 {
+		timeout = time.Duration(st.BootTimeoutSec) * time.Second
+	}
+	log.L().Info("service-start: ожидание сети", "timeout", timeout)
+	if err := waitDefaultRoute(ctx, timeout); err != nil {
 		log.L().Error("service-start: сеть недоступна", "err", err)
 		return err
 	}

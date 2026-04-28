@@ -32,14 +32,15 @@ const DefaultAdminPort uint16 = 22
 
 // State — персистентное состояние sign-craze.
 type State struct {
-	Mode        types.Mode       `json:"mode"`
-	Outbounds   []types.Outbound `json:"outbounds"`
-	Ports       []uint16         `json:"ports"`
-	Excludes    []string         `json:"excludes"`
-	AdminPort   uint16           `json:"admin_port,omitempty"`
-	AdminIPs    []string         `json:"admin_ips,omitempty"`
-	DPIEnabled  bool             `json:"dpi_enabled"`
-	DPIStrategy string           `json:"dpi_strategy,omitempty"`
+	Mode           types.Mode       `json:"mode"`
+	Outbounds      []types.Outbound `json:"outbounds"`
+	Ports          []uint16         `json:"ports"`
+	Excludes       []string         `json:"excludes"`
+	AdminPort      uint16           `json:"admin_port,omitempty"`
+	AdminIPs       []string         `json:"admin_ips,omitempty"`
+	DPIEnabled     bool             `json:"dpi_enabled"`
+	DPIStrategy    string           `json:"dpi_strategy,omitempty"`
+	BootTimeoutSec int              `json:"boot_timeout_sec,omitempty"` // таймаут waitDefaultRoute, 0 = default 60
 }
 
 // Default возвращает state с настройками по умолчанию: режим proxy, stub direct outbound,
