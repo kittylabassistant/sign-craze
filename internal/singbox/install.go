@@ -22,6 +22,39 @@ const (
 	DefaultConfigDir = "/opt/etc/sign-craze"
 )
 
+// PrepareAndValidate распаковывает бинарь во временный файл и валидирует конфиг
+// (sing-box check) ДО установки в финальный путь. Это защищает от ситуации
+// "бинарь установлен, конфиг битый" (safety-fixes #10).
+//
+// Возвращает путь к временному бинарю (chmod 0755). Вызывающий обязан после
+// успешной валидации сделать атомарный move temp → final binPath, либо удалить
+// temp при отказе. Конфиг в configPath остаётся как есть (либо валиден, либо
+// требует ручной коррекции/отката).
+func PrepareAndValidate(ctx context.Context, runner exectx.Runner, tarPath, configPath string, params ConfigParams) (tempBinPath string, err error) {
+	binData, err := extractBinary(tarPath)
+	if err != nil {
+		return "", fmt.Errorf("singbox prepare: распаковка: %w", err)
+	}
+
+	tmpDir, err := os.MkdirTemp("", "sign-craze-install-*")
+	if err != nil {
+		return "", fmt.Errorf("singbox prepare: tempdir: %w", err)
+	}
+	tempBin := filepath.Join(tmpDir, "sing-box")
+	if err := os.WriteFile(tempBin, binData, 0o755); err != nil {
+		_ = os.RemoveAll(tmpDir)
+		return "", fmt.Errorf("singbox prepare: запись tmp бинаря: %w", err)
+	}
+
+	// WriteConfig пишет конфиг и валидирует через `tempBin check -c configPath`.
+	if err := WriteConfig(ctx, runner, params, tempBin, configPath); err != nil {
+		_ = os.RemoveAll(tmpDir)
+		return "", fmt.Errorf("singbox prepare: валидация конфига: %w", err)
+	}
+
+	return tempBin, nil
+}
+
 // Install устанавливает бинарь sing-box из tarball в binDst.
 // Алгоритм:
 //  1. Резервная копия текущего бинаря (если существует).
@@ -29,6 +62,9 @@ const (
 //  3. Атомарная запись бинаря в binDst с правами 0755.
 //  4. Проверка конфига через `sing-box check -c configPath` (если configPath не пустой).
 //  5. При ошибке шага 4 — откат через RestoreBackup.
+//
+// Deprecated: для нового кода используйте PrepareAndValidate + atomicfs.BackupAndReplace,
+// чтобы валидация конфига происходила ДО установки бинаря.
 func Install(ctx context.Context, runner exectx.Runner, tarPath, binDst, configPath string) error {
 	log.L().Info("установка sing-box", "tarball", tarPath, "dst", binDst)
 

@@ -56,6 +56,20 @@ func Mock(table map[string]Result) Runner {
 	return &mockRunner{table: table}
 }
 
+// MockMatcher возвращает Runner с произвольной логикой матчинга.
+// Полезно когда аргументы команды содержат динамические пути (tempdir и т.п.).
+func MockMatcher(fn func(name string, args ...string) (Result, error)) Runner {
+	return &matcherRunner{fn: fn}
+}
+
+type matcherRunner struct {
+	fn func(name string, args ...string) (Result, error)
+}
+
+func (m *matcherRunner) Run(_ context.Context, name string, args ...string) (Result, error) {
+	return m.fn(name, args...)
+}
+
 type mockRunner struct {
 	table map[string]Result
 }

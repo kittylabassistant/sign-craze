@@ -12,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
 	"github.com/kittylabassistant/sign-craze/internal/log"
 	"github.com/kittylabassistant/sign-craze/internal/proxyparse"
 	"github.com/kittylabassistant/sign-craze/internal/service"
@@ -129,14 +130,29 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string) error {
 		return fmt.Errorf("--install: state: %w", err)
 	}
 
-	// 6. Установить бинарь sing-box (с rollback при ошибке config check).
-	if err := singbox.Install(ctx, newRunner(), tarPath, singbox.DefaultBinPath, ""); err != nil {
-		return fmt.Errorf("--install: singbox: %w", err)
+	// 6. Подготовить бинарь sing-box во временный путь и валидировать конфиг
+	// ДО установки в финальный путь — защита от состояния "бинарь установлен,
+	// конфиг битый" (safety-fixes #10).
+	params := singbox.DefaultConfigParams()
+	params.Mode = st.Mode
+	params.Outbounds = st.Outbounds
+	if len(st.Outbounds) > 0 {
+		params.DefaultOutboundTag = st.Outbounds[0].Tag
 	}
 
-	// 7. Сгенерировать config.json (валидируется через sing-box check внутри regenerateConfig).
-	if err := regenerateConfig(ctx, st); err != nil {
-		return fmt.Errorf("--install: config: %w", err)
+	tempBin, err := singbox.PrepareAndValidate(ctx, newRunner(), tarPath, configPath(), params)
+	if err != nil {
+		return fmt.Errorf("--install: %w", err)
+	}
+	defer os.RemoveAll(filepath.Dir(tempBin))
+
+	// 7. Атомарно перенести валидированный бинарь в финальный путь.
+	binData, err := os.ReadFile(tempBin)
+	if err != nil {
+		return fmt.Errorf("--install: чтение валидированного бинаря: %w", err)
+	}
+	if _, err := atomicfs.BackupAndReplace(singbox.DefaultBinPath, binData, 0o755); err != nil {
+		return fmt.Errorf("--install: установка бинаря: %w", err)
 	}
 
 	// 8. Создать init.d shim.
