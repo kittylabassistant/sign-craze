@@ -33,6 +33,22 @@ func (t *IPTables) EnsureRule(ctx context.Context, table, chain string, rule ...
 	return nil
 }
 
+// InsertRule вставляет правило в позицию position (iptables -I chain pos), если оно
+// отсутствует. Используется для exclude-правил, которые должны выполняться ДО
+// mark-правил в той же цепочке (safety-fixes #1).
+func (t *IPTables) InsertRule(ctx context.Context, table, chain string, position int, rule ...string) error {
+	checkArgs := append([]string{"-t", table, "-C", chain}, rule...)
+	if _, err := t.runner.Run(ctx, "iptables", checkArgs...); err == nil {
+		return nil
+	}
+	insertArgs := append([]string{"-t", table, "-I", chain, fmt.Sprintf("%d", position)}, rule...)
+	if _, err := t.runner.Run(ctx, "iptables", insertArgs...); err != nil {
+		return fmt.Errorf("firewall: вставка правила в %s/%s pos=%d: %w", table, chain, position, err)
+	}
+	log.L().Debug("firewall: правило вставлено", "table", table, "chain", chain, "pos", position)
+	return nil
+}
+
 // DeleteRule удаляет правило если оно существует (iptables -C → -D). Идемпотентно.
 func (t *IPTables) DeleteRule(ctx context.Context, table, chain string, rule ...string) error {
 	checkArgs := append([]string{"-t", table, "-C", chain}, rule...)

@@ -22,15 +22,22 @@ func newSingboxLifecycle() service.Lifecycle { return singbox.DefaultLifecycle()
 // newDPILifecycle возвращает Lifecycle nfqws2 с дефолтными путями.
 func newDPILifecycle() service.Lifecycle { return dpi.DefaultLifecycle() }
 
-// newFirewallApplier строит Applier из state: пробрасывает ports/excludes в Config.
+// newFirewallApplier строит Applier из state: пробрасывает ports/excludes/admin в Config.
+// AdminIPs мерджатся в Excludes — оба попадают в ipset signcraze_excludes.
 func newFirewallApplier(s *state.State) (firewall.Applier, error) {
 	cfg := firewall.DefaultConfig()
 	cfg.Ports = append([]uint16(nil), s.Ports...)
+	cfg.AdminPort = s.AdminPort
+
 	excl, err := state.ParsedExcludes(s)
 	if err != nil {
 		return nil, fmt.Errorf("firewall: некорректные excludes: %w", err)
 	}
-	cfg.Excludes = excl
+	adminPrefixes, err := state.ParsedAdminIPs(s)
+	if err != nil {
+		return nil, fmt.Errorf("firewall: некорректные admin IPs: %w", err)
+	}
+	cfg.Excludes = append(excl, adminPrefixes...)
 	return firewall.NewApplier(newRunner(), cfg), nil
 }
 

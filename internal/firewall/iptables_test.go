@@ -33,6 +33,32 @@ func TestIPTables_EnsureRule_ПропускаетЕслиСуществует(t 
 	}
 }
 
+// TestIPTables_InsertRule_ВставляетВНачало проверяет что InsertRule вызывает -I
+// с указанной позицией. Используется для exclude-правил, которые ОБЯЗАНЫ идти
+// перед mark-правилами (safety-fixes #1 — защита от SSH-lockout при reapply).
+func TestIPTables_InsertRule_ВставляетВНачало(t *testing.T) {
+	r := exectx.Mock(map[string]exectx.Result{
+		"iptables -t mangle -I signcraze 1 -j RETURN": {ExitCode: 0},
+	})
+	ipt := New(r)
+	err := ipt.InsertRule(context.Background(), "mangle", "signcraze", 1, "-j", "RETURN")
+	if err != nil {
+		t.Fatalf("неожиданная ошибка: %v", err)
+	}
+}
+
+func TestIPTables_InsertRule_ПропускаетЕслиСуществует(t *testing.T) {
+	// -C успешен → -I не должен вызываться (нет в Mock map → вернул бы ошибку)
+	r := exectx.Mock(map[string]exectx.Result{
+		"iptables -t mangle -C signcraze -j RETURN": {ExitCode: 0},
+	})
+	ipt := New(r)
+	err := ipt.InsertRule(context.Background(), "mangle", "signcraze", 1, "-j", "RETURN")
+	if err != nil {
+		t.Fatalf("ожидался nil для существующего правила: %v", err)
+	}
+}
+
 func TestIPTables_DeleteRule_УдаляетЕслиСуществует(t *testing.T) {
 	r := exectx.Mock(map[string]exectx.Result{
 		"iptables -t mangle -C CHAIN -j ACCEPT": {ExitCode: 0},
