@@ -7,6 +7,10 @@ import (
 	"strings"
 )
 
+// maxRequestBody — лимит размера тела POST-запросов admin API.
+// Защита от DoS: 50MB malformed JSON убивает 128MB роутер (safety-fixes #7).
+const maxRequestBody = 1 << 20 // 1 MB
+
 // registerAdminRoutes регистрирует admin REST маршруты на порту 9091.
 func registerAdminRoutes(mux *http.ServeMux, s *Server) {
 	mux.HandleFunc("GET /api/status", s.apiStatus)
@@ -52,6 +56,7 @@ func (s *Server) apiConfigPost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "не настроено", http.StatusNotImplemented)
 		return
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
 	var raw json.RawMessage
 	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
 		http.Error(w, "неверный JSON: "+err.Error(), http.StatusBadRequest)
@@ -82,6 +87,7 @@ func (s *Server) apiPortsAdd(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "не настроено", http.StatusNotImplemented)
 		return
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
 	var body struct {
 		Port int `json:"port"`
 	}
@@ -136,6 +142,7 @@ func (s *Server) apiExcludesAdd(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "не настроено", http.StatusNotImplemented)
 		return
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
 	var body struct {
 		CIDR string `json:"cidr"`
 	}

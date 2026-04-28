@@ -191,3 +191,31 @@ func TestAPIExcludesAdd_добавляет(t *testing.T) {
 		t.Errorf("исключение не добавлено: %v", stub.list)
 	}
 }
+
+// TestAPIConfigPost_BodyTooLarge — тело > 1MB должно отклоняться.
+// Защита от DoS на 128MB роутер (safety-fixes #7).
+func TestAPIConfigPost_BodyTooLarge(t *testing.T) {
+	stub := &stubConfig{}
+	mux, _ := newAdminMux(t, ServerConfig{Config: stub})
+
+	huge := bytes.Repeat([]byte("a"), 2*1024*1024)
+	req := httptest.NewRequest(http.MethodPost, "/api/config", bytes.NewReader(huge))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code == http.StatusNoContent {
+		t.Fatal("ожидалось отклонение, получен 204")
+	}
+	if rec.Code != http.StatusBadRequest && rec.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("ожидался 400 или 413, получен %d", rec.Code)
+	}
+}
+
+type stubConfig struct{ written []byte }
+
+func (s *stubConfig) ReadConfig(_ context.Context) ([]byte, error) { return s.written, nil }
+func (s *stubConfig) WriteConfig(_ context.Context, raw []byte) error {
+	s.written = append([]byte(nil), raw...)
+	return nil
+}
