@@ -2,10 +2,53 @@ package firewall
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	scerrors "github.com/kittylabassistant/sign-craze/internal/errors"
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
 )
+
+// TestCheckFWMarkAvailable_NoConflict — нет правила с нашим fwmark → OK.
+func TestCheckFWMarkAvailable_NoConflict(t *testing.T) {
+	r := exectx.Mock(map[string]exectx.Result{
+		"ip rule show": {ExitCode: 0, Stdout: []byte("0:\tlocal\n32766:\tmain\n")},
+	})
+	if err := CheckFWMarkAvailable(context.Background(), r, 0x53, 83); err != nil {
+		t.Errorf("ожидался nil, получено %v", err)
+	}
+}
+
+// TestCheckFWMarkAvailable_OurMarkExists — правило с нашим fwmark и нашей таблицей → OK.
+func TestCheckFWMarkAvailable_OurMarkExists(t *testing.T) {
+	r := exectx.Mock(map[string]exectx.Result{
+		"ip rule show": {
+			ExitCode: 0,
+			Stdout:   []byte("32765:\tfrom all fwmark 0x53 lookup 83\n"),
+		},
+	})
+	if err := CheckFWMarkAvailable(context.Background(), r, 0x53, 83); err != nil {
+		t.Errorf("своё правило не должно быть конфликтом: %v", err)
+	}
+}
+
+// TestCheckFWMarkAvailable_ConflictDifferentTable — fwmark 0x53 указывает на ЧУЖУЮ таблицу.
+// Наглядный сценарий: XKeen или другой инструмент уже занял 0x53.
+func TestCheckFWMarkAvailable_ConflictDifferentTable(t *testing.T) {
+	r := exectx.Mock(map[string]exectx.Result{
+		"ip rule show": {
+			ExitCode: 0,
+			Stdout:   []byte("32700:\tfrom all fwmark 0x53 lookup 100\n"),
+		},
+	})
+	err := CheckFWMarkAvailable(context.Background(), r, 0x53, 83)
+	if err == nil {
+		t.Fatal("ожидалась ошибка конфликта")
+	}
+	if !errors.Is(err, scerrors.ErrFWMarkConflict) {
+		t.Errorf("ожидался ErrFWMarkConflict, получено %T: %v", err, err)
+	}
+}
 
 func TestEnsureIPRule_ДобавляетЕслиОтсутствует(t *testing.T) {
 	r := exectx.Mock(map[string]exectx.Result{

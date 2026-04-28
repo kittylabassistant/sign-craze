@@ -68,6 +68,11 @@ type applierImpl struct {
 func (a *applierImpl) Apply(ctx context.Context, mode types.Mode) error {
 	log.L().Info("firewall: применение правил", "mode", mode)
 
+	// Pre-flight: убедиться что fwmark не занят другим инструментом.
+	if err := CheckFWMarkAvailable(ctx, a.runner, a.cfg.FWMark, a.cfg.Table); err != nil {
+		return fmt.Errorf("firewall: pre-flight: %w", err)
+	}
+
 	if err := a.applyInternal(ctx, mode); err != nil {
 		log.L().Warn("firewall: ошибка применения, откат", "err", err)
 		if removeErr := a.Remove(ctx); removeErr != nil {

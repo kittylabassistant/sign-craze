@@ -37,6 +37,10 @@ var (
 
 	// ErrUnsupportedArch — архитектура не поддерживается.
 	ErrUnsupportedArch = errors.New("архитектура не поддерживается")
+
+	// ErrFWMarkConflict — fwmark уже используется другим инструментом
+	// (например, XKeen) с другой таблицей маршрутизации.
+	ErrFWMarkConflict = errors.New("fwmark уже занят")
 )
 
 // Wrap оборачивает err с контекстным сообщением.

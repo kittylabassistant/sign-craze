@@ -5,9 +5,38 @@ import (
 	"fmt"
 	"strings"
 
+	scerrors "github.com/kittylabassistant/sign-craze/internal/errors"
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/log"
 )
+
+// CheckFWMarkAvailable проверяет, что указанный fwmark не занят другим
+// инструментом (XKeen / самописные скрипты) с другой таблицей маршрутизации.
+// Если правило с тем же fwmark указывает на нашу таблицу — это идемпотентно
+// и возвращает nil. Иначе возвращает ErrFWMarkConflict с описанием конфликта
+// (safety-fixes #3).
+func CheckFWMarkAvailable(ctx context.Context, runner exectx.Runner, fwmark uint32, ourTable int) error {
+	res, err := runner.Run(ctx, "ip", "rule", "show")
+	if err != nil {
+		// Не удалось прочитать ip rule — лучше пропустить, чем заблокировать
+		// установку (например, в Docker без CAP_NET_ADMIN). Логируется выше.
+		return nil
+	}
+	needle := fmt.Sprintf("fwmark 0x%x", fwmark)
+	ourLookup := fmt.Sprintf("lookup %d", ourTable)
+	for _, line := range strings.Split(string(res.Stdout), "\n") {
+		if !strings.Contains(line, needle) {
+			continue
+		}
+		if strings.Contains(line, ourLookup) {
+			// Наше правило, идемпотентность — OK.
+			continue
+		}
+		return fmt.Errorf("%w: %s (ожидалась таблица %d; возможно конфликт с XKeen)",
+			scerrors.ErrFWMarkConflict, strings.TrimSpace(line), ourTable)
+	}
+	return nil
+}
 
 // EnsureIPRule добавляет правило fwmark → table если оно отсутствует. Идемпотентно.
 func EnsureIPRule(ctx context.Context, runner exectx.Runner, fwmark uint32, table, priority int) error {
