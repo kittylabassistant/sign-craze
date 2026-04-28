@@ -27,6 +27,7 @@ func init() {
 	Register(Cmd{Short: "-i", Long: "--install", Help: "установка с интерактивной настройкой outbound", Handler: handleInstall})
 	Register(Cmd{Long: "--install-auto", Help: "установка без интерактива (stub direct outbound)", Handler: handleInstallAuto})
 	Register(Cmd{Long: "--install-offline", Help: "установка из локального tarball <путь>", Handler: handleInstallOffline})
+	Register(Cmd{Long: "--reinstall", Help: "переустановка поверх существующей (использует --install-auto)", Handler: handleReinstall})
 }
 
 type installMode int
@@ -38,21 +39,36 @@ const (
 )
 
 func handleInstall(ctx context.Context, _ []string) error {
-	return withLock(ctx, func() error { return doInstall(ctx, installInteractive, "") })
+	return withLock(ctx, func() error { return doInstall(ctx, installInteractive, "", false) })
 }
 
 func handleInstallAuto(ctx context.Context, _ []string) error {
-	return withLock(ctx, func() error { return doInstall(ctx, installAuto, "") })
+	return withLock(ctx, func() error { return doInstall(ctx, installAuto, "", false) })
 }
 
 func handleInstallOffline(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("--install-offline: требуется путь к tarball")
 	}
-	return withLock(ctx, func() error { return doInstall(ctx, installOffline, args[0]) })
+	return withLock(ctx, func() error { return doInstall(ctx, installOffline, args[0], false) })
 }
 
-func doInstall(ctx context.Context, mode installMode, offlineTar string) error {
+func handleReinstall(ctx context.Context, _ []string) error {
+	return withLock(ctx, func() error { return doInstall(ctx, installAuto, "", true) })
+}
+
+func doInstall(ctx context.Context, mode installMode, offlineTar string, force bool) error {
+	// 0. Idempotency check: если уже установлено и не force — отказ
+	// (safety-fixes #16). До этого --install молча перезаписывал всё.
+	if !force {
+		if _, err := os.Stat(state.DefaultPath); err == nil {
+			return fmt.Errorf("--install: sign-craze уже установлен (state.json существует). Используйте --reinstall для переустановки или --uninstall сначала")
+		}
+		if _, err := os.Stat(singbox.DefaultBinPath); err == nil {
+			return fmt.Errorf("--install: sing-box уже установлен (%s). Используйте --reinstall для переустановки", singbox.DefaultBinPath)
+		}
+	}
+
 	// 1. Pre-check: /opt существует и есть место.
 	if err := checkOptMounted(); err != nil {
 		return fmt.Errorf("--install: %w", err)

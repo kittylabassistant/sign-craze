@@ -9,7 +9,7 @@ import (
 // expectedCommands — все Long-флаги, которые должны быть зарегистрированы.
 var expectedCommands = []string{
 	"--ui",
-	"--install", "--install-auto", "--install-offline",
+	"--install", "--install-auto", "--install-offline", "--reinstall",
 	"--start", "--stop", "--restart", "--service-start",
 	"--status", "--version",
 	"--diag",
