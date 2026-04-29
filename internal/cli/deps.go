@@ -37,7 +37,8 @@ func newFirewallApplier(s *state.State) (firewall.Applier, error) {
 	if err != nil {
 		return nil, fmt.Errorf("firewall: некорректные admin IPs: %w", err)
 	}
-	cfg.Excludes = append(excl, adminPrefixes...)
+	excl = append(excl, adminPrefixes...)
+	cfg.Excludes = excl
 	return firewall.NewApplier(newRunner(), cfg), nil
 }
 

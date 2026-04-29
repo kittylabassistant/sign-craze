@@ -115,7 +115,7 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string, force b
 
 	// 4. Собрать outbounds.
 	var outbounds []types.Outbound
-	var adminPort uint16 = state.DefaultAdminPort
+	adminPort := state.DefaultAdminPort
 	var adminIPs []string
 	if mode == installInteractive {
 		ob, err := runProxyWizard(os.Stdin, os.Stdout)

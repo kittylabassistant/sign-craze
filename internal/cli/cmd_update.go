@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
+	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
 	"github.com/kittylabassistant/sign-craze/internal/firewall"
 	"github.com/kittylabassistant/sign-craze/internal/geo"
 	"github.com/kittylabassistant/sign-craze/internal/ghrelease"
@@ -122,9 +124,33 @@ func handleUpdateCore(ctx context.Context, _ []string) error {
 			fmt.Println("sing-box уже актуален.")
 			return nil
 		}
-		if err := singbox.Install(ctx, newRunner(), res.Path, singbox.DefaultBinPath, configPath()); err != nil {
+
+		// Валидируем новый бинарь с текущим конфигом ДО замены.
+		st, err := loadState()
+		if err != nil {
+			return fmt.Errorf("--update-core: state: %w", err)
+		}
+		params := singbox.DefaultConfigParams()
+		params.Mode = st.Mode
+		params.Outbounds = st.Outbounds
+		if len(st.Outbounds) > 0 {
+			params.DefaultOutboundTag = st.Outbounds[0].Tag
+		}
+
+		tempBin, err := singbox.PrepareAndValidate(ctx, newRunner(), res.Path, configPath(), params)
+		if err != nil {
 			return fmt.Errorf("--update-core: %w", err)
 		}
+		defer os.RemoveAll(filepath.Dir(tempBin))
+
+		binData, err := os.ReadFile(tempBin)
+		if err != nil {
+			return fmt.Errorf("--update-core: чтение валидированного бинаря: %w", err)
+		}
+		if _, err := atomicfs.BackupAndReplace(singbox.DefaultBinPath, binData, 0o755); err != nil {
+			return fmt.Errorf("--update-core: установка бинаря: %w", err)
+		}
+
 		fmt.Printf("sing-box обновлён до %s. Перезапустите сервис: sign-craze --restart\n", res.Version)
 		return nil
 	})

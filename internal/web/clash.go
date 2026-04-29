@@ -78,7 +78,7 @@ func (s *Server) clashTrafficWS(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case <-tick.C:
-			_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second)) //nolint:errcheck // best-effort, реальная ошибка ловится в SendText
 			if sendErr := conn.SendText(frame); sendErr != nil {
 				return
 			}
