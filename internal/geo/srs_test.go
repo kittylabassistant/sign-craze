@@ -195,6 +195,27 @@ func TestUpdate_RejectsHugeContentLength(t *testing.T) {
 	}
 }
 
+// TestEffectiveLimit_табличный — проверка что manifest.Size используется как
+// authoritative limit + tolerance, fallback на MaxGeoFileSize.
+func TestEffectiveLimit_табличный(t *testing.T) {
+	tests := []struct {
+		size int64
+		want int64
+	}{
+		{0, MaxGeoFileSize},                    // unknown → global cap
+		{-1, MaxGeoFileSize},                   // invalid → global cap
+		{1024, 1024 + 1024/10 + sizeTolerance}, // small file: 1KB + 10% + 1KB tolerance
+		{10 * 1024 * 1024, 10*1024*1024 + 10*1024*1024/10 + sizeTolerance}, // 10MB
+		{MaxGeoFileSize * 2, MaxGeoFileSize},                               // даже manifest не превышает hard cap
+	}
+	for _, tt := range tests {
+		got := effectiveLimit(tt.size)
+		if got != tt.want {
+			t.Errorf("effectiveLimit(%d) = %d, ожидалось %d", tt.size, got, tt.want)
+		}
+	}
+}
+
 func TestLocalSHA256_СовпадаетСЭталонным(t *testing.T) {
 	data := []byte("test data for hashing")
 	expected := sha256Hex(data)

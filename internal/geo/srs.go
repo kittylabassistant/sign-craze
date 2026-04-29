@@ -20,12 +20,32 @@ const (
 	// DefaultGeoDir — директория хранения .srs файлов на роутере.
 	DefaultGeoDir = "/opt/var/lib/sign-craze/geo/"
 
-	// MaxGeoFileSize — лимит на размер одного скачиваемого .srs.
-	// 128MB-роутер не должен ловить OOM от malicious mirror, отдающего
-	// бесконечный поток или Content-Length 10GB. 50MB — больше любого
-	// реалистичного geo-файла (geoip-cn ~10MB, geosite ~5MB).
-	MaxGeoFileSize int64 = 50 * 1024 * 1024
+	// MaxGeoFileSize — глобальный «hard cap» на размер одного скачиваемого .srs,
+	// применяется когда manifest.Size неизвестен (=0). Для известных файлов
+	// authoritative — manifest.Size + sizeTolerance.
+	//
+	// 200MB покрывает крупные geoip-базы (полный maxmind с ASN ~30-50MB,
+	// объединённые .srs до ~100MB) с запасом, при этом блокирует OOM от
+	// malicious mirror, отдающего безграничный поток на 128MB-роутер.
+	MaxGeoFileSize int64 = 200 * 1024 * 1024
+
+	// sizeTolerance — допустимое превышение manifest.Size (zip-padding,
+	// header-разница). 10% + 1KB.
+	sizeTolerance = 1 * 1024
 )
+
+// effectiveLimit вычисляет ограничение на скачивание. Если manifest.Size
+// задан — используем его + 10% + 1KB как authoritative; иначе — глобальный cap.
+func effectiveLimit(manifestSize int64) int64 {
+	if manifestSize <= 0 {
+		return MaxGeoFileSize
+	}
+	limit := manifestSize + manifestSize/10 + sizeTolerance
+	if limit > MaxGeoFileSize {
+		return MaxGeoFileSize
+	}
+	return limit
+}
 
 // manifestURLVar и downloadBaseURLVar — var для подмены в тестах через httptest.Server.
 var (
@@ -110,8 +130,8 @@ func Update(ctx context.Context, needed []string, geoDir string) (int, error) {
 			continue
 		}
 
-		log.L().Info("geo: скачиваем файл", "name", name, "version", m.Version)
-		gotHash, err := streamDownloadAndWrite(ctx, entry.Name, localPath)
+		log.L().Info("geo: скачиваем файл", "name", name, "version", m.Version, "size", entry.Size)
+		gotHash, err := streamDownloadAndWrite(ctx, entry.Name, localPath, effectiveLimit(entry.Size))
 		if err != nil {
 			return updated, fmt.Errorf("geo: загрузка %s: %w", name, err)
 		}
@@ -132,10 +152,11 @@ func Update(ctx context.Context, needed []string, geoDir string) (int, error) {
 // через io.MultiWriter — без буферизации в RAM (safety-fixes #14).
 // Возвращает hex SHA256 успешно записанного файла.
 //
-// Защита от malicious mirror: до начала записи отбрасывается ответ с
-// Content-Length > MaxGeoFileSize; chunked-стрим обрезается LimitReader, и
-// если поток превысил лимит — возвращается error.
-func streamDownloadAndWrite(ctx context.Context, name, localPath string) (string, error) {
+// limit — максимально допустимый размер ответа (effectiveLimit для известных
+// файлов или MaxGeoFileSize для прямых вызовов). Защита от malicious mirror:
+// Content-Length > limit отвергается до записи; chunked-стрим режется
+// LimitReader+countingReader.
+func streamDownloadAndWrite(ctx context.Context, name, localPath string, limit int64) (string, error) {
 	url := downloadBaseURLVar + name
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -153,12 +174,12 @@ func streamDownloadAndWrite(ctx context.Context, name, localPath string) (string
 		return "", fmt.Errorf("HTTP %d для %s", resp.StatusCode, url)
 	}
 
-	if resp.ContentLength > MaxGeoFileSize {
-		return "", fmt.Errorf("geo: размер %s = %d байт превышает лимит %d", name, resp.ContentLength, MaxGeoFileSize)
+	if resp.ContentLength > limit {
+		return "", fmt.Errorf("geo: размер %s = %d байт превышает лимит %d", name, resp.ContentLength, limit)
 	}
 
-	// LimitReader на (MaxGeoFileSize+1): если read == limit+1 — поток превысил лимит.
-	limited := io.LimitReader(resp.Body, MaxGeoFileSize+1)
+	// LimitReader на (limit+1): если прочитано == limit+1 — поток превысил лимит.
+	limited := io.LimitReader(resp.Body, limit+1)
 
 	hasher := sha256.New()
 	tee := io.TeeReader(limited, hasher)
@@ -166,9 +187,9 @@ func streamDownloadAndWrite(ctx context.Context, name, localPath string) (string
 	if err := atomicfs.WriteFileAtomicFromReader(localPath, cw, 0o644); err != nil {
 		return "", err
 	}
-	if cw.n > MaxGeoFileSize {
+	if cw.n > limit {
 		_ = os.Remove(localPath)
-		return "", fmt.Errorf("geo: %s превысил лимит %d байт (chunked-стрим)", name, MaxGeoFileSize)
+		return "", fmt.Errorf("geo: %s превысил лимит %d байт (chunked-стрим)", name, limit)
 	}
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
