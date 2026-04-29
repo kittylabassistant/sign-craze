@@ -50,7 +50,7 @@ jobs:
           GOMIPS: ${{ matrix.gomips }}
         run: |
           mkdir -p dist
-          go build \
+          go build -buildvcs=false \
             -ldflags="-s -w -X github.com/kittylabassistant/sign-craze/internal/version.Version=${{ github.ref_name }}" \
             -trimpath \
             -o dist/sign-craze-${{ matrix.suffix }} \

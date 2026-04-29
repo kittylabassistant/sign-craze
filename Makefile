@@ -26,22 +26,22 @@ $(DIST):
 $(DIST)/sign-craze-arm64: $(DIST)
 	$(CONTAINER_RT) run --rm -v $(WORKSPACE):/workspace:z -w /workspace \
 	  -e CGO_ENABLED=0 -e GOOS=linux -e GOARCH=arm64 \
-	  $(GO_IMAGE) go build -ldflags="$(LDFLAGS)" -trimpath -o $@ ./cmd/sign-craze
+	  $(GO_IMAGE) go build -buildvcs=false -ldflags="$(LDFLAGS)" -trimpath -o $@ ./cmd/sign-craze
 
 $(DIST)/sign-craze-arm7: $(DIST)
 	$(CONTAINER_RT) run --rm -v $(WORKSPACE):/workspace:z -w /workspace \
 	  -e CGO_ENABLED=0 -e GOOS=linux -e GOARCH=arm -e GOARM=7 \
-	  $(GO_IMAGE) go build -ldflags="$(LDFLAGS)" -trimpath -o $@ ./cmd/sign-craze
+	  $(GO_IMAGE) go build -buildvcs=false -ldflags="$(LDFLAGS)" -trimpath -o $@ ./cmd/sign-craze
 
 $(DIST)/sign-craze-mipsle: $(DIST)
 	$(CONTAINER_RT) run --rm -v $(WORKSPACE):/workspace:z -w /workspace \
 	  -e CGO_ENABLED=0 -e GOOS=linux -e GOARCH=mipsle -e GOMIPS=softfloat \
-	  $(GO_IMAGE) go build -ldflags="$(LDFLAGS)" -trimpath -o $@ ./cmd/sign-craze
+	  $(GO_IMAGE) go build -buildvcs=false -ldflags="$(LDFLAGS)" -trimpath -o $@ ./cmd/sign-craze
 
 $(DIST)/sign-craze-mips: $(DIST)
 	$(CONTAINER_RT) run --rm -v $(WORKSPACE):/workspace:z -w /workspace \
 	  -e CGO_ENABLED=0 -e GOOS=linux -e GOARCH=mips -e GOMIPS=softfloat \
-	  $(GO_IMAGE) go build -ldflags="$(LDFLAGS)" -trimpath -o $@ ./cmd/sign-craze
+	  $(GO_IMAGE) go build -buildvcs=false -ldflags="$(LDFLAGS)" -trimpath -o $@ ./cmd/sign-craze
 
 upx: all
 	upx --lzma $(DIST)/sign-craze-*
