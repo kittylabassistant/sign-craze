@@ -1,0 +1,500 @@
+# Установка sign-craze
+
+Полная инструкция от чистой флешки до рабочего прокси на роутере Keenetic.
+
+> [!WARNING]
+> Все команды выполняются на ваш страх и риск. Перед форматированием убедитесь, что выбран правильный диск — ошибка может уничтожить данные на системном накопителе. Делайте резервную копию важных данных.
+
+## Содержание
+
+1. [Что понадобится](#1-что-понадобится)
+2. [Подготовка флешки: разметка + swap](#2-подготовка-флешки-разметка--swap)
+3. [Установка Entware на Keenetic](#3-установка-entware-на-keenetic)
+4. [Создание swap 1 GB](#4-создание-swap-1-gb)
+5. [Установка sign-craze](#5-установка-sign-craze)
+6. [Конфигурация sign-craze](#6-конфигурация-sign-craze)
+7. [Запуск](#7-запуск)
+8. [Web UI (опционально)](#8-web-ui-опционально)
+9. [Гео-фильтрация (опционально)](#9-гео-фильтрация-опционально)
+10. [Проверка прокси с клиента](#10-проверка-прокси-с-клиента)
+11. [Автозапуск после ребута](#11-автозапуск-после-ребута)
+12. [Диагностика при проблемах](#12-диагностика-при-проблемах)
+
+---
+
+## 1. Что понадобится
+
+- Роутер Keenetic с USB-портом и поддержкой OPKG (большинство моделей кроме самых младших).
+- USB-флешка **≥ 4 GB** (sign-craze + sing-box + geo-файлы + swap-файл 1 GB + запас под Entware).
+- ПК с Linux, macOS или Windows.
+- Подписка на VPN/прокси-сервис: URL формата `vless://...`, `vmess://...`, `ss://...`, `trojan://...`, `http://...` или `socks5://...`.
+- SSH-клиент (встроен в Linux/macOS, для Windows — PuTTY или встроенный `ssh.exe`).
+
+---
+
+## 2. Подготовка флешки: разметка + swap
+
+Цель: получить флешку с одним ext4-разделом (и опционально swap-разделом). Если хотите swap-файлом вместо раздела — оставьте всю флешку под ext4 и переходите к [шагу 4](#4-создание-swap-1-gb).
+
+Выберите **один из 6 методов** в зависимости от вашей ОС.
+
+### Метод A — Linux CLI (bash/parted)
+
+```bash
+# 1. Найти устройство флешки
+lsblk
+
+# Вы увидите примерно:
+#  sda      8:0    1   16G  0 disk
+#  └─sda1   8:1    1   16G  0 part
+# Запомните имя без цифры (sda, sdb, sdc...). НЕ перепутайте с системным диском!
+
+# 2. Размонтировать все разделы флешки
+sudo umount /dev/sdX*    # X = ваша буква, e.g. /dev/sdb*
+
+# 3. Очистить старые сигнатуры
+sudo wipefs -a /dev/sdX
+
+# 4. Вариант 1 — только ext4 (swap будет файлом, см. шаг 4):
+sudo parted /dev/sdX --script mklabel msdos
+sudo parted /dev/sdX --script mkpart primary ext4 1MiB 100%
+sudo mkfs.ext4 -L Entware /dev/sdX1
+
+# 4. Вариант 2 — ext4 + отдельный swap-раздел 1 GB:
+sudo parted /dev/sdX --script mklabel msdos
+sudo parted /dev/sdX --script mkpart primary ext4 1MiB -1024MiB
+sudo parted /dev/sdX --script mkpart primary linux-swap -1024MiB 100%
+sudo mkfs.ext4 -L Entware /dev/sdX1
+sudo mkswap -L SWAP /dev/sdX2
+
+# 5. Извлечь
+sudo eject /dev/sdX
+```
+
+### Метод B — macOS Terminal (через Homebrew)
+
+macOS не поддерживает ext4 нативно. Установите `e2fsprogs`:
+
+```bash
+# 1. Поставить e2fsprogs
+brew install e2fsprogs
+
+# 2. Найти диск
+diskutil list
+
+# Найдите вашу флешку (e.g. /dev/disk4). Будьте ОЧЕНЬ внимательны — внутренний SSD не трогать!
+
+# 3. Размонтировать
+diskutil unmountDisk /dev/diskN     # N = номер вашей флешки
+
+# 4. Стереть и создать MBR с одним пустым разделом
+diskutil eraseDisk free FREE MBR /dev/diskN
+diskutil partitionDisk /dev/diskN 1 MBR "Free Space" "FREE" 100%
+
+# 5. Отформатировать в ext4
+sudo $(brew --prefix e2fsprogs)/sbin/mkfs.ext4 -L Entware /dev/rdiskNs1
+
+# 6. Извлечь
+diskutil eject /dev/diskN
+```
+
+> [!NOTE]
+> После форматирования диск в Finder не появится — это нормально, macOS не умеет монтировать ext4 без сторонних драйверов. Swap делайте swap-файлом на роутере (шаг 4).
+
+### Метод C — Windows PowerShell + diskpart
+
+PowerShell сам ext4 не умеет. Сначала очистите флешку через `diskpart`, затем отформатируйте через GUI-утилиту (методы D/E/F).
+
+```powershell
+# Запустить PowerShell от имени администратора
+diskpart
+```
+
+В интерактивной сессии diskpart:
+
+```
+list disk
+select disk N            REM N — номер флешки. ОСТОРОЖНО!
+clean
+create partition primary
+exit
+```
+
+Далее перейдите к одному из GUI-методов (D, E или F) для форматирования в ext4.
+
+### Метод D — Paragon Partition Manager Free (Windows)
+
+1. Скачать с https://www.paragon-software.com/free/pm-express/ (Free версия).
+2. Установить и запустить от администратора.
+3. В списке дисков выбрать USB-флешку → правой кнопкой по разделу → **Format Partition**.
+4. **File system:** `Ext4`
+5. **Volume label:** `Entware`
+6. Нажать **Format** → затем **Apply Changes** в верхней панели.
+7. (Опционально) Создать второй раздел 1024 MB с типом **Linux Swap**.
+
+### Метод E — MiniTool Partition Wizard Free (Windows)
+
+1. Скачать с https://www.partitionwizard.com/free-partition-manager.html (Free).
+2. Установить и запустить от администратора.
+3. Выбрать USB-флешку → правой кнопкой по разделу → **Format Partition**.
+4. **File System:** `Ext4`, **Partition Label:** `Entware`.
+5. Нажать **OK** → затем **Apply** в нижнем левом углу.
+6. (Опционально) Свободное место → **Create** → **File System:** `Linux Swap`, **Size:** `1024 MB` → **Apply**.
+
+### Метод F — GParted Live USB (универсальный, Windows/macOS/Linux)
+
+Загрузочный диск с GParted работает на любом ПК.
+
+1. Скачать ISO: https://gparted.org/download.php
+2. Записать ISO на **отдельную** загрузочную флешку:
+   - Windows: [Rufus](https://rufus.ie/)
+   - macOS/Linux: [balenaEtcher](https://www.balena.io/etcher/) или `dd`
+3. Загрузиться с этой флешки (BIOS/UEFI Boot Menu, обычно `F12` / `F2` / `Esc` при включении).
+4. В GParted Live выбрать целевую флешку (правый верхний угол: **Device**).
+5. Создать таблицу разделов: **Device** → **Create Partition Table** → `msdos`.
+6. Создать ext4-раздел: правой кнопкой на свободном месте → **New** → **File system:** `ext4`, **Label:** `Entware`, размер = всё минус 1024 MB.
+7. Создать swap: правой кнопкой на оставшемся свободном месте → **New** → **File system:** `linux-swap`, размер `1024 MB`.
+8. **Edit** → **Apply All Operations** → подтвердить.
+9. Извлечь и подключить к роутеру.
+
+---
+
+## 3. Установка Entware на Keenetic
+
+### 3.1. Подготовка веб-интерфейса
+
+1. Открыть веб-интерфейс роутера (`http://192.168.1.1` или `http://my.keenetic.net`).
+2. **Общие настройки** → **Обновления и компоненты** → **Изменить набор компонентов**.
+3. Убедиться, что установлены:
+   - **OPKG** (менеджер пакетов)
+   - **Файловая система Ext4**
+   - **Файл подкачки** (для swap)
+4. Применить, дождаться перезагрузки.
+
+### 3.2. Подключение флешки
+
+1. Подключить отформатированную флешку к USB-порту роутера.
+2. Веб-интерфейс → **Приложения** → **USB-накопители**.
+3. Дождаться появления флешки в списке.
+
+### 3.3. Установка Entware через веб-интерфейс
+
+1. Веб-интерфейс → **Приложения** → раздел **OPKG**.
+2. **Включить** OPKG.
+3. **Накопитель:** выбрать раздел флешки (`Entware` если ставили label).
+4. Применить. Роутер скачает и установит Entware (~3–5 минут).
+
+### 3.4. Включение SSH
+
+1. Веб-интерфейс → **Управление** → **Пользователи и доступ**.
+2. Создать пользователя или выбрать существующего → дать права **admin**.
+3. Разрешить доступ по **SSH** для этого пользователя.
+
+### 3.5. Проверка по SSH
+
+```sh
+ssh admin@192.168.1.1     # либо адрес вашего роутера
+
+# Внутри сессии — попасть в Entware shell:
+opkg
+# или сразу:
+exec sh
+opkg update
+opkg install nano htop
+```
+
+> [!NOTE]
+> На некоторых прошивках Keenetic после `ssh admin@...` вы попадаете в CLI Keenetic, а не в Entware. Команда `exec sh` переключает в shell Entware. Альтернатива — `ssh root@...` если включён рутовый доступ.
+
+---
+
+## 4. Создание swap 1 GB
+
+Если в шаге 2 вы не создавали отдельный swap-раздел — используйте swap-файл (рекомендуется, проще).
+
+### 4.1. Swap-файл (рекомендуется)
+
+```sh
+# По SSH на роутере, в Entware shell
+
+# Создать файл 1 GB
+dd if=/dev/zero of=/opt/swap bs=1M count=1024
+chmod 600 /opt/swap
+mkswap /opt/swap
+swapon /opt/swap
+
+# Проверка
+free -m
+swapon -s
+```
+
+### 4.2. Автозапуск swap после ребута
+
+Создать init.d-скрипт `/opt/etc/init.d/S02swap`:
+
+```sh
+cat > /opt/etc/init.d/S02swap <<'EOF'
+#!/bin/sh
+ENABLED=yes
+PROCS=swapon
+ARGS="/opt/swap"
+PREARGS=""
+DESC=$PROCS
+PATH=/opt/sbin:/opt/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+. /opt/etc/init.d/rc.func
+EOF
+chmod +x /opt/etc/init.d/S02swap
+```
+
+### 4.3. Если swap-раздел был создан в шаге 2
+
+```sh
+# Найти swap-раздел
+blkid | grep swap
+# Например: /dev/sda2: LABEL="SWAP" TYPE="swap"
+
+swapon /dev/sda2
+free -m
+```
+
+Автозапуск аналогично — `S02swap` с `ARGS="/dev/sda2"`.
+
+---
+
+## 5. Установка sign-craze
+
+```sh
+# По SSH, в Entware shell на роутере
+wget -O - https://github.com/kittylabassistant/sign-craze/releases/latest/download/install.sh | sh
+```
+
+Скрипт автоматически:
+
+- Определит архитектуру (`mipsle` / `mips` / `arm7` / `arm64`).
+- Проверит свободное место на `/opt` (нужно ≥ 30 МБ).
+- Скачает соответствующий бинарь с GitHub Releases.
+- Проверит SHA256.
+- Атомарно установит в `/opt/sbin/sign-craze`.
+
+Проверка:
+
+```sh
+sign-craze --version
+```
+
+Ожидаемый вывод:
+
+```
+sign-craze v0.1.0 (commit abc1234, built 2026-04-29)
+sing-box: not installed
+```
+
+---
+
+## 6. Конфигурация sign-craze
+
+### 6.1. Интерактивная установка
+
+```sh
+sign-craze --install
+```
+
+Утилита спросит:
+
+1. **URL прокси / outbound** — вставьте ваш `vless://...` / `vmess://...` / `ss://...` / `trojan://...` / `http://...` / `socks5://...`.
+2. **Режим маршрутизации:**
+   - `proxy` — TPROXY через sing-box (по умолчанию)
+   - `dpi` — только nfqws2 + NFQUEUE (DPI-обход без proxy)
+   - `hybrid` — TPROXY + nfqws2 одновременно
+
+После завершения:
+
+- Скачается `sing-box` с GitHub Releases SagerNet → `/opt/sbin/sing-box`
+- Сгенерируется `/opt/etc/sign-craze/config.json` (TPROXY inbound на порту 7895, fwmark `0x53`)
+- При выборе `dpi`/`hybrid` — скачается `nfqws2` и сгенерируется `/opt/etc/sign-craze/nfqws2.conf`
+- Создастся init.d shim `/opt/etc/init.d/S05signcraze` для автозапуска
+
+### 6.2. Без вопросов
+
+```sh
+sign-craze --install-auto
+```
+
+Использует параметры по умолчанию: режим `proxy`, outbound берётся из переменной окружения `SIGN_CRAZE_OUTBOUND` или из конфига роутера.
+
+### 6.3. Из локального бинаря (offline)
+
+```sh
+sign-craze --install-offline /tmp/sing-box-1.10.0-linux-mipsle.tar.gz
+```
+
+---
+
+## 7. Запуск
+
+```sh
+sign-craze --start
+```
+
+Применит iptables/ipset правила и запустит sing-box (и nfqws2 в режимах `dpi`/`hybrid`).
+
+Проверка статуса:
+
+```sh
+sign-craze --status
+```
+
+Ожидаемый вывод:
+
+```
+sign-craze:  v0.1.0
+sing-box:    running, pid=1234, uptime=3s, version=1.10.0
+nfqws2:      stopped (mode=proxy)
+mode:        proxy
+firewall:    applied (tproxy port=7895, fwmark=0x53)
+ports:       80, 443
+excludes:    192.168.0.0/16, 10.0.0.0/8
+ui:          off
+```
+
+---
+
+## 8. Web UI (опционально)
+
+```sh
+sign-craze --ui on
+```
+
+Откроются два HTTP-сервиса:
+
+- `http://<router-ip>:9090` — **Zashboard SPA** (Clash-совместимая панель с трафиком, прокси, логами).
+- `http://<router-ip>:9091/api/status` — **admin REST API** (статус, конфиг, порты, исключения).
+
+### Авторизация
+
+Логин: `admin`. Пароль генерируется автоматически при первом включении UI и хранится в:
+
+```sh
+cat /opt/etc/sign-craze/admin.creds
+# admin:$2a$12$...   ← bcrypt-хэш, сам пароль выводится один раз при --ui on
+```
+
+Сменить пароль:
+
+```sh
+sign-craze --ui-passwd
+```
+
+---
+
+## 9. Гео-фильтрация (опционально)
+
+```sh
+sign-craze --update-geo
+```
+
+Скачивает SRS rule-set файлы с GitHub (manifest-driven, выборочная загрузка по SHA256). После обновления:
+
+```sh
+sign-craze --restart
+```
+
+---
+
+## 10. Проверка прокси с клиента
+
+С устройства, подключённого к роутеру (телефон/ноутбук):
+
+```sh
+# Внешний IP должен совпадать с IP outbound-сервера
+curl https://api.ipify.org
+curl https://ifconfig.me
+
+# Проверка задержки (должна быть выше прямой — трафик идёт через прокси)
+ping -c 5 1.1.1.1
+```
+
+Ресурсы для проверки утечек DNS / WebRTC / IP:
+
+- https://browserleaks.com/ip
+- https://ipleak.net
+- https://dnsleaktest.com
+
+Если внешний IP **совпадает** с outbound — прокси работает.
+
+---
+
+## 11. Автозапуск после ребута
+
+Уже настроен через `/opt/etc/init.d/S05signcraze` (создан в [шаге 6](#6-конфигурация-sign-craze)).
+
+Проверка:
+
+```sh
+reboot
+# Подождать 1–2 минуты пока роутер поднимется
+
+ssh admin@192.168.1.1
+exec sh
+sign-craze --status
+```
+
+Если status показывает `running` — автозапуск работает.
+
+---
+
+## 12. Диагностика при проблемах
+
+### 12.1. Команда диагностики
+
+```sh
+sign-craze --diag
+```
+
+Выведет PASS/WARN/FAIL по пунктам:
+
+- наличие бинарей (`sign-craze`, `sing-box`, `nfqws2`)
+- валидность конфигов
+- состояние init.d скриптов
+- iptables / ipset правила
+- маршруты и fwmark
+- DNS-резолвинг
+- свободное место на `/opt`
+- статус swap
+
+### 12.2. Логи
+
+```sh
+tail -f /opt/var/log/sign-craze/sign-craze.log
+tail -f /opt/var/log/sign-craze/sing-box.log
+```
+
+### 12.3. Проверка процессов
+
+```sh
+ps | grep -E 'sing-box|nfqws2|sign-craze'
+cat /opt/var/run/sign-craze-singbox.pid
+```
+
+### 12.4. Сброс состояния (если совсем плохо)
+
+```sh
+sign-craze --stop
+sign-craze --uninstall    # сохраняет конфиг
+sign-craze --install      # переустановка
+sign-craze --start
+```
+
+Полная очистка (включая конфиги и логи):
+
+```sh
+sign-craze --purge
+```
+
+### 12.5. Куда обращаться
+
+- **Issues:** https://github.com/kittylabassistant/sign-craze/issues
+- **BEHAVIOR_SPEC.md** — полное описание всех команд и инвариантов: https://github.com/kittylabassistant/sign-craze/blob/main/BEHAVIOR_SPEC.md
+
+При создании issue приложите вывод `sign-craze --diag`, версию роутера и прошивки Keenetic.
