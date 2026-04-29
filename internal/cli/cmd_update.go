@@ -67,25 +67,35 @@ func handleUpdateGeo(ctx context.Context, _ []string) error {
 
 // populateAndSaveIPSet декомпилирует .srs → CIDR → ipset signcraze_ipv4/ipv6
 // и сохраняет дамп в DefaultDumpFile. Файлы без CIDR (geosite-only) пропускаются.
+//
+// Если хотя бы один .srs обработан успешно — продолжаем; если ВСЕ декомпиляции
+// провалились (декомпилятор не работает или sing-box отсутствует) — error,
+// иначе ipset молча останется пустым и geo-фильтрация не заработает.
 func populateAndSaveIPSet(ctx context.Context, fileNames []string) error {
 	runner := newRunner()
 	var allV4, allV6 []netip.Prefix
+	srsTotal, srsOK := 0, 0
 
 	for _, name := range fileNames {
 		if !strings.HasSuffix(name, ".srs") {
 			continue
 		}
+		srsTotal++
 		srsPath := filepath.Join(geo.DefaultGeoDir, name)
 		prefixes, err := geo.DecompileSRS(ctx, runner, singbox.DefaultBinPath, srsPath)
 		if err != nil {
 			log.L().Debug("decompile пропущен", "file", name, "err", err)
 			continue
 		}
+		srsOK++
 		v4, v6 := geo.SplitByFamily(prefixes)
 		allV4 = append(allV4, v4...)
 		allV6 = append(allV6, v6...)
 	}
 
+	if srsTotal > 0 && srsOK == 0 {
+		return fmt.Errorf("decompile: 0/%d .srs файлов обработано (проверьте /opt/sbin/sing-box)", srsTotal)
+	}
 	if len(allV4) == 0 && len(allV6) == 0 {
 		return nil
 	}

@@ -190,6 +190,34 @@ func TestParse_Shadowsocks_Base64(t *testing.T) {
 	}
 }
 
+// TestParse_Shadowsocks_RejectsInvalidCipher — неподдерживаемый шифр должен
+// отвергаться парсером, а не пробрасываться в config.json для падения sing-box.
+func TestParse_Shadowsocks_RejectsInvalidCipher(t *testing.T) {
+	for _, bad := range []string{"rot13", "aes-1024-gcm", "rc4"} {
+		_, err := Parse("ss://" + bad + ":secret@1.1.1.1:8388")
+		if err == nil {
+			t.Errorf("ss с шифром %q должен быть отвергнут", bad)
+		}
+	}
+}
+
+// TestParse_Shadowsocks_ValidCiphers — стандартные sing-box шифры пропускаются.
+func TestParse_Shadowsocks_ValidCiphers(t *testing.T) {
+	good := []string{
+		"aes-128-gcm", "aes-256-gcm", "chacha20-ietf-poly1305",
+		"2022-blake3-aes-256-gcm",
+	}
+	for _, g := range good {
+		o, err := Parse("ss://" + g + ":pass@1.1.1.1:8388")
+		if err != nil {
+			t.Errorf("ss с шифром %q должен быть валиден: %v", g, err)
+		}
+		if o.Settings["method"] != g {
+			t.Errorf("method = %v, ожидалось %q", o.Settings["method"], g)
+		}
+	}
+}
+
 func TestParse_Errors(t *testing.T) {
 	cases := []struct {
 		in   string

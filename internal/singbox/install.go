@@ -2,6 +2,7 @@ package singbox
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"context"
 	"fmt"
@@ -94,8 +95,12 @@ func Install(ctx context.Context, runner exectx.Runner, tarPath, binDst, configP
 	return nil
 }
 
+// elfMagic — первые 4 байта Linux ELF-бинаря (\x7f E L F).
+var elfMagic = []byte{0x7f, 'E', 'L', 'F'}
+
 // extractBinary распаковывает tarball и возвращает содержимое бинаря sing-box.
-// Ищет файл с именем "sing-box" в любом подкаталоге архива.
+// Ищет файл с именем "sing-box" в любом подкаталоге архива и проверяет
+// ELF-magic — защита от подмены бинаря текстовым/script-файлом в tarball.
 func extractBinary(tarPath string) ([]byte, error) {
 	f, err := os.Open(tarPath)
 	if err != nil {
@@ -126,6 +131,10 @@ func extractBinary(tarPath string) ([]byte, error) {
 			data, err := io.ReadAll(tr)
 			if err != nil {
 				return nil, fmt.Errorf("чтение бинаря из tar: %w", err)
+			}
+			if len(data) < len(elfMagic) || !bytes.Equal(data[:len(elfMagic)], elfMagic) {
+				return nil, fmt.Errorf("singbox install: %s/sing-box не ELF-бинарь (magic=%x)",
+					filepath.Dir(hdr.Name), data[:min(len(elfMagic), len(data))])
 			}
 			return data, nil
 		}

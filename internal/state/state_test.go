@@ -107,6 +107,26 @@ func TestDefault_LocalNetsExcluded(t *testing.T) {
 	}
 }
 
+// TestState_Validate_RejectsInvalid — Save валидирует State и отвергает
+// невалидные значения (порт 0, неизвестный Mode).
+func TestState_Validate_RejectsInvalid(t *testing.T) {
+	cases := []struct {
+		name string
+		s    *State
+	}{
+		{"port 0", &State{Mode: "proxy", Ports: []uint16{0, 80}}},
+		{"unknown mode", &State{Mode: "evil"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := Save(filepath.Join(t.TempDir(), "s.json"), c.s)
+			if err == nil {
+				t.Errorf("ожидалась ошибка валидации")
+			}
+		})
+	}
+}
+
 func TestLoad_NormalisesNilSlices(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
 	if err := os.WriteFile(path, []byte(`{"mode":"proxy"}`), 0o600); err != nil {

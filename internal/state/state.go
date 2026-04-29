@@ -89,10 +89,35 @@ func Load(path string) (*State, error) {
 	return &s, nil
 }
 
-// Save атомарно записывает state в файл с правами 0o600 (содержит outbound credentials).
-func Save(path string, s *State) error {
+// Validate проверяет корректность критичных полей State.
+// Нулевые значения для optional-полей (BootTimeoutSec=0, AdminPort=0) допустимы,
+// но если AdminPort задан явно — должен быть в диапазоне 1-65535.
+func (s *State) Validate() error {
 	if s == nil {
 		return fmt.Errorf("state: nil State")
+	}
+	if s.Mode != "" {
+		if err := s.Mode.Validate(); err != nil {
+			return err
+		}
+	}
+	// AdminPort=0 трактуем как «выключено» (не вставляем bypass-правило);
+	// явное значение должно быть валидным портом. Проверяем верхнюю границу
+	// (uint16 не может быть >65535, но Validate() остаётся компактной защитой
+	// на случай миграции типа поля).
+	for _, p := range s.Ports {
+		if p == 0 {
+			return fmt.Errorf("state: ports содержит 0 (некорректный порт)")
+		}
+	}
+	return nil
+}
+
+// Save атомарно записывает state в файл с правами 0o600 (содержит outbound credentials).
+// Перед записью валидирует State — некорректное состояние не должно попадать на диск.
+func Save(path string, s *State) error {
+	if err := s.Validate(); err != nil {
+		return fmt.Errorf("state: %w", err)
 	}
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {

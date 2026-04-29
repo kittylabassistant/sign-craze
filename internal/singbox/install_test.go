@@ -15,7 +15,14 @@ import (
 )
 
 // makeTarball создаёт в памяти .tar.gz с одним файлом sing-box.
+// Префиксует content ELF-magic, чтобы пройти проверку extractBinary.
 func makeTarball(content []byte) []byte {
+	full := append([]byte{0x7f, 'E', 'L', 'F'}, content...)
+	return makeTarballRaw(full)
+}
+
+// makeTarballRaw кладёт content в архив без модификации.
+func makeTarballRaw(content []byte) []byte {
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
@@ -29,6 +36,18 @@ func makeTarball(content []byte) []byte {
 	_ = tw.Close()
 	_ = gz.Close()
 	return buf.Bytes()
+}
+
+// TestExtractBinary_RejectsNonELF — если файл sing-box в tarball не ELF,
+// extractBinary должен вернуть error до записи бинаря на диск.
+func TestExtractBinary_RejectsNonELF(t *testing.T) {
+	tarPath := filepath.Join(t.TempDir(), "sb.tar.gz")
+	_ = os.WriteFile(tarPath, makeTarballRaw([]byte("#!/bin/sh\necho fake")), 0o644)
+
+	_, err := extractBinary(tarPath)
+	if err == nil {
+		t.Fatal("ожидалась ошибка для non-ELF binary")
+	}
 }
 
 // TestPrepareAndValidate_OK — happy path: бинарь распакован во временный файл,
@@ -105,8 +124,10 @@ func TestExtractBinary_Found(t *testing.T) {
 	if err != nil {
 		t.Fatalf("extractBinary: %v", err)
 	}
-	if !bytes.Equal(got, content) {
-		t.Errorf("содержимое = %q, ожидалось %q", got, content)
+	// makeTarball префиксует ELF-magic, поэтому ожидаемое содержимое — magic+content
+	want := append([]byte{0x7f, 'E', 'L', 'F'}, content...)
+	if !bytes.Equal(got, want) {
+		t.Errorf("содержимое = %q, ожидалось %q", got, want)
 	}
 }
 
@@ -146,8 +167,9 @@ func TestInstall_Success(t *testing.T) {
 	}
 
 	got, _ := os.ReadFile(binDst)
-	if string(got) != "binary-v2" {
-		t.Errorf("установленный бинарь = %q, ожидалось %q", got, "binary-v2")
+	want := append([]byte{0x7f, 'E', 'L', 'F'}, []byte("binary-v2")...)
+	if !bytes.Equal(got, want) {
+		t.Errorf("установленный бинарь = %q, ожидалось %q", got, want)
 	}
 
 	info, _ := os.Stat(binDst)

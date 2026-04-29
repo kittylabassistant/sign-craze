@@ -278,6 +278,27 @@ func parseVMess(s string) (types.Outbound, error) {
 	}, nil
 }
 
+// validShadowsocksMethods — поддерживаемые шифры sing-box outbound type=shadowsocks.
+// Whitelist отвергает невалидные method'ы на уровне парсера, чтобы sing-box check
+// не падал с криптической ошибкой позже.
+var validShadowsocksMethods = map[string]bool{
+	"none":                          true,
+	"aes-128-gcm":                   true,
+	"aes-192-gcm":                   true,
+	"aes-256-gcm":                   true,
+	"aes-128-ctr":                   true,
+	"aes-192-ctr":                   true,
+	"aes-256-ctr":                   true,
+	"aes-128-cfb":                   true,
+	"aes-192-cfb":                   true,
+	"aes-256-cfb":                   true,
+	"chacha20-ietf-poly1305":        true,
+	"xchacha20-ietf-poly1305":       true,
+	"2022-blake3-aes-128-gcm":       true,
+	"2022-blake3-aes-256-gcm":       true,
+	"2022-blake3-chacha20-poly1305": true,
+}
+
 func parseShadowsocks(s string) (types.Outbound, error) {
 	const prefix = "ss://"
 	if !strings.HasPrefix(s, prefix) {
@@ -313,6 +334,10 @@ func parseShadowsocks(s string) (types.Outbound, error) {
 			parts := strings.SplitN(userPart, ":", 2)
 			method = parts[0]
 			password = parts[1]
+		}
+
+		if !validShadowsocksMethods[method] {
+			return types.Outbound{}, fmt.Errorf("proxyparse ss: неподдерживаемый шифр %q", method)
 		}
 
 		host, port, err := splitHostPort(hostPart)
