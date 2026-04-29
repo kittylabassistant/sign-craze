@@ -21,7 +21,7 @@ Go-утилита для управления межсетевым экрано�
 
 ---
 
-![sign-craze](img/banner.png)
+![sign-craze](img/banner_release.jpg)
 
 ## Возможности
 

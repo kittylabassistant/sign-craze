@@ -1,4 +1,4 @@
-![sign-craze](https://raw.githubusercontent.com/kittylabassistant/sign-craze/main/img/banner.png)
+![sign-craze](https://raw.githubusercontent.com/kittylabassistant/sign-craze/main/img/banner_release.jpg)
 
 # sign-craze
 
@@ -74,9 +74,9 @@ Go-утилита для управления межсетевым экрано�
 
 ## Полезные ссылки
 
-- **Репозиторий:** https://github.com/kittylabassistant/sign-craze
-- **Releases:** https://github.com/kittylabassistant/sign-craze/releases
-- **Issues:** https://github.com/kittylabassistant/sign-craze/issues
+- **Репозиторий:** <https://github.com/kittylabassistant/sign-craze>
+- **Releases:** <https://github.com/kittylabassistant/sign-craze/releases>
+- **Issues:** <https://github.com/kittylabassistant/sign-craze/issues>
 - **README:** [README.md](https://github.com/kittylabassistant/sign-craze/blob/main/README.md)
 - **Поведенческая спецификация:** [BEHAVIOR_SPEC.md](https://github.com/kittylabassistant/sign-craze/blob/main/BEHAVIOR_SPEC.md)
 - **Архитектура:** [docs/ARCHITECTURE.md](https://github.com/kittylabassistant/sign-craze/blob/main/docs/ARCHITECTURE.md)
