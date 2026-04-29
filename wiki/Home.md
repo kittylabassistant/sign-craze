@@ -15,7 +15,7 @@ Go-утилита для управления межсетевым экрано�
 ## Навигация по wiki
 
 | Страница | Содержание |
-|----------|-----------|
+| ---------- | ----------- |
 | **[Installation](Installation)** | Пошаговая инструкция: от форматирования флешки до запуска прокси |
 | **[FAQ](FAQ)** | Частые вопросы (в разработке) |
 
@@ -33,7 +33,7 @@ Go-утилита для управления межсетевым экрано�
 ## Поддерживаемые архитектуры
 
 | Платформа | GOARCH | Примечание |
-|-----------|--------|-----------|
+| ----------- | -------- | ----------- |
 | Keenetic (MIPS LE) | `mipsle` | GOMIPS=softfloat |
 | Keenetic (MIPS BE) | `mips` | GOMIPS=softfloat |
 | Keenetic / RPi (ARM 32) | `arm` | GOARM=7 |
@@ -44,7 +44,7 @@ Go-утилита для управления межсетевым экрано�
 ## Состояние разработки
 
 | Фаза | Статус | Содержание |
-|------|--------|-----------|
+| ------ | -------- | ----------- |
 | Phase 0 — подготовка | ✅ | go.mod, Makefile, CI, BEHAVIOR_SPEC.md, docs |
 | Phase 1 — scaffold | ✅ | cli, log, locks, exectx, errors, atomicfs, version, types |
 | Phase 2 — sing-box | ✅ | download, install, config template, service shim, lifecycle |
