@@ -4,6 +4,8 @@ import (
 	"embed"
 	"io/fs"
 	"net/http"
+	"path"
+	"strings"
 )
 
 // assets содержит встроенный Zashboard (git submodule).
@@ -39,21 +41,45 @@ func newSPAHandler() http.Handler {
 
 func (h *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Проверяем, существует ли запрошенный файл в embed.FS
-	path := r.URL.Path
-	if path == "" || path == "/" {
-		path = "index.html"
+	urlPath := r.URL.Path
+	if urlPath == "" || urlPath == "/" {
+		urlPath = "index.html"
 	}
-	if path[0] == '/' {
-		path = path[1:]
+	if urlPath[0] == '/' {
+		urlPath = urlPath[1:]
 	}
 
-	if _, err := fs.Stat(h.fs, path); err == nil {
+	if _, err := fs.Stat(h.fs, urlPath); err == nil {
 		h.file.ServeHTTP(w, r)
 		return
 	}
 
-	// Файл не найден → SPA fallback: отдаём index.html
+	// SPA fallback: отдаём index.html ТОЛЬКО для путей, похожих на маршруты приложения
+	// (без файлового расширения или с .html). Запросы к /etc/passwd, /admin.creds,
+	// /favicon.ico на несуществующее → 404, чтобы не маскировать misconfiguration.
+	if !looksLikeSPARoute(urlPath) {
+		http.NotFound(w, r)
+		return
+	}
+
 	r2 := r.Clone(r.Context())
 	r2.URL.Path = "/"
 	h.file.ServeHTTP(w, r2)
+}
+
+// looksLikeSPARoute возвращает true, если путь похож на client-side маршрут SPA
+// (без файлового расширения или с .html). Любые расширения (.js, .css, .png, ...)
+// должны существовать в FS — иначе это 404, а не fallback.
+func looksLikeSPARoute(p string) bool {
+	if p == "" || p == "index.html" {
+		return true
+	}
+	if strings.ContainsAny(p, "\\") {
+		return false
+	}
+	ext := path.Ext(p)
+	if ext == "" || ext == ".html" {
+		return true
+	}
+	return false
 }

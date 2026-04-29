@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -47,8 +48,10 @@ func (s *Server) apiConfigGet(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(data) //nolint:errcheck
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if _, wErr := w.Write(data); wErr != nil {
+		slog.Warn("web: запись config response", "err", wErr)
+	}
 }
 
 func (s *Server) apiConfigPost(w http.ResponseWriter, r *http.Request) {
@@ -59,7 +62,8 @@ func (s *Server) apiConfigPost(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
 	var raw json.RawMessage
 	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
-		http.Error(w, "неверный JSON: "+err.Error(), http.StatusBadRequest)
+		slog.Debug("web: decode config", "err", err)
+		http.Error(w, "неверный JSON", http.StatusBadRequest)
 		return
 	}
 	if err := s.cfg.Config.WriteConfig(r.Context(), raw); err != nil {
@@ -92,7 +96,8 @@ func (s *Server) apiPortsAdd(w http.ResponseWriter, r *http.Request) {
 		Port int `json:"port"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, "неверный JSON: "+err.Error(), http.StatusBadRequest)
+		slog.Debug("web: decode port", "err", err)
+		http.Error(w, "неверный JSON", http.StatusBadRequest)
 		return
 	}
 	if body.Port < 1 || body.Port > 65535 {
@@ -147,7 +152,8 @@ func (s *Server) apiExcludesAdd(w http.ResponseWriter, r *http.Request) {
 		CIDR string `json:"cidr"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, "неверный JSON: "+err.Error(), http.StatusBadRequest)
+		slog.Debug("web: decode exclude", "err", err)
+		http.Error(w, "неверный JSON", http.StatusBadRequest)
 		return
 	}
 	if body.CIDR == "" {

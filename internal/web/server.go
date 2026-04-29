@@ -5,8 +5,23 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 )
+
+// adminUsername — единственный допустимый логин Basic Auth.
+const adminUsername = "admin"
+
+// nonWSWriteDeadline — таймаут записи для не-WebSocket Clash-роутов.
+// Защита от slowloris: WriteTimeout всего сервера = 0 (для WS), но обычные
+// HTTP-роуты не должны висеть бесконечно.
+const nonWSWriteDeadline = 30 * time.Second
+
+// wsRoutes — пути, исключённые из WriteDeadline (поток данных, может идти долго).
+var wsRoutes = map[string]struct{}{
+	"/traffic": {},
+	"/logs":    {},
+}
 
 // ServerConfig содержит зависимости и параметры сервера.
 type ServerConfig struct {
@@ -42,18 +57,24 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	registerAdminRoutes(adminMux, s)
 
 	s.clash = &http.Server{
-		Addr:         ":9090",
-		Handler:      recoverMiddleware(s.basicAuth(clashMux)),
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 0, // 0 — для WebSocket: без таймаута записи
-		IdleTimeout:  60 * time.Second,
+		Addr: ":9090",
+		Handler: recoverMiddleware(securityHeaders(s.basicAuth(
+			perRouteWriteDeadline(clashMux),
+		))),
+		ReadTimeout:    15 * time.Second,
+		WriteTimeout:   0, // 0 — для WebSocket; non-WS-роуты получают deadline через perRouteWriteDeadline
+		IdleTimeout:    60 * time.Second,
+		MaxHeaderBytes: 8 * 1024,
 	}
 	s.admin = &http.Server{
-		Addr:         ":9091",
-		Handler:      recoverMiddleware(s.basicAuth(adminMux)),
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr: ":9091",
+		Handler: recoverMiddleware(securityHeaders(s.basicAuth(
+			originGuard(adminMux),
+		))),
+		ReadTimeout:    15 * time.Second,
+		WriteTimeout:   30 * time.Second,
+		IdleTimeout:    60 * time.Second,
+		MaxHeaderBytes: 8 * 1024,
 	}
 
 	return s, nil
@@ -109,11 +130,80 @@ func (s *Server) Stop(ctx context.Context) error {
 // basicAuth — middleware: требует Basic Auth (логин admin, пароль из admin.creds).
 func (s *Server) basicAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, password, ok := r.BasicAuth()
-		if !ok || CheckPassword(s.creds, password) != nil {
+		user, password, ok := r.BasicAuth()
+		if !ok || user != adminUsername || CheckPassword(s.creds, password) != nil {
 			w.Header().Set("WWW-Authenticate", `Basic realm="sign-craze"`)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// securityHeaders проставляет защитные заголовки на каждый ответ.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'")
+		next.ServeHTTP(w, r)
+	})
+}
+
+// originGuard защищает state-changing запросы от CSRF: Origin должен совпадать с Host.
+// Применяется только к POST/PUT/DELETE/PATCH; GET/HEAD пропускаются.
+func originGuard(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet, http.MethodHead, http.MethodOptions:
+			next.ServeHTTP(w, r)
+			return
+		}
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			// Нет Origin → потенциально curl/CLI, но в браузере он всегда выставляется.
+			// Для admin API требуем явного Origin, чтобы исключить CSRF-формы.
+			referer := r.Header.Get("Referer")
+			if referer == "" {
+				http.Error(w, "Forbidden: Origin required", http.StatusForbidden)
+				return
+			}
+			origin = referer
+		}
+		if !sameHostOrigin(origin, r.Host) {
+			http.Error(w, "Forbidden: cross-origin", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// sameHostOrigin проверяет, что origin указывает на тот же host, что и Host-header.
+// Сравнение чувствительно к порту: http://localhost:9091 ↔ Host: localhost:9091.
+func sameHostOrigin(origin, host string) bool {
+	// Origin формата scheme://host[:port][/...].
+	idx := strings.Index(origin, "://")
+	if idx < 0 {
+		return false
+	}
+	rest := origin[idx+3:]
+	if slash := strings.Index(rest, "/"); slash >= 0 {
+		rest = rest[:slash]
+	}
+	return rest == host
+}
+
+// perRouteWriteDeadline ставит WriteDeadline на ответ, если path не относится к WS.
+// Защита от slowloris для Clash-сервера, у которого WriteTimeout=0 ради WebSocket.
+func perRouteWriteDeadline(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, isWS := wsRoutes[r.URL.Path]; !isWS {
+			rc := http.NewResponseController(w)
+			if err := rc.SetWriteDeadline(time.Now().Add(nonWSWriteDeadline)); err != nil {
+				slog.Debug("web: SetWriteDeadline", "err", err)
+			}
 		}
 		next.ServeHTTP(w, r)
 	})

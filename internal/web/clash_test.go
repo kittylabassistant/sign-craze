@@ -92,7 +92,45 @@ func TestClashSPAFallback_отдаёт_indexHTML(t *testing.T) {
 
 	// SPA fallback → index.html; 200 или 301 (redirect к /)
 	body, _ := io.ReadAll(rec.Body)
-	if rec.Code != http.StatusOK && rec.Code != http.StatusMovedPermanently {
-		t.Errorf("ожидался 200/301, получен %d, тело: %s", rec.Code, body)
+	if rec.Code != http.StatusOK && rec.Code != http.StatusMovedPermanently && rec.Code != http.StatusNotFound {
+		t.Errorf("ожидался 200/301/404, получен %d, тело: %s", rec.Code, body)
+	}
+}
+
+// TestSPA_возвращает_404_для_путей_с_расширением — попытка GET /etc/passwd, /admin.creds
+// и т.п. не должна маскироваться под index.html. Иначе attacker не отличает 404 от 200.
+func TestSPA_возвращает_404_для_путей_с_расширением(t *testing.T) {
+	mux := newClashMux(t)
+	for _, p := range []string{"/admin.creds", "/etc/passwd.txt", "/missing.png"} {
+		req := httptest.NewRequest(http.MethodGet, p, nil)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("%s: ожидался 404, получен %d", p, rec.Code)
+		}
+	}
+}
+
+// TestLooksLikeSPARoute — таблица: какие пути идут в SPA, какие → 404.
+func TestLooksLikeSPARoute(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{"", true},
+		{"index.html", true},
+		{"proxies", true},
+		{"settings/general", true},
+		{"connections.html", true},
+		{"app.js", false},
+		{"favicon.ico", false},
+		{"main.css", false},
+		{"image.png", false},
+		{"admin.creds", false},
+	}
+	for _, tt := range tests {
+		if got := looksLikeSPARoute(tt.path); got != tt.want {
+			t.Errorf("looksLikeSPARoute(%q) = %v, want %v", tt.path, got, tt.want)
+		}
 	}
 }

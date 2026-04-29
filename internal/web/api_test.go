@@ -212,6 +212,28 @@ func TestAPIConfigPost_BodyTooLarge(t *testing.T) {
 	}
 }
 
+// TestAPIPortsAdd_ошибка_JSON_не_содержит_деталей_Go — error response не должен
+// раскрывать внутренние Go-типы (info leak fingerprint).
+func TestAPIPortsAdd_ошибка_JSON_не_содержит_деталей_Go(t *testing.T) {
+	stub := &stubPorts{}
+	mux, _ := newAdminMux(t, ServerConfig{Ports: stub})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/ports", bytes.NewReader([]byte(`{"port": "abc"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("ожидался 400, получен %d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, leak := range []string{"json:", "Go", "type "} {
+		if bytes.Contains([]byte(body), []byte(leak)) {
+			t.Errorf("response утечка %q: %q", leak, body)
+		}
+	}
+}
+
 type stubConfig struct{ written []byte }
 
 func (s *stubConfig) ReadConfig(_ context.Context) ([]byte, error) { return s.written, nil }
