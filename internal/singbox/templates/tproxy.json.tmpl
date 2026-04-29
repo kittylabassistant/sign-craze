@@ -1,6 +1,6 @@
 {
   "log": {
-    "level": "{{ .LogLevel }}",
+    "level": {{ jsonMarshal .LogLevel }},
     "output": "/opt/var/log/sign-craze/sing-box.log",
     "timestamp": true
   },
@@ -46,11 +46,11 @@
       }{{ end }}{{ if .Routing.GeoSiteProxy }},
       {
         "rule_set": {{ jsonMarshal .Routing.GeoSiteProxy }},
-        "outbound": "{{ .DefaultOutboundTag }}"
+        "outbound": {{ jsonMarshal .DefaultOutboundTag }}
       }{{ end }}
     ],
     "rule_set": {{ jsonMarshal .RuleSets }},
-    "final": "{{ if .Routing.FinalOutbound }}{{ .Routing.FinalOutbound }}{{ else }}{{ .DefaultOutboundTag }}{{ end }}",
+    "final": {{ if .Routing.FinalOutbound }}{{ jsonMarshal .Routing.FinalOutbound }}{{ else }}{{ jsonMarshal .DefaultOutboundTag }}{{ end }},
     "auto_detect_interface": true
   },
   "dns": {
@@ -58,7 +58,7 @@
       {
         "tag": "remote",
         "address": "tls://8.8.8.8",
-        "detour": "{{ .DefaultOutboundTag }}"
+        "detour": {{ jsonMarshal .DefaultOutboundTag }}
       },
       {
         "tag": "local",

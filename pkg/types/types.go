@@ -4,8 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/netip"
+	"regexp"
 	"runtime"
 )
+
+// outboundTagRe — допустимый формат тега outbound. Запрещаем кавычки, пробелы,
+// JSON-meta-символы — это устраняет template-injection в config.json (sing-box
+// требует JSON-валидного тега в строковых полях rules/dns).
+var outboundTagRe = regexp.MustCompile(`^[a-zA-Z0-9._-]{1,64}$`)
 
 // Mode — режим маршрутизации трафика.
 type Mode string
@@ -153,15 +159,25 @@ func (o Outbound) MarshalJSON() ([]byte, error) {
 }
 
 // Validate проверяет обязательные поля Outbound.
+//
+// Server/Port не требуются для type=direct/block/dns (служебные outbound'ы
+// sing-box без удалённого endpoint'а).
 func (o Outbound) Validate() error {
 	if o.Tag == "" {
 		return fmt.Errorf("outbound.Tag не может быть пустым")
 	}
+	if !outboundTagRe.MatchString(o.Tag) {
+		return fmt.Errorf("outbound.Tag %q: допустимы только [a-zA-Z0-9._-], 1-64 символов", o.Tag)
+	}
 	if o.Type == "" {
 		return fmt.Errorf("outbound.Type не может быть пустым")
 	}
+	switch o.Type {
+	case "direct", "block", "dns":
+		return nil
+	}
 	if o.Server == "" {
-		return fmt.Errorf("outbound.Server не может быть пустым")
+		return fmt.Errorf("outbound.Server не может быть пустым (type=%s)", o.Type)
 	}
 	return o.Port.Validate()
 }

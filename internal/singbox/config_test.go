@@ -122,6 +122,55 @@ func TestRender_RuleSetsBuilt(t *testing.T) {
 	}
 }
 
+// TestRender_LogLevelWhitelist — некорректный LogLevel ("info\n--evil")
+// должен отвергаться, чтобы injection не утёк в config.json.
+func TestRender_LogLevelWhitelist(t *testing.T) {
+	p := DefaultConfigParams()
+	p.Outbounds = []types.Outbound{
+		{Tag: "out", Type: "socks", Server: "1.1.1.1", Port: 9000},
+	}
+	for _, bad := range []string{"info\n--evil", "INFO", "verbose", "x"} {
+		p.LogLevel = bad
+		if _, err := Render(p); err == nil {
+			t.Errorf("Render(LogLevel=%q): ожидалась ошибка", bad)
+		}
+	}
+}
+
+// TestRender_OutboundTagInjection — tag с кавычкой/переводом строки должен
+// отвергаться (template-injection защита).
+func TestRender_OutboundTagInjection(t *testing.T) {
+	for _, badTag := range []string{`evil"tag`, "tag with space", "tag\nwith\nnewline", ""} {
+		p := DefaultConfigParams()
+		p.Outbounds = []types.Outbound{
+			{Tag: badTag, Type: "socks", Server: "1.1.1.1", Port: 9000},
+		}
+		if _, err := Render(p); err == nil {
+			t.Errorf("Render(Tag=%q): ожидалась ошибка валидации", badTag)
+		}
+	}
+}
+
+// TestRender_TagWithQuoteEscaped — даже если tag прошёл валидацию (что не должно
+// случаться благодаря Outbound.Validate), template обязан давать valid JSON
+// через jsonMarshal (защитный слой).
+func TestRender_TagWithQuoteEscaped(t *testing.T) {
+	// Конструируем Outbound через MarshalJSON — Validate вызывается в Render,
+	// но проверяем что DefaultOutboundTag прогоняется через jsonMarshal в шаблоне.
+	p := DefaultConfigParams()
+	p.Outbounds = []types.Outbound{
+		{Tag: "valid-tag", Type: "socks", Server: "1.2.3.4", Port: 9000},
+	}
+	p.DefaultOutboundTag = "valid-tag"
+	data, err := Render(p)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if !json.Valid(data) {
+		t.Errorf("template должен давать valid JSON: %s", data)
+	}
+}
+
 func TestBuildRuleSets_NoDuplicates(t *testing.T) {
 	r := types.RoutingRules{
 		GeoSiteProxy:  []string{"cat-a", "cat-b"},

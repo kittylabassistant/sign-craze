@@ -193,3 +193,23 @@ func TestOutbound_Validate(t *testing.T) {
 		t.Error("ожидалась ошибка при Port=0")
 	}
 }
+
+// TestOutbound_TagFormat — некорректный tag (кавычки, пробелы, JSON-meta)
+// отвергается. Защита от template-injection в config.json.
+func TestOutbound_TagFormat(t *testing.T) {
+	good := []string{"proxy", "vless-proxy", "tag_with_underscore", "tag.dot", "a-b.c_d-e", "x"}
+	bad := []string{"", `tag"with-quote`, "tag with space", "tag\nnewline", "<script>", "тег-кириллица", "a/b"}
+
+	for _, tag := range good {
+		o := Outbound{Tag: tag, Type: "socks", Server: "1.2.3.4", Port: 1080}
+		if err := o.Validate(); err != nil {
+			t.Errorf("Tag=%q должен быть валиден: %v", tag, err)
+		}
+	}
+	for _, tag := range bad {
+		o := Outbound{Tag: tag, Type: "socks", Server: "1.2.3.4", Port: 1080}
+		if err := o.Validate(); err == nil {
+			t.Errorf("Tag=%q должен быть отвергнут", tag)
+		}
+	}
+}

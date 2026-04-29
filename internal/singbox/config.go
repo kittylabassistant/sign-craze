@@ -18,6 +18,18 @@ import (
 //go:embed templates/tproxy.json.tmpl
 var tproxyTmpl string
 
+// validLogLevels — разрешённые значения LogLevel sing-box. Whitelisted, чтобы
+// state.json с инжекцией ("info\n--evil") не утёк в config.json.
+var validLogLevels = map[string]bool{
+	"trace": true,
+	"debug": true,
+	"info":  true,
+	"warn":  true,
+	"error": true,
+	"fatal": true,
+	"panic": true,
+}
+
 // ConfigParams задаёт параметры для генерации конфига sing-box.
 type ConfigParams struct {
 	Mode               types.Mode
@@ -62,8 +74,16 @@ func Render(p ConfigParams) ([]byte, error) {
 	if p.LogLevel == "" {
 		p.LogLevel = "info"
 	}
+	if !validLogLevels[p.LogLevel] {
+		return nil, fmt.Errorf("singbox config: некорректный LogLevel %q (допустимо: trace/debug/info/warn/error/fatal/panic)", p.LogLevel)
+	}
 	if p.DefaultOutboundTag == "" && len(p.Outbounds) > 0 {
 		p.DefaultOutboundTag = p.Outbounds[0].Tag
+	}
+	for _, o := range p.Outbounds {
+		if err := o.Validate(); err != nil {
+			return nil, fmt.Errorf("singbox config: %w", err)
+		}
 	}
 	p.RuleSets = buildRuleSets(p.Routing)
 
