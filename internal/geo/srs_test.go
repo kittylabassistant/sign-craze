@@ -160,6 +160,41 @@ func TestUpdate_ОтклоняетНесовпадающийSHA256(t *testing.T)
 	}
 }
 
+// TestUpdate_RejectsHugeContentLength — Content-Length > MaxGeoFileSize
+// должен отвергаться до начала записи (защита от malicious mirror).
+func TestUpdate_RejectsHugeContentLength(t *testing.T) {
+	content := []byte("real-content")
+	m := Manifest{
+		Version: "v1",
+		Files:   []ManifestEntry{{Name: "geo.srs", SHA256: sha256Hex(content), Size: int64(len(content))}},
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/manifest.json", func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(m) //nolint:errcheck
+	})
+	mux.HandleFunc("/geo.srs", func(w http.ResponseWriter, _ *http.Request) {
+		// Лжём про Content-Length, чтобы сэмулировать malicious response.
+		w.Header().Set("Content-Length", "9999999999")
+		w.Write(content) //nolint:errcheck
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	oldM, oldD := manifestURLVar, downloadBaseURLVar
+	manifestURLVar = srv.URL + "/manifest.json"
+	downloadBaseURLVar = srv.URL + "/"
+	defer func() { manifestURLVar, downloadBaseURLVar = oldM, oldD }()
+
+	geoDir := t.TempDir()
+	_, err := Update(context.Background(), []string{"geo.srs"}, geoDir)
+	if err == nil {
+		t.Fatal("ожидалась ошибка для огромного Content-Length")
+	}
+	if _, statErr := os.Stat(filepath.Join(geoDir, "geo.srs")); statErr == nil {
+		t.Error("файл не должен был быть записан при превышении лимита")
+	}
+}
+
 func TestLocalSHA256_СовпадаетСЭталонным(t *testing.T) {
 	data := []byte("test data for hashing")
 	expected := sha256Hex(data)

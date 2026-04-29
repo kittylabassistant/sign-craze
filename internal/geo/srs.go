@@ -20,7 +20,11 @@ const (
 	// DefaultGeoDir — директория хранения .srs файлов на роутере.
 	DefaultGeoDir = "/opt/var/lib/sign-craze/geo/"
 
-	// manifestURL и downloadBaseURL переопределяются в тестах через var.
+	// MaxGeoFileSize — лимит на размер одного скачиваемого .srs.
+	// 128MB-роутер не должен ловить OOM от malicious mirror, отдающего
+	// бесконечный поток или Content-Length 10GB. 50MB — больше любого
+	// реалистичного geo-файла (geoip-cn ~10MB, geosite ~5MB).
+	MaxGeoFileSize int64 = 50 * 1024 * 1024
 )
 
 // manifestURLVar и downloadBaseURLVar — var для подмены в тестах через httptest.Server.
@@ -127,6 +131,10 @@ func Update(ctx context.Context, needed []string, geoDir string) (int, error) {
 // streamDownloadAndWrite скачивает .srs потоково в localPath, считая SHA256
 // через io.MultiWriter — без буферизации в RAM (safety-fixes #14).
 // Возвращает hex SHA256 успешно записанного файла.
+//
+// Защита от malicious mirror: до начала записи отбрасывается ответ с
+// Content-Length > MaxGeoFileSize; chunked-стрим обрезается LimitReader, и
+// если поток превысил лимит — возвращается error.
 func streamDownloadAndWrite(ctx context.Context, name, localPath string) (string, error) {
 	url := downloadBaseURLVar + name
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -145,12 +153,37 @@ func streamDownloadAndWrite(ctx context.Context, name, localPath string) (string
 		return "", fmt.Errorf("HTTP %d для %s", resp.StatusCode, url)
 	}
 
+	if resp.ContentLength > MaxGeoFileSize {
+		return "", fmt.Errorf("geo: размер %s = %d байт превышает лимит %d", name, resp.ContentLength, MaxGeoFileSize)
+	}
+
+	// LimitReader на (MaxGeoFileSize+1): если read == limit+1 — поток превысил лимит.
+	limited := io.LimitReader(resp.Body, MaxGeoFileSize+1)
+
 	hasher := sha256.New()
-	tee := io.TeeReader(resp.Body, hasher)
-	if err := atomicfs.WriteFileAtomicFromReader(localPath, tee, 0o644); err != nil {
+	tee := io.TeeReader(limited, hasher)
+	cw := &countingReader{r: tee}
+	if err := atomicfs.WriteFileAtomicFromReader(localPath, cw, 0o644); err != nil {
 		return "", err
 	}
+	if cw.n > MaxGeoFileSize {
+		_ = os.Remove(localPath)
+		return "", fmt.Errorf("geo: %s превысил лимит %d байт (chunked-стрим)", name, MaxGeoFileSize)
+	}
 	return hex.EncodeToString(hasher.Sum(nil)), nil
+}
+
+// countingReader подсчитывает прочитанные байты — для проверки лимита поверх
+// LimitReader (LimitReader сам по себе не сообщает «достиг лимита»).
+type countingReader struct {
+	r io.Reader
+	n int64
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n += int64(n)
+	return n, err
 }
 
 // localSHA256 вычисляет SHA256 файла по пути. Возвращает пустую строку если файл не существует.
