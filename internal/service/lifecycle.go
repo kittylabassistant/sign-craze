@@ -207,10 +207,31 @@ func readPID(path string) (int, error) {
 	return pid, nil
 }
 
-// processAlive возвращает true если процесс с данным PID существует в /proc.
+// processAlive возвращает true если процесс с данным PID существует и НЕ зомби.
+// Зомби-процесс остаётся в /proc до тех пор, пока родитель не вызовет Wait();
+// для целей stabilization-проверки и Status() — он уже мёртв.
 func processAlive(pid int) bool {
-	_, err := os.Stat(fmt.Sprintf("/proc/%d", pid))
-	return err == nil
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/status", pid))
+	if err != nil {
+		return false
+	}
+	// /proc/<pid>/status содержит строку "State:\tX (descriptive)".
+	// Z = zombie, X = dead. Любое другое — живой.
+	for _, line := range strings.Split(string(data), "\n") {
+		if !strings.HasPrefix(line, "State:") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			return true // строка без значения — считаем живым
+		}
+		switch fields[1] {
+		case "Z", "X":
+			return false
+		}
+		return true
+	}
+	return true
 }
 
 // waitAlive опрашивает /proc/<pid> до timeout.
