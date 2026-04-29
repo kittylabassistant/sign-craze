@@ -64,6 +64,92 @@ func TestParse_VLESS(t *testing.T) {
 	}
 }
 
+// TestParseVLESS_Reality — Reality-параметры (pbk/sid/fp) маппятся в tls.reality + tls.utls.
+func TestParseVLESS_Reality(t *testing.T) {
+	url := "vless://uuid-1@srv:443?security=reality&encryption=none&flow=xtls-rprx-vision" +
+		"&pbk=PUBLIC_KEY&sid=01ab&fp=chrome&sni=example.com&type=tcp"
+	o, err := Parse(url)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	tls, ok := o.Settings["tls"].(map[string]any)
+	if !ok {
+		t.Fatalf("settings.tls не объект: %+v", o.Settings["tls"])
+	}
+	if tls["enabled"] != true {
+		t.Errorf("tls.enabled должно быть true: %+v", tls)
+	}
+	if tls["server_name"] != "example.com" {
+		t.Errorf("tls.server_name = %v, ожидалось example.com", tls["server_name"])
+	}
+	utls, _ := tls["utls"].(map[string]any)
+	if utls["enabled"] != true || utls["fingerprint"] != "chrome" {
+		t.Errorf("tls.utls некорректен: %+v", utls)
+	}
+	reality, _ := tls["reality"].(map[string]any)
+	if reality["enabled"] != true || reality["public_key"] != "PUBLIC_KEY" || reality["short_id"] != "01ab" {
+		t.Errorf("tls.reality некорректен: %+v", reality)
+	}
+}
+
+// TestParseVLESS_PostQuantum — encryption=mlkem768x25519plus + mldsa65 поля.
+func TestParseVLESS_PostQuantum(t *testing.T) {
+	url := "vless://uuid-1@srv:443?security=reality&encryption=mlkem768x25519plus" +
+		"&pbk=PK&sid=ab&mldsa65Verify=VERIFY_KEY&mldsa65Seed=SEED_VAL&fp=chrome"
+	o, err := Parse(url)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	if o.Settings["encryption"] != "mlkem768x25519plus" {
+		t.Errorf("encryption должен быть top-level: %+v", o.Settings)
+	}
+
+	tls, _ := o.Settings["tls"].(map[string]any)
+	reality, _ := tls["reality"].(map[string]any)
+	if reality["mldsa65_verify"] != "VERIFY_KEY" {
+		t.Errorf("mldsa65_verify не сохранён: %+v", reality)
+	}
+	if reality["mldsa65_seed"] != "SEED_VAL" {
+		t.Errorf("mldsa65_seed не сохранён: %+v", reality)
+	}
+}
+
+// TestParseVLESS_XHTTP — type=xhttp + path/host → transport.type=xhttp.
+func TestParseVLESS_XHTTP(t *testing.T) {
+	url := "vless://uuid-1@srv:443?type=xhttp&path=%2Ffoo&host=cdn.example.com&encryption=none"
+	o, err := Parse(url)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	transport, ok := o.Settings["transport"].(map[string]any)
+	if !ok {
+		t.Fatalf("transport отсутствует: %+v", o.Settings)
+	}
+	if transport["type"] != "xhttp" {
+		t.Errorf("transport.type = %v, ожидалось xhttp", transport["type"])
+	}
+	if transport["path"] != "/foo" {
+		t.Errorf("transport.path = %v, ожидалось /foo", transport["path"])
+	}
+	if transport["host"] != "cdn.example.com" {
+		t.Errorf("transport.host = %v", transport["host"])
+	}
+}
+
+// TestParseVLESS_TCPNoTransport — type=tcp (default) не должен создавать transport.
+func TestParseVLESS_TCPNoTransport(t *testing.T) {
+	o, err := Parse("vless://uuid-1@srv:443?type=tcp&encryption=none")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if _, has := o.Settings["transport"]; has {
+		t.Errorf("type=tcp не должен создавать transport: %+v", o.Settings)
+	}
+}
+
 func TestParse_VMess_StandardJSON(t *testing.T) {
 	raw := map[string]any{"add": "host.com", "port": "443", "id": "uuid-here", "aid": "0"}
 	js, _ := json.Marshal(raw)

@@ -115,22 +115,85 @@ func parseVLESS(s string) (types.Outbound, error) {
 	if err != nil {
 		return types.Outbound{}, fmt.Errorf("proxyparse vless: %w", err)
 	}
-	o := types.Outbound{
-		Tag:    "vless-proxy",
-		Type:   "vless",
-		Server: host,
-		Port:   port,
-	}
+
+	q := u.Query()
 	settings := map[string]any{
 		"uuid": u.User.Username(),
 	}
-	for k, v := range u.Query() {
-		if len(v) > 0 {
-			settings[k] = v[0]
-		}
+
+	// flat top-level VLESS поля
+	if v := q.Get("flow"); v != "" {
+		settings["flow"] = v
 	}
-	o.Settings = settings
-	return o, nil
+	if v := q.Get("encryption"); v != "" {
+		settings["encryption"] = v // включая mlkem768x25519plus (PQ)
+	}
+	if v := q.Get("packetEncoding"); v != "" {
+		settings["packet_encoding"] = v
+	}
+
+	// transport: type=ws/grpc/http/xhttp/quic создаёт transport-объект.
+	// type=tcp (default) — без transport.
+	if t := q.Get("type"); t != "" && t != "tcp" {
+		transport := map[string]any{"type": t}
+		if v := q.Get("path"); v != "" {
+			transport["path"] = v
+		}
+		if v := q.Get("host"); v != "" {
+			transport["host"] = v
+		}
+		if v := q.Get("serviceName"); v != "" {
+			transport["service_name"] = v
+		}
+		settings["transport"] = transport
+	}
+
+	// tls: security=tls|reality + reality params + utls fingerprint.
+	security := q.Get("security")
+	if security == "tls" || security == "reality" {
+		tls := map[string]any{"enabled": true}
+		if v := q.Get("sni"); v != "" {
+			tls["server_name"] = v
+		}
+		if v := q.Get("fp"); v != "" {
+			tls["utls"] = map[string]any{
+				"enabled":     true,
+				"fingerprint": v,
+			}
+		}
+		if alpn := q.Get("alpn"); alpn != "" {
+			tls["alpn"] = strings.Split(alpn, ",")
+		}
+		if security == "reality" {
+			reality := map[string]any{"enabled": true}
+			if v := q.Get("pbk"); v != "" {
+				reality["public_key"] = v
+			}
+			// sid (новый), spx (legacy alias) — оба в short_id
+			if v := q.Get("sid"); v != "" {
+				reality["short_id"] = v
+			} else if v := q.Get("spx"); v != "" {
+				reality["short_id"] = v
+			}
+			// post-quantum mldsa65 (sing-box >= 1.12)
+			if v := q.Get("mldsa65Verify"); v != "" {
+				reality["mldsa65_verify"] = v
+			}
+			if v := q.Get("mldsa65Seed"); v != "" {
+				reality["mldsa65_seed"] = v
+			}
+			tls["reality"] = reality
+		}
+		settings["tls"] = tls
+	}
+
+	return types.Outbound{
+		Tag:      "vless-proxy",
+		Type:     "vless",
+		Server:   host,
+		Port:     port,
+		Settings: settings,
+	}, nil
 }
 
 func parseVMess(s string) (types.Outbound, error) {
@@ -163,18 +226,56 @@ func parseVMess(s string) (types.Outbound, error) {
 		return types.Outbound{}, fmt.Errorf("proxyparse vmess: port: %w", parseErr)
 	}
 
-	o := types.Outbound{
-		Tag:    "vmess-proxy",
-		Type:   "vmess",
-		Server: host,
-		Port:   port,
-		Settings: map[string]any{
-			"uuid":    raw["id"],
-			"alterId": raw["aid"],
-			"raw":     raw,
-		},
+	settings := map[string]any{}
+	if v, ok := raw["id"].(string); ok && v != "" {
+		settings["uuid"] = v
 	}
-	return o, nil
+	// alter_id может прийти как string или number в JSON — нормализуем в int.
+	if aid, ok := raw["aid"]; ok {
+		switch a := aid.(type) {
+		case float64:
+			settings["alter_id"] = int(a)
+		case string:
+			if n, err := strconv.Atoi(a); err == nil {
+				settings["alter_id"] = n
+			}
+		}
+	}
+	if v, ok := raw["scy"].(string); ok && v != "" {
+		settings["security"] = v
+	}
+
+	// Transport: net=ws/grpc/http/h2/quic создаёт transport-объект.
+	if net, ok := raw["net"].(string); ok && net != "" && net != "tcp" {
+		transport := map[string]any{"type": net}
+		if v, ok := raw["path"].(string); ok && v != "" {
+			transport["path"] = v
+		}
+		if v, ok := raw["host"].(string); ok && v != "" {
+			transport["host"] = v
+		}
+		settings["transport"] = transport
+	}
+
+	// TLS: tls=tls включает transport.tls.enabled.
+	if tlsField, ok := raw["tls"].(string); ok && tlsField == "tls" {
+		tls := map[string]any{"enabled": true}
+		if v, ok := raw["sni"].(string); ok && v != "" {
+			tls["server_name"] = v
+		}
+		if v, ok := raw["alpn"].(string); ok && v != "" {
+			tls["alpn"] = strings.Split(v, ",")
+		}
+		settings["tls"] = tls
+	}
+
+	return types.Outbound{
+		Tag:      "vmess-proxy",
+		Type:     "vmess",
+		Server:   host,
+		Port:     port,
+		Settings: settings,
+	}, nil
 }
 
 func parseShadowsocks(s string) (types.Outbound, error) {

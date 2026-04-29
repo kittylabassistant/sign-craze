@@ -19,13 +19,7 @@
   ],
   "outbounds": [
 {{ range $i, $o := .Outbounds }}{{ if $i }},{{ end }}
-    {
-      "type": "{{ $o.Type }}",
-      "tag": "{{ $o.Tag }}",
-      "server": "{{ $o.Server }}",
-      "server_port": {{ $o.Port }}{{ if $o.Settings }},
-      "settings": {{ jsonMarshal $o.Settings }}{{ end }}
-    }
+    {{ jsonMarshal $o }}
 {{ end }},
     {
       "type": "direct",

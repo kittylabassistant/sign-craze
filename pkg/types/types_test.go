@@ -1,8 +1,66 @@
 package types
 
 import (
+	"encoding/json"
 	"testing"
 )
+
+// TestOutbound_MarshalJSON_FlatSettings — Settings мерджатся как top-level
+// поля (sing-box формат), не заворачиваются в "settings" (XRay формат).
+func TestOutbound_MarshalJSON_FlatSettings(t *testing.T) {
+	o := Outbound{
+		Tag:    "vless-proxy",
+		Type:   "vless",
+		Server: "srv",
+		Port:   443,
+		Settings: map[string]any{
+			"uuid":       "abc",
+			"flow":       "xtls-rprx-vision",
+			"encryption": "mlkem768x25519plus",
+			"tls": map[string]any{
+				"enabled": true,
+				"reality": map[string]any{
+					"enabled":        true,
+					"public_key":     "PK",
+					"mldsa65_verify": "VK",
+				},
+			},
+		},
+	}
+	data, err := json.Marshal(o)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+
+	// Базовые поля
+	if got["tag"] != "vless-proxy" || got["type"] != "vless" || got["server"] != "srv" {
+		t.Errorf("базовые поля: %+v", got)
+	}
+
+	// Settings должны быть распакованы НА ВЕРХНЕМ УРОВНЕ, не в "settings"
+	if _, has := got["settings"]; has {
+		t.Errorf("'settings' wrapper не должен присутствовать в sing-box формате: %s", data)
+	}
+	if got["uuid"] != "abc" || got["flow"] != "xtls-rprx-vision" {
+		t.Errorf("uuid/flow не на верхнем уровне: %s", data)
+	}
+	if got["encryption"] != "mlkem768x25519plus" {
+		t.Errorf("encryption (PQ) не на верхнем уровне: %s", data)
+	}
+
+	tls, ok := got["tls"].(map[string]any)
+	if !ok {
+		t.Fatalf("tls не объект: %s", data)
+	}
+	reality, _ := tls["reality"].(map[string]any)
+	if reality["mldsa65_verify"] != "VK" {
+		t.Errorf("mldsa65_verify не сохранён: %+v", reality)
+	}
+}
 
 func TestMode_Validate(t *testing.T) {
 	tests := []struct {

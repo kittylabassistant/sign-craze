@@ -1,6 +1,7 @@
 package types
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/netip"
 	"runtime"
@@ -129,6 +130,26 @@ type Outbound struct {
 	Server   string         `json:"server,omitempty"`   // не требуется для type=direct
 	Port     Port           `json:"port,omitempty"`     // не требуется для type=direct
 	Settings map[string]any `json:"settings,omitempty"` // тип-специфичные параметры
+}
+
+// MarshalJSON эмитит Outbound в формате sing-box: tag/type/server/server_port
+// + Settings мерджатся как top-level поля (uuid, flow, tls, transport и т.п.).
+// Это отличает sing-box от XRay-формата, где все спец-поля живут в "settings".
+func (o Outbound) MarshalJSON() ([]byte, error) {
+	out := map[string]any{
+		"tag":  o.Tag,
+		"type": o.Type,
+	}
+	if o.Server != "" {
+		out["server"] = o.Server
+	}
+	if o.Port != 0 {
+		out["server_port"] = uint16(o.Port)
+	}
+	for k, v := range o.Settings {
+		out[k] = v
+	}
+	return json.Marshal(out)
 }
 
 // Validate проверяет обязательные поля Outbound.
