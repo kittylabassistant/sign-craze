@@ -216,7 +216,10 @@ func runProxyWizard(in io.Reader, out io.Writer) ([]types.Outbound, error) {
 	fmt.Fprintln(out, "  2) Ручной ввод (тип + параметры)")
 	fmt.Fprintln(out, "  3) Пропустить (создаст stub direct — sing-box без проксирования)")
 	fmt.Fprint(out, "Выбор [1/2/3]: ")
-	choice := readLine(r)
+	choice, err := readLineE(r)
+	if err != nil {
+		return nil, fmt.Errorf("чтение выбора: %w", err)
+	}
 
 	switch choice {
 	case "1":
@@ -361,6 +364,18 @@ func runAdminBypassWizard(r *bufio.Reader, out io.Writer) (uint16, []string, err
 			if err != nil {
 				return 0, nil, fmt.Errorf("admin IP %q: %w", tok, err)
 			}
+			// Предупреждение для слишком широких CIDR: /16 (65k IP) для admin
+			// почти наверняка ошибка ввода. /0 совсем точно отключит проксирование.
+			if pfx, perr := netip.ParsePrefix(normalized); perr == nil {
+				broadThreshold := 16
+				if pfx.Addr().Is6() {
+					broadThreshold = 48
+				}
+				if pfx.Bits() < broadThreshold {
+					fmt.Fprintf(out, "  Внимание: %s — широкий CIDR (/%d), весь диапазон будет ИСКЛЮЧЁН из проксирования.\n",
+						normalized, pfx.Bits())
+				}
+			}
 			ips = append(ips, normalized)
 		}
 	}
@@ -389,6 +404,19 @@ func readLine(r *bufio.Reader) string {
 		return ""
 	}
 	return strings.TrimSpace(s)
+}
+
+// readLineE — версия readLine с распространением ошибок I/O.
+// Возвращает trimmed-строку или ошибку, если stdin не удалось прочитать
+// (EOF без newline трактуется как «пользователь оборвал» — error).
+// Используется в точках, где надо отличить «пустая строка = пропустить»
+// от «не удалось прочитать ввод» (safety-fixes D.5).
+func readLineE(r *bufio.Reader) (string, error) {
+	s, err := r.ReadString('\n')
+	if err != nil && s == "" {
+		return "", err
+	}
+	return strings.TrimSpace(s), nil
 }
 
 // configFilePath возвращает /opt/etc/sign-craze/config.json.

@@ -13,14 +13,14 @@ import (
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
-func fakeRelease(assetName, downloadURL string) []byte {
+func fakeRelease(assetName, downloadURL string, size int64) []byte {
 	rel := types.Release{
 		TagName: "v1.10.0",
 		Assets: []types.Asset{
 			{
 				Name:               assetName,
 				BrowserDownloadURL: downloadURL,
-				Size:               42,
+				Size:               size,
 			},
 		},
 	}
@@ -36,7 +36,7 @@ func TestDownload_Success(t *testing.T) {
 		case strings.HasSuffix(r.URL.Path, "/releases/latest"):
 			assetURL := "http://" + r.Host + "/download/sing-box-v1.10.0-linux-arm64.tar.gz"
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write(fakeRelease("sing-box-v1.10.0-linux-arm64.tar.gz", assetURL))
+			_, _ = w.Write(fakeRelease("sing-box-v1.10.0-linux-arm64.tar.gz", assetURL, int64(len(content))))
 		default:
 			w.Header().Set("ETag", `"abc123"`)
 			_, _ = w.Write(content)
@@ -74,7 +74,7 @@ func TestDownload_ETagSkipsRedownload(t *testing.T) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/releases/latest"):
 			assetURL := "http://" + r.Host + "/download/sing-box-v1.10.0-linux-arm64.tar.gz"
-			_, _ = w.Write(fakeRelease("sing-box-v1.10.0-linux-arm64.tar.gz", assetURL))
+			_, _ = w.Write(fakeRelease("sing-box-v1.10.0-linux-arm64.tar.gz", assetURL, 4))
 		default:
 			if r.Header.Get("If-None-Match") == `"etag-v1"` {
 				w.WriteHeader(http.StatusNotModified)
@@ -122,6 +122,35 @@ func TestDownload_ServerError(t *testing.T) {
 	_, err := Download(context.Background(), types.ArchARM64, t.TempDir())
 	if err == nil {
 		t.Fatal("ожидалась ошибка при HTTP 500")
+	}
+}
+
+// TestDownload_TruncatedTarballRejected — manifest заявляет Size=100, но
+// сервер отдаёт 50 байт (порванный канал/MITM-обрыв). Fetch должен отвергнуть.
+func TestDownload_TruncatedTarballRejected(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/releases/latest"):
+			assetURL := "http://" + r.Host + "/download/sing-box-v1.10.0-linux-arm64.tar.gz"
+			_, _ = w.Write(fakeRelease("sing-box-v1.10.0-linux-arm64.tar.gz", assetURL, 100))
+		default:
+			// сервер отдаёт ТОЛЬКО 10 байт вместо 100
+			w.Header().Set("ETag", `"truncated"`)
+			_, _ = w.Write([]byte("truncated!"))
+		}
+	}))
+	defer srv.Close()
+
+	orig := ghrelease.APIBaseURL
+	ghrelease.APIBaseURL = srv.URL
+	defer func() { ghrelease.APIBaseURL = orig }()
+
+	_, err := Download(context.Background(), types.ArchARM64, t.TempDir())
+	if err == nil {
+		t.Fatal("ожидалась ошибка для truncated tarball")
+	}
+	if !strings.Contains(err.Error(), "размер") {
+		t.Errorf("сообщение = %q, ожидалось содержащее 'размер'", err.Error())
 	}
 }
 

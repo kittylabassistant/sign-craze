@@ -146,6 +146,35 @@ func TestLifecycle_StartStop(t *testing.T) {
 	}
 }
 
+// TestLifecycle_StartCrashesEarly — процесс падает с exit(1) сразу после старта.
+// Stabilization-проверка должна это поймать и вернуть error, иначе Start()
+// возвращал бы success для уже мёртвого процесса.
+func TestLifecycle_StartCrashesEarly(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("тест ненадёжен под root")
+	}
+	dir := t.TempDir()
+	pidFile := filepath.Join(dir, "false.pid")
+
+	lc := NewLifecycle(ProcessConfig{
+		Name:    "false",
+		BinPath: "/bin/false", // exit(1) немедленно
+		Args:    nil,
+		PIDFile: pidFile,
+	})
+
+	err := lc.Start(context.Background())
+	if err == nil {
+		t.Fatal("ожидалась ошибка для процесса, упавшего сразу после старта")
+	}
+	if !strings.Contains(err.Error(), "упал") {
+		t.Errorf("сообщение ошибки = %q, ожидалось содержащее 'упал'", err.Error())
+	}
+	if _, statErr := os.Stat(pidFile); statErr == nil {
+		t.Error("PID-файл не должен оставаться после неудачного старта")
+	}
+}
+
 func TestLifecycle_StartAlreadyRunning(t *testing.T) {
 	dir := t.TempDir()
 	pidFile := filepath.Join(dir, "sleep.pid")

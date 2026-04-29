@@ -16,6 +16,11 @@ const (
 	stopGracePeriod = 10 * time.Second
 	startPollPeriod = 200 * time.Millisecond
 	startTimeout    = 5 * time.Second
+	// stabilizationDelay — пауза после waitAlive перед второй проверкой /proc.
+	// /proc/<pid> существует немедленно после fork, но процесс может упасть
+	// через миллисекунды (битый конфиг, неизвестный CLI-флаг). Этот промежуток
+	// ловит ранний crash, чтобы Start() не возвращал успех для мёртвого процесса.
+	stabilizationDelay = 500 * time.Millisecond
 )
 
 // Status описывает состояние процесса.
@@ -89,6 +94,21 @@ func (l *processLifecycle) Start(ctx context.Context) error {
 			log.L().Warn("не удалось удалить PID-файл", "service", l.cfg.Name, "err", rmErr)
 		}
 		return fmt.Errorf("service %s: процесс не запустился: %w", l.cfg.Name, err)
+	}
+
+	// Stabilization-проверка: процесс может упасть сразу после fork (битый конфиг).
+	// Ждём stabilizationDelay и проверяем повторно — иначе Start() вернёт успех
+	// для процесса, которого уже нет.
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(stabilizationDelay):
+	}
+	if !processAlive(pid) {
+		if rmErr := os.Remove(l.cfg.PIDFile); rmErr != nil {
+			log.L().Warn("не удалось удалить PID-файл после ранней смерти", "service", l.cfg.Name, "err", rmErr)
+		}
+		return fmt.Errorf("service %s: процесс упал сразу после старта (см. логи %s)", l.cfg.Name, l.cfg.BinPath)
 	}
 
 	// Асинхронно подбираем зомби-статус чтобы не засорять таблицу процессов.

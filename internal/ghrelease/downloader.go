@@ -97,6 +97,18 @@ func (d *Downloader) Fetch(ctx context.Context, opts FetchOptions) (FetchResult,
 		}
 	}
 
+	// Проверка размера: GitHub manifest указывает Size, скачанный файл должен
+	// совпадать. Truncated-загрузка (порванный канал, MITM-обрыв) ловится здесь
+	// до того, как файл попадёт в extractBinary.
+	if downloaded && asset.Size > 0 {
+		info, statErr := os.Stat(dstFile)
+		if statErr == nil && info.Size() != asset.Size {
+			_ = os.Remove(dstFile)
+			return FetchResult{}, fmt.Errorf("ghrelease: размер %s = %d не совпадает с manifest %d (загрузка прервана?)",
+				asset.Name, info.Size(), asset.Size)
+		}
+	}
+
 	if downloaded && opts.VerifySHA {
 		if vErr := d.verifySHA256(ctx, release.Assets, asset.Name, sum); vErr != nil {
 			_ = os.Remove(dstFile)

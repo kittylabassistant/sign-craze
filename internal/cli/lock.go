@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/kittylabassistant/sign-craze/internal/locks"
 )
@@ -18,7 +19,7 @@ func withLock(ctx context.Context, fn func() error) error {
 	defer func() {
 		if relErr := l.Release(); relErr != nil {
 			// Лог; основная ошибка fn не теряется.
-			_ = relErr
+			slog.Warn("cli: ошибка снятия блокировки", "path", locks.DefaultPath, "err", relErr)
 		}
 	}()
 	return fn()
