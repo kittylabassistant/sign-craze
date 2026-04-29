@@ -169,3 +169,62 @@ func TestIPTables_DeleteRulesByComment_УдаляетПоКомментарию(
 		t.Fatalf("неожиданная ошибка: %v", err)
 	}
 }
+
+// TestIPTables_DeleteRulesByComment_QuotedComment — iptables-save может выводить
+// --comment "value with spaces" в кавычках. strings.Fields() разрезал бы это на
+// отдельные токены, и iptables -D не нашёл бы исходное правило.
+func TestIPTables_DeleteRulesByComment_QuotedComment(t *testing.T) {
+	r := exectx.Mock(map[string]exectx.Result{
+		"iptables -t mangle -S": {
+			ExitCode: 0,
+			Stdout: []byte(
+				"-A signcraze -p tcp -m comment --comment \"signcraze:foo bar\" -j MARK\n",
+			),
+		},
+		// Кавычки должны быть удалены при формировании delete-args
+		"iptables -t mangle -D signcraze -p tcp -m comment --comment signcraze:foo bar -j MARK": {ExitCode: 0},
+	})
+	ipt := New(r)
+	err := ipt.DeleteRulesByComment(context.Background(), "mangle", "signcraze:")
+	if err != nil {
+		t.Fatalf("неожиданная ошибка: %v", err)
+	}
+}
+
+// TestSplitIptablesArgs_табличный — разные форматы вывода iptables-save.
+func TestSplitIptablesArgs_табличный(t *testing.T) {
+	tests := []struct {
+		in   string
+		want []string
+		err  bool
+	}{
+		{"-p tcp -j MARK", []string{"-p", "tcp", "-j", "MARK"}, false},
+		{"-m comment --comment \"signcraze:foo\" -j MARK",
+			[]string{"-m", "comment", "--comment", "signcraze:foo", "-j", "MARK"}, false},
+		{"-m comment --comment \"with space\" -j ACCEPT",
+			[]string{"-m", "comment", "--comment", "with space", "-j", "ACCEPT"}, false},
+		{"--comment \"unbalanced", nil, true},
+	}
+	for _, tt := range tests {
+		got, err := splitIptablesArgs(tt.in)
+		if tt.err {
+			if err == nil {
+				t.Errorf("splitIptablesArgs(%q): ожидалась ошибка", tt.in)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("splitIptablesArgs(%q): %v", tt.in, err)
+			continue
+		}
+		if len(got) != len(tt.want) {
+			t.Errorf("splitIptablesArgs(%q) len=%d, ожидалось %d: got=%v", tt.in, len(got), len(tt.want), got)
+			continue
+		}
+		for i := range got {
+			if got[i] != tt.want[i] {
+				t.Errorf("splitIptablesArgs(%q)[%d] = %q, ожидалось %q", tt.in, i, got[i], tt.want[i])
+			}
+		}
+	}
+}

@@ -140,3 +140,31 @@ func TestDeleteLocalRoute_ПропускаетЕслиОтсутствует(t *
 		t.Fatalf("ожидался nil, получено: %v", err)
 	}
 }
+
+// TestLocalRouteExists_СтрогоеСравнение — подстрока "local" в чужом маршруте
+// (например, locally-generated) не должна давать false positive.
+func TestLocalRouteExists_СтрогоеСравнение(t *testing.T) {
+	cases := []struct {
+		name   string
+		stdout string
+		want   bool
+	}{
+		{"наш маршрут", "local 0.0.0.0/0 dev lo scope host\n", true},
+		{"чужой с local-словом", "192.168.1.1 dev eth0 src 192.168.1.10\n", false},
+		{"только locally-generated подстрока",
+			"default via 1.1.1.1 dev eth0 src locally-generated\n", false},
+		{"наш + чужой", "192.168.1.0/24 dev eth0\nlocal 0.0.0.0/0 dev lo\n", true},
+		{"пустой", "", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := exectx.Mock(map[string]exectx.Result{
+				"ip route show table 83": {ExitCode: 0, Stdout: []byte(c.stdout)},
+			})
+			got := localRouteExists(context.Background(), r, 83)
+			if got != c.want {
+				t.Errorf("localRouteExists = %v, ожидалось %v (stdout=%q)", got, c.want, c.stdout)
+			}
+		})
+	}
+}

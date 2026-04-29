@@ -83,6 +83,35 @@ func TestExcludesManager_AddListDelete(t *testing.T) {
 	}
 }
 
+// TestPortsManager_ConcurrentAdd_NoLostUpdates — проверяет flock-сериализацию
+// для одновременных AddPort из нескольких goroutine. Без flock последний writer
+// затирал бы предыдущие изменения (TOCTOU race в Load→mutate→Save).
+func TestPortsManager_ConcurrentAdd_NoLostUpdates(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	pm := NewPortsManager(path)
+	ctx := context.Background()
+
+	const N = 20
+	errCh := make(chan error, N)
+	for i := 0; i < N; i++ {
+		port := 10000 + i
+		go func() { errCh <- pm.AddPort(ctx, port) }()
+	}
+	for i := 0; i < N; i++ {
+		if err := <-errCh; err != nil {
+			t.Errorf("параллельный AddPort: %v", err)
+		}
+	}
+
+	list, err := pm.ListPorts(ctx)
+	if err != nil {
+		t.Fatalf("ListPorts: %v", err)
+	}
+	if len(list) != N {
+		t.Errorf("len(ports) = %d, ожидалось %d (потеряны записи?): %v", len(list), N, list)
+	}
+}
+
 func TestParsedExcludes(t *testing.T) {
 	s := &State{Excludes: []string{"10.0.0.0/8", "192.168.0.0/16"}}
 	pfxs, err := ParsedExcludes(s)

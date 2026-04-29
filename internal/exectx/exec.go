@@ -35,10 +35,14 @@ func (r *osRunner) Run(ctx context.Context, name string, args ...string) (Result
 	cmd.Stderr = &stderr
 
 	err := cmd.Run()
+	exitCode := -1
+	if cmd.ProcessState != nil {
+		exitCode = cmd.ProcessState.ExitCode()
+	}
 	res := Result{
 		Stdout:   stdout.Bytes(),
 		Stderr:   stderr.Bytes(),
-		ExitCode: cmd.ProcessState.ExitCode(),
+		ExitCode: exitCode,
 	}
 
 	log.L().Debug("exec завершён", "cmd", name, "exit", res.ExitCode,

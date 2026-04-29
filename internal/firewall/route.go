@@ -18,8 +18,11 @@ import (
 func CheckFWMarkAvailable(ctx context.Context, runner exectx.Runner, fwmark uint32, ourTable int) error {
 	res, err := runner.Run(ctx, "ip", "rule", "show")
 	if err != nil {
-		// Не удалось прочитать ip rule — лучше пропустить, чем заблокировать
-		// установку (например, в Docker без CAP_NET_ADMIN). Логируется выше.
+		// Логируем фактическую ошибку и продолжаем: на роутере без CAP_NET_ADMIN
+		// (Docker без --privileged, тестовые окружения) `ip rule` падает —
+		// блокировать установку из-за этого нельзя. Но команда должна быть видна
+		// в логе для диагностики.
+		log.L().Warn("firewall: pre-flight ip rule show недоступен, проверка fwmark пропущена", "err", err)
 		return nil
 	}
 	needle := fmt.Sprintf("fwmark 0x%x", fwmark)
@@ -119,11 +122,23 @@ func ipRuleExists(ctx context.Context, runner exectx.Runner, fwmark uint32, tabl
 	return strings.Contains(string(res.Stdout), needle)
 }
 
-// localRouteExists проверяет наличие local-маршрута в таблице.
+// localRouteExists проверяет наличие маршрута `local 0.0.0.0/0 dev lo` в таблице.
+// Полное line-by-line сравнение — иначе случайный route с подстрокой "local"
+// (например, locally-generated traffic от других правил) даёт false positive.
 func localRouteExists(ctx context.Context, runner exectx.Runner, table int) bool {
 	res, err := runner.Run(ctx, "ip", "route", "show", "table", fmt.Sprintf("%d", table))
 	if err != nil {
 		return false
 	}
-	return strings.Contains(string(res.Stdout), "local")
+	for _, line := range strings.Split(string(res.Stdout), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 4 {
+			continue
+		}
+		// "local 0.0.0.0/0 dev lo ..."
+		if fields[0] == "local" && fields[1] == "0.0.0.0/0" && fields[2] == "dev" && fields[3] == "lo" {
+			return true
+		}
+	}
+	return false
 }

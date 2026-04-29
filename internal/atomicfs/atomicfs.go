@@ -78,7 +78,9 @@ func WriteFileAtomicFromReader(dst string, r io.Reader, perm os.FileMode) error 
 		}
 	}()
 
-	buf := make([]byte, 32*1024)
+	// 8KB буфера достаточно для streaming на 128MB роутере: больший размер
+	// провоцирует heap-allocation и GC pressure при параллельных --update-geo.
+	buf := make([]byte, 8*1024)
 	if _, err := io.CopyBuffer(tmp, r, buf); err != nil {
 		_ = tmp.Close()
 		return fmt.Errorf("atomicfs: копирование в temp: %w", err)

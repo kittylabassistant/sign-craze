@@ -4,17 +4,43 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/netip"
 	"os"
 	"sort"
+	"time"
 
 	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
+	"github.com/kittylabassistant/sign-craze/internal/locks"
 	"github.com/kittylabassistant/sign-craze/internal/service"
 	"github.com/kittylabassistant/sign-craze/internal/version"
 	"github.com/kittylabassistant/sign-craze/internal/web"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
+
+// stateLockTimeout — лимит ожидания flock на state-файле для веб-API.
+// 5 секунд достаточно для последовательных мутаций; дольше — возвращаем ошибку,
+// чтобы клиент попробовал снова, а не висел.
+const stateLockTimeout = 5 * time.Second
+
+// withStateLock сериализует Load→mutate→Save через flock на отдельном lock-файле
+// рядом со state.json (statePath + ".lock"). Защищает от TOCTOU race между
+// одновременными запросами Add/Delete из web API + CLI (safety-fixes B.2).
+func withStateLock(parent context.Context, statePath string, fn func() error) error {
+	ctx, cancel := context.WithTimeout(parent, stateLockTimeout)
+	defer cancel()
+	lock, err := locks.Acquire(ctx, statePath+".lock")
+	if err != nil {
+		return fmt.Errorf("state: lock %s: %w", statePath, err)
+	}
+	defer func() {
+		if rErr := lock.Release(); rErr != nil {
+			slog.Warn("state: ошибка снятия lock", "path", statePath, "err", rErr)
+		}
+	}()
+	return fn()
+}
 
 // SingboxVersion — функция получения версии sing-box; var для подмены в тестах.
 // По умолчанию вызывает singbox.BinaryVersion (внедряется в init()).
@@ -126,13 +152,20 @@ func (c *configRW) WriteConfig(ctx context.Context, data []byte) error {
 		if err != nil {
 			return fmt.Errorf("config: tmp: %w", err)
 		}
-		defer func() { _ = os.Remove(tmp.Name()) }()
-		if _, err := tmp.Write(data); err != nil {
+		tmpName := tmp.Name()
+		// Гарантируем закрытие fd на любом пути выхода (и Remove temp-файла).
+		defer func() {
 			_ = tmp.Close()
+			_ = os.Remove(tmpName)
+		}()
+		if _, err := tmp.Write(data); err != nil {
 			return fmt.Errorf("config: tmp write: %w", err)
 		}
-		_ = tmp.Close()
-		if _, err := c.runner.Run(ctx, c.singboxBin, "check", "-c", tmp.Name()); err != nil {
+		// Закрываем fd до запуска sing-box check, чтобы тот мог открыть файл на чтение.
+		if err := tmp.Close(); err != nil {
+			return fmt.Errorf("config: tmp close: %w", err)
+		}
+		if _, err := c.runner.Run(ctx, c.singboxBin, "check", "-c", tmpName); err != nil {
 			return fmt.Errorf("config: sing-box check failed: %w", err)
 		}
 	}
@@ -162,36 +195,40 @@ func (m *portsManager) ListPorts(_ context.Context) ([]int, error) {
 	return out, nil
 }
 
-func (m *portsManager) AddPort(_ context.Context, port int) error {
+func (m *portsManager) AddPort(ctx context.Context, port int) error {
 	if port <= 0 || port > 65535 {
 		return fmt.Errorf("ports: некорректный порт %d", port)
 	}
-	s, err := Load(m.statePath)
-	if err != nil {
-		return err
-	}
-	for _, p := range s.Ports {
-		if int(p) == port {
-			return nil // идемпотентно
+	return withStateLock(ctx, m.statePath, func() error {
+		s, err := Load(m.statePath)
+		if err != nil {
+			return err
 		}
-	}
-	s.Ports = append(s.Ports, uint16(port))
-	return Save(m.statePath, s)
+		for _, p := range s.Ports {
+			if int(p) == port {
+				return nil // идемпотентно
+			}
+		}
+		s.Ports = append(s.Ports, uint16(port))
+		return Save(m.statePath, s)
+	})
 }
 
-func (m *portsManager) DeletePort(_ context.Context, port int) error {
-	s, err := Load(m.statePath)
-	if err != nil {
-		return err
-	}
-	out := s.Ports[:0]
-	for _, p := range s.Ports {
-		if int(p) != port {
-			out = append(out, p)
+func (m *portsManager) DeletePort(ctx context.Context, port int) error {
+	return withStateLock(ctx, m.statePath, func() error {
+		s, err := Load(m.statePath)
+		if err != nil {
+			return err
 		}
-	}
-	s.Ports = out
-	return Save(m.statePath, s)
+		out := s.Ports[:0]
+		for _, p := range s.Ports {
+			if int(p) != port {
+				out = append(out, p)
+			}
+		}
+		s.Ports = out
+		return Save(m.statePath, s)
+	})
 }
 
 // excludesManager реализует web.ExcludesManager поверх state.json.
@@ -214,7 +251,7 @@ func (m *excludesManager) ListExcludes(_ context.Context) ([]string, error) {
 	return out, nil
 }
 
-func (m *excludesManager) AddExclude(_ context.Context, cidr string) error {
+func (m *excludesManager) AddExclude(ctx context.Context, cidr string) error {
 	if _, err := netip.ParsePrefix(cidr); err != nil {
 		// Принимаем также одиночные IP (преобразуем в /32 или /128).
 		ip, errIP := netip.ParseAddr(cidr)
@@ -227,32 +264,36 @@ func (m *excludesManager) AddExclude(_ context.Context, cidr string) error {
 		}
 		cidr = fmt.Sprintf("%s/%d", ip.String(), bits)
 	}
-	s, err := Load(m.statePath)
-	if err != nil {
-		return err
-	}
-	for _, e := range s.Excludes {
-		if e == cidr {
-			return nil
+	return withStateLock(ctx, m.statePath, func() error {
+		s, err := Load(m.statePath)
+		if err != nil {
+			return err
 		}
-	}
-	s.Excludes = append(s.Excludes, cidr)
-	return Save(m.statePath, s)
+		for _, e := range s.Excludes {
+			if e == cidr {
+				return nil
+			}
+		}
+		s.Excludes = append(s.Excludes, cidr)
+		return Save(m.statePath, s)
+	})
 }
 
-func (m *excludesManager) DeleteExclude(_ context.Context, cidr string) error {
-	s, err := Load(m.statePath)
-	if err != nil {
-		return err
-	}
-	out := s.Excludes[:0]
-	for _, e := range s.Excludes {
-		if e != cidr {
-			out = append(out, e)
+func (m *excludesManager) DeleteExclude(ctx context.Context, cidr string) error {
+	return withStateLock(ctx, m.statePath, func() error {
+		s, err := Load(m.statePath)
+		if err != nil {
+			return err
 		}
-	}
-	s.Excludes = out
-	return Save(m.statePath, s)
+		out := s.Excludes[:0]
+		for _, e := range s.Excludes {
+			if e != cidr {
+				out = append(out, e)
+			}
+		}
+		s.Excludes = out
+		return Save(m.statePath, s)
+	})
 }
 
 // ParsedExcludes возвращает Excludes как []netip.Prefix (для firewall.Config.Excludes).
