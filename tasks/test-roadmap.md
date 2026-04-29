@@ -285,18 +285,181 @@ sign-craze --purge
 ls /opt/sbin/sign-craze                      # отсутствует
 ```
 
+## 15. Дополнительные команды установки
+
+```sh
+# Non-interactive (для CI / повторных тестов)
+sign-craze --install-auto --url 'socks5://USER:PASS@HOST:PORT'
+
+# Offline режим (бинарь sing-box уже лежит локально)
+sign-craze --install-offline --singbox /tmp/sing-box
+
+# Переустановка поверх (state.json должен сохраниться)
+sign-craze --reinstall
+cat /opt/etc/sign-craze/state.json   # outbound прежний
+```
+
+## 16. Self-update + sing-box update
+
+```sh
+# Обновление sign-craze бинаря
+sign-craze --update
+sign-craze --version   # должна быть новая версия
+
+# Обновление sing-box
+sing-box version          # текущая
+sign-craze --update-core
+sing-box version          # новая
+sign-craze --restart
+sign-craze --status       # запущен на новой версии
+```
+
+## 17. DPI strategies + update
+
+```sh
+# Список стратегий
+sign-craze --dpi-strategy list
+
+# Применить
+sign-craze --dpi-strategy <name>
+cat /opt/etc/sign-craze/nfqws2.conf   # обновился
+
+# Обновление списков DPI
+sign-craze --dpi-update
+ls /opt/etc/sign-craze/dpi/    # списки доменов
+```
+
+## 18. Config backup/restore (отдельно от полного --backup)
+
+```sh
+# Только конфиг (state + sing-box config)
+sign-craze --config-backup
+ls /opt/var/lib/sign-craze/backups/config-*.tar.gz
+
+# Откат только конфига (без geo/sing-box бинаря)
+sign-craze --config-restore /opt/var/lib/sign-craze/backups/config-*.tar.gz
+```
+
+## 19. IPv6 проверки
+
+```sh
+# IPv6 цепочки
+ip6tables -t mangle -L signcraze -n -v
+ip6tables -t mangle -L signcraze_dpi -n -v
+ip6tables -t mangle -L PREROUTING -n -v | grep signcraze
+
+# IPv6 ipset
+ipset list signcraze_ipv6
+ipset list signcraze_excludes_v6
+
+# IPv6 routing
+ip -6 rule | grep 0x53
+ip -6 route show table 83
+```
+
+## 20. DNS перехват (если включён)
+
+```sh
+# Проверка правил для UDP/53
+iptables -t nat -L signcraze_dns -n -v 2>/dev/null
+iptables -t mangle -L signcraze -n -v | grep -E 'udp.*53|dpt:53'
+
+# Локально на роутере — должен резолвить через sing-box
+nslookup ya.ru 127.0.0.1
+nslookup youtube.com 127.0.0.1
+```
+
+## 21. Concurrency / lock
+
+```sh
+# Параллельный запуск двух мутирующих команд
+sign-craze --restart &
+sign-craze --port-add 8080
+wait
+
+# Должна быть ошибка lock у одной из команд:
+# "another sign-craze instance running" или подобное
+ls /opt/var/run/sign-craze.lock
+```
+
+## 22. Логи
+
+```sh
+ls -lh /opt/var/log/sign-craze/
+tail -50 /opt/var/log/sign-craze/sign-craze.log
+tail -50 /opt/var/log/sign-craze/sing-box.log
+
+# Проверить ротацию (если файлы > N MB → должен появиться .1.gz)
+du -sh /opt/var/log/sign-craze/*
+```
+
+## 23. Zombie / краш sing-box
+
+```sh
+# Убить sing-box жёстко
+kill -9 $(cat /opt/var/run/sign-craze-singbox.pid)
+
+# --status должен показать stopped (не "running" из-за zombie)
+sign-craze --status
+# Ожидается: sing-box остановлен (regression check для коммита 629ac65)
+
+# Восстановление
+sign-craze --start
+sign-craze --status   # running
+```
+
+## 24. WebSocket / UI live-update
+
+```sh
+sign-craze --ui on &
+# в браузере открыть Zashboard → Connections / Logs
+# отправить трафик через клиент
+# счётчики должны обновляться live, без F5
+
+# проверить reconnect: убить UI и поднять снова
+kill %1
+sign-craze --ui on &
+# страница в браузере должна сама восстановить WS
+```
+
+## 25. State integrity при reboot во время записи
+
+```sh
+# Сценарий: запись state + reboot
+sign-craze --port-add 9999 &
+sleep 0.1
+reboot
+# после загрузки
+ssh root@192.168.1.1
+cat /opt/etc/sign-craze/state.json | jq .   # JSON валидный
+sign-craze --status                          # запустился
+```
+
+## 26. Diag после stop
+
+```sh
+sign-craze --stop
+sign-craze --diag
+# Ожидается: WARN на sing-box/iptables (остановлено), не FAIL
+```
+
 ---
 
 ## Что записывать в отчёт
 
 | Шаг | Что отметить |
 | --- | --- |
-| 1 | размер бинаря (`ls -lh /opt/sbin/sign-craze`) |
-| 4 | RAM использование sing-box (`top \| grep sing-box`) |
+| 1 | размер бинаря до/после UPX (`ls -lh /opt/sbin/sign-craze`) |
+| 4 | RAM: RSS sing-box + sing-craze + nfqws2 (`top \| grep -E 'sing-box\|sign-craze\|nfqws2'`) |
 | 5 | вывод `--diag` целиком |
 | 6 | смена IP при прокси-маршрутизации (есть/нет) |
+| 7 | RSS sign-craze под нагрузкой UI (после WS-подписки) |
 | 9 | работа hybrid режима |
 | 12 | автостарт после reboot |
+| 19 | IPv6 цепочки заполнены (если IPv6 у провайдера есть) |
+| 21 | lock работает — параллельная команда падает с ошибкой |
+| 23 | zombie sing-box → `--status` корректно показывает stopped |
+| 25 | state.json не corrupt после reboot во время записи |
 
 ## Известные подводные камни на mipsel
 
@@ -313,5 +476,8 @@ ls /opt/sbin/sign-craze                      # отсутствует
   Если модуль отсутствует — нужно `opkg install iptables-mod-extra` (или аналог).
 - **TPROXY** аналогично: `opkg install kmod-ipt-tproxy iptables-mod-tproxy`.
 - **ipset** должен быть: `opkg install ipset`.
+- **NFQUEUE** для DPI: `opkg install kmod-nfnetlink-queue iptables-mod-nfqueue`.
+- **iptables backend**: проверь `iptables --version` — Keenetic обычно `iptables-legacy`. Если `nf_tables` — поведение MARK/CONNMARK может отличаться.
+- **fwmark `0x53` единственный**: `ip rule | grep 0x53` — других правил с этой меткой быть не должно (коллизия с другим софтом → silent breakage).
 
 Если что-то не работает — пришли вывод `sign-craze --diag` и вывод проблемной команды.
