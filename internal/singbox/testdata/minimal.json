@@ -27,7 +27,7 @@
       "domain_strategy": "prefer_ipv4",
       "listen": "::",
       "listen_port": 7895,
-      "mark": 83,
+      "routing_mark": 83,
       "sniff": true,
       "sniff_override_destination": false,
       "tag": "tproxy-in",

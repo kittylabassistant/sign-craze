@@ -76,10 +76,10 @@ func TestRender_DefaultsApplied(t *testing.T) {
 		t.Errorf("listen_port = %v, ожидалось 7895", port)
 	}
 
-	// mark должен быть 83 (= 0x53)
-	mark := ib["mark"].(float64)
+	// routing_mark должен быть 83 (= 0x53)
+	mark := ib["routing_mark"].(float64)
 	if mark != 83 {
-		t.Errorf("mark = %v, ожидалось 83", mark)
+		t.Errorf("routing_mark = %v, ожидалось 83", mark)
 	}
 }
 
