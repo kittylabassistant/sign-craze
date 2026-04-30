@@ -264,18 +264,45 @@ free -m
 
 ## 5. Установка sign-craze
 
+> **Важно**: BusyBox `wget` на Keenetic собран **без SSL** и не поддерживает HTTPS — выдаст `not an http or ftp url`. Также BusyBox `od` не поддерживает опцию `-t`. Поэтому установка идёт через `curl` (с `-k` — без проверки сертификатов) или через `wget-ssl` из Entware.
+
+### 5.1. Установить curl (один раз)
+
+```sh
+opkg update
+opkg install curl
+```
+
+Альтернатива — `wget-ssl`:
+
+```sh
+opkg install wget-ssl
+```
+
+### 5.2. Запустить установщик
+
 ```sh
 # По SSH, в Entware shell на роутере
-wget -O - https://github.com/kittylabassistant/sign-craze/releases/latest/download/install.sh | sh
+curl -kfsSL https://github.com/kittylabassistant/sign-craze/releases/latest/download/install.sh | sh
 ```
 
 Скрипт автоматически:
 
-- Определит архитектуру (`mipsle` / `mips` / `arm7` / `arm64`).
+- Выберет загрузчик: `curl -kfsSL` или `wget --no-check-certificate`.
+- Определит архитектуру (`mipsle` / `mips` / `arm7` / `arm64`); endianness MIPS — через `od -x` (BusyBox-совместимо).
 - Проверит свободное место на `/opt` (нужно ≥ 30 МБ).
 - Скачает соответствующий бинарь с GitHub Releases.
-- Проверит SHA256.
+- Проверит SHA256 (если файл `.sha256` доступен).
 - Атомарно установит в `/opt/sbin/sign-craze`.
+
+### 5.3. Возможные ошибки
+
+| Ошибка | Причина | Решение |
+|--------|---------|---------|
+| `wget: not an http or ftp url: https://...` | BusyBox `wget` без SSL | `opkg install curl` или `wget-ssl` |
+| `od: invalid option -- 't'` | Старая версия скрипта | Скачать новую версию `install.sh` |
+| `Нужен curl или wget с поддержкой SSL` | Ни `curl`, ни `wget-ssl` не установлены | `opkg install curl` |
+| `Недостаточно места в /opt` | < 30 МБ свободно | Очистить `/opt`, либо подключить swap/USB |
 
 Проверка:
 

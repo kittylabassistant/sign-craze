@@ -51,9 +51,11 @@ Go-утилита для управления межсетевым экрано�
 
 ## Установка
 
+> BusyBox `wget` на Keenetic без SSL — нужен `curl` (или `wget-ssl` из Entware): `opkg install curl`.
+
 ```sh
 # Определить архитектуру автоматически и установить последний релиз
-wget -O - https://github.com/kittylabassistant/sign-craze/releases/latest/download/install.sh | sh
+curl -kfsSL https://github.com/kittylabassistant/sign-craze/releases/latest/download/install.sh | sh
 
 # Запустить установку (интерактивно: запросит URL прокси / outbound)
 sign-craze --install
