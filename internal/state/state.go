@@ -43,13 +43,14 @@ type State struct {
 	Excludes  []string         `json:"excludes"`
 	// AdminPort — legacy single-port поле. Сохранено для миграции старых state.json;
 	// после Load() значение переносится в AdminPorts и обнуляется.
+	//
 	// Deprecated: использовать AdminPorts.
-	AdminPort  uint16   `json:"admin_port,omitempty"`
-	AdminPorts []uint16 `json:"admin_ports,omitempty"`
-	AdminIPs   []string `json:"admin_ips,omitempty"`
-	DPIEnabled     bool             `json:"dpi_enabled"`
-	DPIStrategy    string           `json:"dpi_strategy,omitempty"`
-	BootTimeoutSec int              `json:"boot_timeout_sec,omitempty"` // таймаут waitDefaultRoute, 0 = default 60
+	AdminPort      uint16   `json:"admin_port,omitempty"`
+	AdminPorts     []uint16 `json:"admin_ports,omitempty"`
+	AdminIPs       []string `json:"admin_ips,omitempty"`
+	DPIEnabled     bool     `json:"dpi_enabled"`
+	DPIStrategy    string   `json:"dpi_strategy,omitempty"`
+	BootTimeoutSec int      `json:"boot_timeout_sec,omitempty"` // таймаут waitDefaultRoute, 0 = default 60
 
 	// Поля режима ModePolicy: интеграция с Keenetic IP Policy через RCI.
 	// PolicyMark и PolicyTable — кеш runtime-значений, актуальные читаются
