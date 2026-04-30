@@ -80,10 +80,15 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v6
+
       - uses: actions/download-artifact@v8
         with:
           path: dist/
           merge-multiple: true
+
+      - name: stage install.sh
+        run: cp scripts/install.sh dist/install.sh
 
       - name: create release
         uses: softprops/action-gh-release@v2
