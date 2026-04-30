@@ -9,14 +9,16 @@
     ],
     "servers": [
       {
-        "address": "tls://8.8.8.8",
         "detour": "out",
-        "tag": "remote"
+        "server": "8.8.8.8",
+        "tag": "remote",
+        "type": "tls"
       },
       {
-        "address": "223.5.5.5",
         "detour": "direct",
-        "tag": "local"
+        "server": "223.5.5.5",
+        "tag": "local",
+        "type": "udp"
       }
     ]
   },

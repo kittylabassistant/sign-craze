@@ -56,13 +56,15 @@
   "dns": {
     "servers": [
       {
+        "type": "tls",
         "tag": "remote",
-        "address": "tls://8.8.8.8",
+        "server": "8.8.8.8",
         "detour": {{ jsonMarshal .DefaultOutboundTag }}
       },
       {
+        "type": "udp",
         "tag": "local",
-        "address": "223.5.5.5",
+        "server": "223.5.5.5",
         "detour": "direct"
       }
     ],
