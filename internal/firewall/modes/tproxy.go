@@ -37,15 +37,15 @@ func TProxyRules(port uint16, fwmark uint32) []RuleSpec {
 		// флагов в одном rule).
 		{
 			Table: "mangle", Chain: "signcraze_full",
-			Args:  []string{"-s", "127.0.0.0/8", "-j", "RETURN"},
+			Args: []string{"-s", "127.0.0.0/8", "-j", "RETURN"},
 		},
 		{
 			Table: "mangle", Chain: "signcraze_full",
-			Args:  []string{"-s", "169.254.0.0/16", "-j", "RETURN"},
+			Args: []string{"-s", "169.254.0.0/16", "-j", "RETURN"},
 		},
 		{
 			Table: "mangle", Chain: "signcraze_full",
-			Args:  []string{"-i", "lo", "-j", "RETURN"},
+			Args: []string{"-i", "lo", "-j", "RETURN"},
 		},
 		// tproxy TCP для помеченных пакетов; bypass-правила выше не дают
 		// loopback/link-local дойти сюда (safety-fixes #6).
@@ -69,17 +69,17 @@ func TProxyRules(port uint16, fwmark uint32) []RuleSpec {
 		// переход в signcraze_dpi (пустая в proxy-режиме, заполняется в hybrid)
 		{
 			Table: "mangle", Chain: "PREROUTING",
-			Args:  []string{"-j", "signcraze_dpi"},
+			Args: []string{"-j", "signcraze_dpi"},
 		},
 		// переход в signcraze для mark-маршрутизации
 		{
 			Table: "mangle", Chain: "PREROUTING",
-			Args:  []string{"-j", "signcraze"},
+			Args: []string{"-j", "signcraze"},
 		},
 		// переход в signcraze_full для TPROXY (после mark-маршрутизации).
 		{
 			Table: "mangle", Chain: "PREROUTING",
-			Args:  []string{"-j", "signcraze_full"},
+			Args: []string{"-j", "signcraze_full"},
 		},
 	}
 }

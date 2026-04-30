@@ -32,11 +32,11 @@ func AdminPortsBypassRules(ports []uint16) []RuleSpec {
 		rules = append(rules,
 			RuleSpec{
 				Table: "mangle", Chain: "signcraze",
-				Args:  []string{"-p", "tcp", "--dport", portStr, "-j", "RETURN"},
+				Args: []string{"-p", "tcp", "--dport", portStr, "-j", "RETURN"},
 			},
 			RuleSpec{
 				Table: "mangle", Chain: "signcraze",
-				Args:  []string{"-p", "udp", "--dport", portStr, "-j", "RETURN"},
+				Args: []string{"-p", "udp", "--dport", portStr, "-j", "RETURN"},
 			},
 		)
 	}

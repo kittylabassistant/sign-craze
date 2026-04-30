@@ -47,7 +47,7 @@ func PortRules(ports []uint16, fwmark uint32) []RuleSpec {
 	// Переход PREROUTING -> signcraze_ports.
 	rules = append(rules, RuleSpec{
 		Table: "mangle", Chain: "PREROUTING",
-		Args:  []string{"-j", "signcraze_ports"},
+		Args: []string{"-j", "signcraze_ports"},
 	})
 
 	return rules
