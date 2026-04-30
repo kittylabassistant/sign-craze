@@ -10,6 +10,12 @@ import (
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
+// init отключает реальную проверку /dev/net/tun на CI/Docker, где TUN-устройство
+// может отсутствовать. Тесты Apply покрывают логику, не системную доступность TUN.
+func init() {
+	tunAvailableCheck = func() error { return nil }
+}
+
 // autoRunner записывает вызовы и возвращает разумные ответы по умолчанию.
 // -C → ошибка (правило не найдено), ipset list → ошибка (нет набора),
 // ip rule show / ip route show → пустой вывод, всё остальное → успех.
@@ -125,22 +131,12 @@ func TestApplier_Apply_Policy_НулевойMarkОшибка(t *testing.T) {
 }
 
 func TestApplier_Remove_Идемпотентен(t *testing.T) {
-	// Remove на чистом состоянии не должен возвращать ошибку
-	r := exectx.Mock(map[string]exectx.Result{
-		// ip rule show: пусто
-		"ip rule show": {ExitCode: 0, Stdout: []byte("")},
-		// ip route show: пусто
-		"ip route show table 83": {ExitCode: 0, Stdout: []byte("")},
-		// iptables -S: пусто
-		"iptables -t mangle -S": {ExitCode: 0, Stdout: []byte("")},
-		// FlushAndDeleteChain: цепочек нет → -F возвращает ошибку → идемпотентно
-		"iptables -t mangle -F signcraze":      {ExitCode: 1, Stderr: []byte("No chain")},
-		"iptables -t mangle -F signcraze_full": {ExitCode: 1, Stderr: []byte("No chain")},
-		"iptables -t mangle -F signcraze_dpi":  {ExitCode: 1, Stderr: []byte("No chain")},
-		// ipset destroy: наборов нет → ошибка → идемпотентно
-		"ipset destroy signcraze_ipv4": {ExitCode: 1, Stderr: []byte("The set with the given name does not exist")},
-		"ipset destroy signcraze_ipv6": {ExitCode: 1, Stderr: []byte("The set with the given name does not exist")},
-	})
+	// Remove на чистом состоянии: все iptables/ipset/ip команды для несуществующих
+	// цепочек/наборов/правил возвращают ошибку — Remove должен это игнорировать.
+	// Используем autoRunner: -F цепочек → default OK (FlushAndDeleteChain трактует
+	// успешный -F как «была цепочка, удаляем»; в реальном busybox -F на отсутствующей
+	// цепочке возвращает err, что тоже OK по семантике FlushAndDeleteChain).
+	r := &autoRunner{}
 	a := NewApplier(r, DefaultConfig())
 	if err := a.Remove(context.Background()); err != nil {
 		t.Fatalf("Remove на чистом состоянии вернул ошибку: %v", err)

@@ -66,13 +66,25 @@ func doStart(ctx context.Context) error {
 		log.L().Warn("--start: восстановление ipset не удалось", "err", rstErr)
 	}
 
-	// Старт sing-box.
+	// Старт sing-box. sing-box создаёт TUN-интерфейс при инициализации
+	// tun-inbound, поэтому подключение route в TUN откладывается до AttachTUN.
 	sbLC := newSingboxLifecycle()
 	if startErr := sbLC.Start(ctx); startErr != nil {
 		if rmErr := applier.Remove(ctx); rmErr != nil {
 			log.L().Warn("--start: откат firewall не удался", "err", rmErr)
 		}
 		return fmt.Errorf("--start: sing-box: %w", startErr)
+	}
+
+	// Дождаться появления TUN-интерфейса и установить default-route в нашу таблицу.
+	if attachErr := applier.AttachTUN(ctx, firewall.TUNDeviceName); attachErr != nil {
+		if stopErr := sbLC.Stop(ctx); stopErr != nil {
+			log.L().Warn("--start: остановка sing-box после ошибки AttachTUN", "err", stopErr)
+		}
+		if rmErr := applier.Remove(ctx); rmErr != nil {
+			log.L().Warn("--start: откат firewall не удался", "err", rmErr)
+		}
+		return fmt.Errorf("--start: TUN attach: %w", attachErr)
 	}
 
 	// Опциональный старт nfqws2.

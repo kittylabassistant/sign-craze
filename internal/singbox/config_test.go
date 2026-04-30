@@ -51,7 +51,7 @@ func TestRender_ValidJSON(t *testing.T) {
 }
 
 func TestRender_DefaultsApplied(t *testing.T) {
-	// нулевые значения должны заменяться defaults
+	// нулевые значения должны заменяться defaults TUN-inbound.
 	p := ConfigParams{
 		Outbounds: []types.Outbound{
 			{Tag: "out", Type: "socks", Server: "1.1.1.1", Port: 9000},
@@ -68,18 +68,24 @@ func TestRender_DefaultsApplied(t *testing.T) {
 		t.Fatalf("json.Unmarshal: %v", err)
 	}
 
-	// inbound port должен быть 7895
 	inbounds := parsed["inbounds"].([]any)
 	ib := inbounds[0].(map[string]any)
-	port := ib["listen_port"].(float64)
-	if port != 7895 {
-		t.Errorf("listen_port = %v, ожидалось 7895", port)
-	}
 
-	// routing_mark должен быть 83 (= 0x53)
-	mark := ib["routing_mark"].(float64)
-	if mark != 83 {
-		t.Errorf("routing_mark = %v, ожидалось 83", mark)
+	if ib["type"].(string) != "tun" {
+		t.Errorf("inbound type = %v, ожидалось tun", ib["type"])
+	}
+	if ib["interface_name"].(string) != DefaultTUNInterfaceName {
+		t.Errorf("interface_name = %v, ожидалось %s", ib["interface_name"], DefaultTUNInterfaceName)
+	}
+	if mtu, _ := ib["mtu"].(float64); int(mtu) != DefaultTUNMTU {
+		t.Errorf("mtu = %v, ожидалось %d", mtu, DefaultTUNMTU)
+	}
+	addrs, ok := ib["address"].([]any)
+	if !ok || len(addrs) == 0 {
+		t.Fatal("address пуст или отсутствует")
+	}
+	if addrs[0].(string) != DefaultTUNAddresses[0] {
+		t.Errorf("address[0] = %v, ожидалось %s", addrs[0], DefaultTUNAddresses[0])
 	}
 }
 

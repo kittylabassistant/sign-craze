@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	scerrors "github.com/kittylabassistant/sign-craze/internal/errors"
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
@@ -99,64 +100,61 @@ func TestDeleteIPRule_ПропускаетЕслиОтсутствует(t *test
 	}
 }
 
-// EnsureLocalRoute использует `ip route replace` — идемпотентно без
-// предварительной проверки (см. route.go: busybox-`ip` не показывает
-// local-type routes в `route show table N`, давая false negatives).
-func TestEnsureLocalRoute_ReplaceИдемпотентно(t *testing.T) {
+// EnsureTUNRoute использует `ip route replace` — идемпотентно без
+// предварительной проверки.
+func TestEnsureTUNRoute_ReplaceИдемпотентно(t *testing.T) {
 	r := exectx.Mock(map[string]exectx.Result{
-		"ip route replace local 0.0.0.0/0 dev lo table 83": {ExitCode: 0},
+		"ip route replace default dev signbox-tun table 83": {ExitCode: 0},
 	})
-	err := EnsureLocalRoute(context.Background(), r, 83)
+	err := EnsureTUNRoute(context.Background(), r, "signbox-tun", 83)
 	if err != nil {
 		t.Fatalf("неожиданная ошибка: %v", err)
 	}
 }
 
-func TestDeleteLocalRoute_УдаляетЕслиСуществует(t *testing.T) {
+func TestDeleteTUNRoute_УдаляетЕслиСуществует(t *testing.T) {
 	r := exectx.Mock(map[string]exectx.Result{
-		"ip route show table 83":                       {ExitCode: 0, Stdout: []byte("local 0.0.0.0/0 dev lo scope host\n")},
-		"ip route del local 0.0.0.0/0 dev lo table 83": {ExitCode: 0},
+		"ip route del default dev signbox-tun table 83": {ExitCode: 0},
 	})
-	err := DeleteLocalRoute(context.Background(), r, 83)
+	err := DeleteTUNRoute(context.Background(), r, "signbox-tun", 83)
 	if err != nil {
 		t.Fatalf("неожиданная ошибка: %v", err)
 	}
 }
 
-func TestDeleteLocalRoute_ПропускаетЕслиОтсутствует(t *testing.T) {
+func TestDeleteTUNRoute_ИгнорируетОшибкуЕслиОтсутствует(t *testing.T) {
+	// Имитируем сценарий «маршрут уже отсутствует»: runner возвращает err.
+	// DeleteTUNRoute не падает — это idempotent cleanup.
 	r := exectx.Mock(map[string]exectx.Result{
-		"ip route show table 83": {ExitCode: 0, Stdout: []byte("")},
+		"ip route del default dev signbox-tun table 83": {
+			ExitCode: 2,
+			Stderr:   []byte("RTNETLINK answers: No such process"),
+		},
 	})
-	err := DeleteLocalRoute(context.Background(), r, 83)
+	err := DeleteTUNRoute(context.Background(), r, "signbox-tun", 83)
 	if err != nil {
+		t.Fatalf("ожидался nil (idempotent), получено: %v", err)
+	}
+}
+
+func TestWaitForInterface_ПоявляетсяСразу(t *testing.T) {
+	r := exectx.Mock(map[string]exectx.Result{
+		"ip link show signbox-tun": {
+			ExitCode: 0,
+			Stdout:   []byte("12: signbox-tun: <POINTOPOINT,UP> mtu 1500 qdisc fq_codel state UNKNOWN\n"),
+		},
+	})
+	if err := WaitForInterface(context.Background(), r, "signbox-tun", time.Second); err != nil {
 		t.Fatalf("ожидался nil, получено: %v", err)
 	}
 }
 
-// TestLocalRouteExists_СтрогоеСравнение — подстрока "local" в чужом маршруте
-// (например, locally-generated) не должна давать false positive.
-func TestLocalRouteExists_СтрогоеСравнение(t *testing.T) {
-	cases := []struct {
-		name   string
-		stdout string
-		want   bool
-	}{
-		{"наш маршрут", "local 0.0.0.0/0 dev lo scope host\n", true},
-		{"чужой с local-словом", "192.168.1.1 dev eth0 src 192.168.1.10\n", false},
-		{"только locally-generated подстрока",
-			"default via 1.1.1.1 dev eth0 src locally-generated\n", false},
-		{"наш + чужой", "192.168.1.0/24 dev eth0\nlocal 0.0.0.0/0 dev lo\n", true},
-		{"пустой", "", false},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			r := exectx.Mock(map[string]exectx.Result{
-				"ip route show table 83": {ExitCode: 0, Stdout: []byte(c.stdout)},
-			})
-			got := localRouteExists(context.Background(), r, 83)
-			if got != c.want {
-				t.Errorf("localRouteExists = %v, ожидалось %v (stdout=%q)", got, c.want, c.stdout)
-			}
-		})
+func TestWaitForInterface_TimeoutЕслиНетИнтерфейса(t *testing.T) {
+	r := exectx.Mock(map[string]exectx.Result{
+		"ip link show signbox-tun": {ExitCode: 1, Stderr: []byte("Device \"signbox-tun\" does not exist.")},
+	})
+	err := WaitForInterface(context.Background(), r, "signbox-tun", 300*time.Millisecond)
+	if err == nil {
+		t.Fatal("ожидалась ошибка timeout")
 	}
 }

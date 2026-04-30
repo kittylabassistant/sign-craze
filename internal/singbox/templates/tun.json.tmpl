@@ -6,12 +6,14 @@
   },
   "inbounds": [
     {
-      "type": "tproxy",
-      "tag": "tproxy-in",
-      "listen": "::",
-      "listen_port": {{ .InboundPort }},
-      "tcp_fast_open": false,
-      "routing_mark": {{ .Mark }}
+      "type": "tun",
+      "tag": "tun-in",
+      "interface_name": {{ jsonMarshal .TUNInterfaceName }},
+      "address": {{ jsonMarshal .TUNAddresses }},
+      "mtu": {{ .TUNMTU }},
+      "auto_route": false,
+      "stack": "system",
+      "sniff": true
     }
   ],
   "outbounds": [
@@ -27,12 +29,12 @@
     "default_domain_resolver": "local",
     "rules": [
       {
-        "inbound": "tproxy-in",
+        "inbound": "tun-in",
         "action": "resolve",
         "strategy": "prefer_ipv4"
       },
       {
-        "inbound": "tproxy-in",
+        "inbound": "tun-in",
         "action": "sniff"
       },
       {

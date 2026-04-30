@@ -3,6 +3,14 @@
 Функциональная спецификация sign-craze, написанная в режиме clean-room.
 Исходники XKeen не читались. Только публичные источники.
 
+> **v0.3.0 (breaking)**: TPROXY-режим заменён на TUN-режим. Стоковое
+> ядро/iptables на Keenetic mipsel-3.4 не имеет xt_TPROXY. Sign-craze теперь
+> использует sing-box `tun` inbound (interface_name=`signbox-tun`,
+> address=`172.19.0.1/30`, stack=`system`, auto_route=`false`); iptables
+> ставит только MARK + переход в нашу цепочку, а ip rule fwmark → table →
+> default через `signbox-tun` поднимает помеченные пакеты в TUN. Разделы
+> ниже про TPROXY — историческое описание (refresh в отдельном коммите).
+
 Использованные источники:
 
 - <https://sing-box.sagernet.org/configuration/>

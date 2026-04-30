@@ -15,8 +15,18 @@ import (
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
-//go:embed templates/tproxy.json.tmpl
-var tproxyTmpl string
+//go:embed templates/tun.json.tmpl
+var tunTmpl string
+
+// Defaults для TUN-inbound.
+const (
+	DefaultTUNInterfaceName = "signbox-tun"
+	DefaultTUNMTU           = 1500
+)
+
+// DefaultTUNAddresses — IPv4 /30 + IPv6 /126 для transparent gateway внутри TUN.
+// 172.19.0.0/30 и fdfe:dcba:9876::/126 не пересекаются с типичными Keenetic LAN-подсетями.
+var DefaultTUNAddresses = []string{"172.19.0.1/30", "fdfe:dcba:9876::1/126"}
 
 // validLogLevels — разрешённые значения LogLevel sing-box. Whitelisted, чтобы
 // state.json с инжекцией ("info\n--evil") не утёк в config.json.
@@ -32,10 +42,16 @@ var validLogLevels = map[string]bool{
 
 // ConfigParams задаёт параметры для генерации конфига sing-box.
 type ConfigParams struct {
-	Mode               types.Mode
-	InboundPort        uint16 // по умолчанию 7895
-	Mark               uint32 // fwmark; по умолчанию 0x53 = 83
-	LogLevel           string // "info", "debug", "warn", "error"
+	Mode     types.Mode
+	LogLevel string // "info", "debug", "warn", "error"
+
+	// TUN inbound: sing-box создаёт TUN-интерфейс при старте. Маршрутизация
+	// (ip rule fwmark → table → default dev <TUN>) делается отдельно
+	// firewall-слоем; sing-box auto_route отключён.
+	TUNInterfaceName string   // default "signbox-tun"
+	TUNAddresses     []string // default ["172.19.0.1/30", "fdfe:dcba:9876::1/126"]
+	TUNMTU           int      // default 1500
+
 	Outbounds          []types.Outbound
 	Routing            types.RoutingRules
 	DefaultOutboundTag string // тег первого outbound, используемый как final
@@ -55,21 +71,25 @@ type ruleSetRef struct {
 // DefaultConfigParams возвращает ConfigParams с разумными значениями по умолчанию.
 func DefaultConfigParams() ConfigParams {
 	return ConfigParams{
-		Mode:        types.ModePolicy,
-		InboundPort: 7895,
-		Mark:        0x53,
-		LogLevel:    "info",
+		Mode:             types.ModePolicy,
+		LogLevel:         "info",
+		TUNInterfaceName: DefaultTUNInterfaceName,
+		TUNAddresses:     append([]string(nil), DefaultTUNAddresses...),
+		TUNMTU:           DefaultTUNMTU,
 	}
 }
 
 // Render генерирует содержимое config.json из шаблона и параметров.
 // Возвращает валидный JSON или ошибку.
 func Render(p ConfigParams) ([]byte, error) {
-	if p.InboundPort == 0 {
-		p.InboundPort = 7895
+	if p.TUNInterfaceName == "" {
+		p.TUNInterfaceName = DefaultTUNInterfaceName
 	}
-	if p.Mark == 0 {
-		p.Mark = 0x53
+	if len(p.TUNAddresses) == 0 {
+		p.TUNAddresses = append([]string(nil), DefaultTUNAddresses...)
+	}
+	if p.TUNMTU == 0 {
+		p.TUNMTU = DefaultTUNMTU
 	}
 	if p.LogLevel == "" {
 		p.LogLevel = "info"
@@ -97,7 +117,7 @@ func Render(p ConfigParams) ([]byte, error) {
 		},
 	}
 
-	tmpl, err := template.New("config").Funcs(funcMap).Parse(tproxyTmpl)
+	tmpl, err := template.New("config").Funcs(funcMap).Parse(tunTmpl)
 	if err != nil {
 		return nil, fmt.Errorf("singbox config: парсинг шаблона: %w", err)
 	}

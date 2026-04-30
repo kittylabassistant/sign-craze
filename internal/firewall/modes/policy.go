@@ -2,69 +2,41 @@ package modes
 
 import "fmt"
 
-// PolicyChainName — имя цепочки mangle, в которой sign-craze ставит TPROXY-правила
-// для трафика, помеченного fwmark IP-policy Keenetic.
+// PolicyChainName — имя цепочки mangle, в которой sign-craze ставит правила
+// маркировки трафика, помеченного fwmark IP-policy Keenetic, для перенаправления
+// в TUN-интерфейс sing-box.
 const PolicyChainName = "signcraze_policy"
 
 // PolicyDPIChainName — имя цепочки mangle для NFQUEUE-хука в режиме policy.
 // Отдельная цепочка от signcraze_dpi (используется в режиме full).
 const PolicyDPIChainName = "signcraze_policy_dpi"
 
-// PolicyRules возвращает правила для режима ModePolicy.
+// PolicyRules возвращает правила для режима ModePolicy (TUN-mode).
 //
 // keenMark — fwmark, присвоенный Keenetic'ом IP-policy через RCI (читается из
-// /rci/show/ip/policy → mark, hex-строка). loopMark — собственный fwmark
-// sign-craze (0x53), которым sing-box помечает свои исходящие пакеты для
-// предотвращения петли (TPROXY ставит его автоматически через --tproxy-mark).
+// /rci/show/ip/policy → mark). loopMark — собственный fwmark sign-craze (0x53),
+// которым мы помечаем пакеты для подъёма в нашу таблицу маршрутизации
+// (ip rule fwmark loopMark → table → default dev signbox-tun).
 //
-// Особенность: пакеты от sing-box (loopMark) НЕ должны повторно попадать в
-// signcraze_policy. Достигается тем, что Keenetic policy mark на пакетах
-// sing-box отсутствует — фильтр "-m mark --mark keenMark" просто не
-// срабатывает. Дополнительно фильтруем loopback и link-local.
-func PolicyRules(port uint16, keenMark, loopMark uint32) []RuleSpec {
-	keen := fmt.Sprintf("0x%x", keenMark)
-	loop := fmt.Sprintf("0x%x", loopMark)
-	portStr := fmt.Sprintf("%d", port)
-
-	// Защита: если RCI ещё не присвоил mark, не возвращаем правила
-	// (TPROXY с mark=0 сматчит весь трафик и сломает роутер).
+// Правила работают только на ingress (PREROUTING): локально сгенерированные
+// пакеты sing-box (исходящие к upstream) идут через OUTPUT и не попадают в
+// signcraze_policy → loop-prevention обеспечен автоматически без bypass-фильтров.
+func PolicyRules(keenMark, loopMark uint32) []RuleSpec {
 	if keenMark == 0 {
+		// Без mark от Keenetic policy сматчит весь трафик и сломает роутер.
 		return nil
 	}
-	_ = loop // зарезервировано для будущей опциональной anti-loop-проверки
+	keen := fmt.Sprintf("0x%x", keenMark)
+	loop := fmt.Sprintf("0x%x", loopMark)
 
 	return []RuleSpec{
-		// Bypass-RETURN: loopback и link-local источники не идут в TPROXY.
-		// Раздельные правила вместо `! -s X ! -s Y` в одном rule — iptables
-		// 1.4.21 (Keenetic) отвергает несколько -s флагов в одном правиле.
-		{
-			Table: "mangle", Chain: PolicyChainName,
-			Args: []string{"-s", "127.0.0.0/8", "-j", "RETURN"},
-		},
-		{
-			Table: "mangle", Chain: PolicyChainName,
-			Args: []string{"-s", "169.254.0.0/16", "-j", "RETURN"},
-		},
-		{
-			Table: "mangle", Chain: PolicyChainName,
-			Args: []string{"-i", "lo", "-j", "RETURN"},
-		},
-		// TPROXY TCP: помеченные Keenetic'ом пакеты идут в sing-box.
+		// Перемаркировать пакеты Keenetic-policy в наш fwmark, чтобы ip rule
+		// направил их в нашу таблицу с default через TUN.
 		{
 			Table: "mangle", Chain: PolicyChainName,
 			Args: []string{
 				"-m", "mark", "--mark", keen,
-				"-p", "tcp",
-				"-j", "TPROXY", "--tproxy-port", portStr, "--tproxy-mark", loop,
-			},
-		},
-		// TPROXY UDP.
-		{
-			Table: "mangle", Chain: PolicyChainName,
-			Args: []string{
-				"-m", "mark", "--mark", keen,
-				"-p", "udp",
-				"-j", "TPROXY", "--tproxy-port", portStr, "--tproxy-mark", loop,
+				"-j", "MARK", "--set-mark", loop,
 			},
 		},
 		// Переход PREROUTING → signcraze_policy.

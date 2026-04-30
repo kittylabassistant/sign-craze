@@ -26,12 +26,17 @@
   },
   "inbounds": [
     {
-      "listen": "::",
-      "listen_port": 7895,
-      "routing_mark": 83,
-      "tag": "tproxy-in",
-      "tcp_fast_open": false,
-      "type": "tproxy"
+      "address": [
+        "172.19.0.1/30",
+        "fdfe:dcba:9876::1/126"
+      ],
+      "auto_route": false,
+      "interface_name": "signbox-tun",
+      "mtu": 1500,
+      "sniff": true,
+      "stack": "system",
+      "tag": "tun-in",
+      "type": "tun"
     }
   ],
   "log": {
@@ -74,12 +79,12 @@
     "rules": [
       {
         "action": "resolve",
-        "inbound": "tproxy-in",
+        "inbound": "tun-in",
         "strategy": "prefer_ipv4"
       },
       {
         "action": "sniff",
-        "inbound": "tproxy-in"
+        "inbound": "tun-in"
       },
       {
         "action": "hijack-dns",

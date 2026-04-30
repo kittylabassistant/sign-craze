@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
+	"time"
 
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/firewall/modes"
@@ -13,11 +14,19 @@ import (
 
 // Applier управляет полным жизненным циклом брандмауэра: применение и откат правил.
 type Applier interface {
-	// Apply применяет правила iptables/ipset/ip для заданного режима.
+	// Apply применяет правила iptables/ipset/ip rule для заданного режима.
+	// НЕ устанавливает TUN-route — он требует уже запущенный sing-box
+	// (TUN-интерфейс существует только когда sing-box активен). После старта
+	// sing-box вызывайте AttachTUN.
 	// При ошибке на любом шаге автоматически вызывает Remove для отката.
 	Apply(ctx context.Context, mode types.Mode) error
 
-	// Remove удаляет все правила sign-craze. Идемпотентно.
+	// AttachTUN ждёт появления TUN-интерфейса dev и устанавливает default-route
+	// в нашу таблицу маршрутизации. Должна вызываться из main после Start sing-box.
+	// Идемпотентна (ip route replace).
+	AttachTUN(ctx context.Context, dev string) error
+
+	// Remove удаляет все правила sign-craze (включая TUN-route). Идемпотентно.
 	Remove(ctx context.Context) error
 }
 
@@ -43,6 +52,15 @@ type Config struct {
 
 // IPSetExcludes — имя ipset для bypass-исключений.
 const IPSetExcludes = "signcraze_excludes"
+
+// TUNDeviceName — имя TUN-интерфейса, создаваемого sing-box. Должно совпадать
+// с singbox.DefaultTUNInterfaceName (декларируется здесь для использования в
+// firewall-слое без зависимости от пакета singbox).
+const TUNDeviceName = "signbox-tun"
+
+// TUNAttachTimeout — максимальное ожидание появления TUN-интерфейса после
+// старта sing-box. На медленных MIPS до 2s; запас 10s.
+const TUNAttachTimeout = 10 * time.Second
 
 // DefaultConfig возвращает конфигурацию по умолчанию согласно BEHAVIOR_SPEC §3.
 func DefaultConfig() Config {
@@ -76,10 +94,13 @@ type applierImpl struct {
 func (a *applierImpl) Apply(ctx context.Context, mode types.Mode) error {
 	log.L().Info("firewall: применение правил", "mode", mode)
 
-	// Pre-flight: проверить наличие нужных iptables-модулей. На стоковой
-	// Keenetic часто нет xt_TPROXY/xt_set; без них Apply падает с
-	// невнятной ошибкой про unknown option. Лучше упасть рано с
-	// инструкцией opkg install.
+	// Pre-flight: kernel TUN — без него sing-box `tun` inbound не запустится.
+	if err := CheckTUNAvailable(); err != nil {
+		return fmt.Errorf("firewall: pre-flight: %w", err)
+	}
+
+	// Pre-flight: проверить наличие match `set` в iptables (для ipset-маршрутизации
+	// в режимах full/hybrid). Также подсветит отсутствие libxt_set.so на busybox.
 	if err := CheckRequiredIptablesModules(ctx, a.runner); err != nil {
 		return fmt.Errorf("firewall: pre-flight: %w", err)
 	}
@@ -122,11 +143,9 @@ func (a *applierImpl) applyPolicyMode(ctx context.Context) error {
 		return fmt.Errorf("firewall: ModePolicy требует PolicyMark != 0 (читать через ndm.GetPolicy)")
 	}
 
-	// 1. ip rule + локальный route для loop-prevention пакетов sing-box.
+	// 1. ip rule fwmark → table. Default-route в TUN установится позже через
+	// AttachTUN (после старта sing-box, когда TUN-интерфейс появится).
 	if err := EnsureIPRule(ctx, a.runner, a.cfg.FWMark, a.cfg.Table, a.cfg.Priority); err != nil {
-		return err
-	}
-	if err := EnsureLocalRoute(ctx, a.runner, a.cfg.Table); err != nil {
 		return err
 	}
 
@@ -142,8 +161,7 @@ func (a *applierImpl) applyPolicyMode(ctx context.Context) error {
 	}
 
 	// 3. DPI-правила (если включено) — добавляются ПЕРЕД policy-правилами,
-	// чтобы NFQUEUE сработал до TPROXY (DPI меняет SNI/первый пакет, потом
-	// поправленный пакет уже идёт в sing-box).
+	// чтобы NFQUEUE сработал до перемаркировки и подъёма в TUN-таблицу.
 	if a.cfg.DPIEnabled {
 		for _, spec := range modes.PolicyDPIRules(a.cfg.PolicyMark, a.cfg.NFQueueNum) {
 			if err := a.ipt.EnsureRule(ctx, spec.Table, spec.Chain, spec.Args...); err != nil {
@@ -152,8 +170,9 @@ func (a *applierImpl) applyPolicyMode(ctx context.Context) error {
 		}
 	}
 
-	// 4. TPROXY-правила.
-	for _, spec := range modes.PolicyRules(a.cfg.Port, a.cfg.PolicyMark, a.cfg.FWMark) {
+	// 4. MARK-правила: помечаем Keenetic-policy трафик нашим fwmark для
+	// последующего подъёма в таблицу с default через TUN.
+	for _, spec := range modes.PolicyRules(a.cfg.PolicyMark, a.cfg.FWMark) {
 		if err := a.ipt.EnsureRule(ctx, spec.Table, spec.Chain, spec.Args...); err != nil {
 			return err
 		}
@@ -182,11 +201,8 @@ func (a *applierImpl) applyFullMode(ctx context.Context) error {
 		}
 	}
 
-	// 2. ip rule + ip route (маршрутизация помеченного трафика).
+	// 2. ip rule fwmark → table. Default-route в TUN установится через AttachTUN.
 	if err := EnsureIPRule(ctx, a.runner, a.cfg.FWMark, a.cfg.Table, a.cfg.Priority); err != nil {
-		return err
-	}
-	if err := EnsureLocalRoute(ctx, a.runner, a.cfg.Table); err != nil {
 		return err
 	}
 
@@ -211,12 +227,12 @@ func (a *applierImpl) applyFullMode(ctx context.Context) error {
 		}
 	}
 
-	// 5. Правила hybrid-режима (TProxy + опц. NFQUEUE по флагу DPIEnabled).
+	// 5. Правила режима: MARK по ipset + опц. NFQUEUE (DPIEnabled).
 	var ruleSpecs []modes.RuleSpec
 	if a.cfg.DPIEnabled {
-		ruleSpecs = modes.HybridRules(a.cfg.Port, a.cfg.FWMark, a.cfg.NFQueueNum)
+		ruleSpecs = modes.HybridRules(a.cfg.FWMark, a.cfg.NFQueueNum)
 	} else {
-		ruleSpecs = modes.TProxyRules(a.cfg.Port, a.cfg.FWMark)
+		ruleSpecs = modes.TProxyRules(a.cfg.FWMark)
 	}
 	for _, spec := range ruleSpecs {
 		if err := a.ipt.EnsureRule(ctx, spec.Table, spec.Chain, spec.Args...); err != nil {
@@ -231,6 +247,20 @@ func (a *applierImpl) applyFullMode(ctx context.Context) error {
 		}
 	}
 
+	return nil
+}
+
+// AttachTUN ждёт появления TUN-интерфейса (созданного sing-box) и устанавливает
+// default-route в нашу таблицу маршрутизации. Должна вызываться из CLI после
+// успешного старта sing-box.
+func (a *applierImpl) AttachTUN(ctx context.Context, dev string) error {
+	if err := WaitForInterface(ctx, a.runner, dev, TUNAttachTimeout); err != nil {
+		return fmt.Errorf("firewall: ожидание TUN-интерфейса: %w", err)
+	}
+	if err := EnsureTUNRoute(ctx, a.runner, dev, a.cfg.Table); err != nil {
+		return err
+	}
+	log.L().Info("firewall: TUN подключён", "dev", dev, "table", a.cfg.Table)
 	return nil
 }
 
@@ -274,12 +304,12 @@ func (a *applierImpl) Remove(ctx context.Context) error {
 		}
 	}
 
-	// 3. Удалить ip rule и ip route
+	// 3. Удалить TUN-route и ip rule.
+	if err := DeleteTUNRoute(ctx, a.runner, TUNDeviceName, a.cfg.Table); err != nil {
+		log.L().Warn("firewall: ошибка удаления TUN route", "err", err)
+	}
 	if err := DeleteIPRule(ctx, a.runner, a.cfg.FWMark, a.cfg.Table); err != nil {
 		log.L().Warn("firewall: ошибка удаления ip rule", "err", err)
-	}
-	if err := DeleteLocalRoute(ctx, a.runner, a.cfg.Table); err != nil {
-		log.L().Warn("firewall: ошибка удаления local route", "err", err)
 	}
 
 	// 4. Удалить ipset-наборы

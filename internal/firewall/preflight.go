@@ -3,77 +3,92 @@ package firewall
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
 )
 
-// CheckRequiredIptablesModules verifies iptables на хосте имеет нужные
-// match/target модули. На стоковой Keenetic-прошивке часто отсутствуют
-// xt_TPROXY и xt_set — без них Apply упадёт с
-// `iptables: unknown option "--tproxy-port"` или
-// `iptables: No chain/target/match by that name`.
-//
-// Probe: `iptables -j TPROXY --help` / `iptables -m set --help`. Если
-// модуль есть — iptables печатает help в stdout (exit 0). Если нет —
-// stderr содержит "Couldn't find target/match" (exit 2).
-//
-// Возвращает ошибку с актуальным opkg-инструктажем для пользователя.
-func CheckRequiredIptablesModules(ctx context.Context, runner exectx.Runner) error {
-	type mod struct {
-		flag  string // -j или -m
-		name  string
-		opkg  string // имя пакета Entware
-		human string
-	}
-	required := []mod{
-		{"-j", "TPROXY", "iptables-mod-tproxy", "TPROXY (target xt_TPROXY)"},
-		{"-m", "set", "iptables-mod-ipset", "set (match xt_set)"},
-	}
+// probeChainName — короткое имя цепочки, используемое preflight'ом для
+// dry-run проверки наличия match/target. Создаётся, в неё добавляется
+// тестовое правило, потом цепочка удаляется. Имя короткое и явное —
+// чтобы не сломать пользовательские цепочки совпадением имён.
+const probeChainName = "signcraze_probe"
 
-	var missing []mod
-	for _, m := range required {
-		if !iptablesModuleAvailable(ctx, runner, m.flag, m.name) {
-			missing = append(missing, m)
-		}
-	}
-	if len(missing) == 0 {
-		return nil
-	}
+// tunAvailableCheck — точка инъекции для unit-тестов, чтобы не требовать
+// /dev/net/tun на CI-runner'ах (Docker/Podman без --privileged TUN не выдаёт).
+// В production переопределяется на реальную проверку.
+var tunAvailableCheck = checkTUNAvailableReal
 
-	var names, pkgs []string
-	for _, m := range missing {
-		names = append(names, m.human)
-		pkgs = append(pkgs, m.opkg)
-	}
-	return fmt.Errorf(
-		"iptables не имеет требуемых модулей: %s.\n"+
-			"установите через Entware:\n"+
-			"  opkg update && opkg install %s ipset",
-		strings.Join(names, ", "),
-		strings.Join(pkgs, " "),
-	)
+// CheckTUNAvailable проверяет, что в системе доступен kernel TUN — без него
+// sing-box `tun` inbound не запустится. На стоковой Keenetic-прошивке TUN
+// обычно включён (CONFIG_TUN=y, используется встроенным OpenVPN/WireGuard),
+// но не на всех моделях.
+func CheckTUNAvailable() error {
+	return tunAvailableCheck()
 }
 
-// iptablesModuleAvailable пробует `iptables {flag} {name} --help`.
-// Модуль есть → exit 0 без "Couldn't find" в stderr.
-// Модуль отсутствует → exit != 0 или stderr с "Couldn't find".
-func iptablesModuleAvailable(ctx context.Context, runner exectx.Runner, flag, name string) bool {
-	res, err := runner.Run(ctx, "iptables", flag, name, "--help")
+func checkTUNAvailableReal() error {
+	fi, err := os.Stat("/dev/net/tun")
 	if err != nil {
-		// busybox iptables может выйти с ненулевым кодом для
-		// неизвестного модуля. Проверим stderr — если там типичная
-		// фраза, значит модуль точно отсутствует.
+		return fmt.Errorf("kernel TUN недоступен: %w "+
+			"(попробуйте `modprobe tun`; если ядро без CONFIG_TUN — sign-craze несовместим)", err)
+	}
+	if fi.Mode()&os.ModeCharDevice == 0 {
+		return fmt.Errorf("/dev/net/tun не является character device (mode=%v)", fi.Mode())
+	}
+	return nil
+}
+
+// CheckRequiredIptablesModules проверяет наличие match `set` (xt_set) в iptables.
+// MARK target есть всегда (включён в любую iptables-сборку), его не пробуем.
+// xt_TPROXY больше не требуется (sign-craze v0.3+ использует TUN-mode).
+//
+// Probe через **реальный dry-run**: создаём временную цепочку signcraze_probe,
+// добавляем туда правило с `-m set --match-set <fake> dst -j MARK --set-mark 0x1`.
+// Если match отсутствует — iptables возвращает "No chain/target/match by that
+// name". В любом случае чистим цепочку через FlushAndDeleteChain.
+//
+// Если ipset не установлен или signcraze_ipv4 ещё не создан — это всё равно
+// проверка userspace plugin libxt_set.so (iptables ругается на отсутствие
+// модуля, не на пустой ipset).
+func CheckRequiredIptablesModules(ctx context.Context, runner exectx.Runner) error {
+	ipt := New(runner)
+
+	// EnsureChain идемпотентен (игнорирует "already exists"), так что pre-cleanup
+	// от предыдущего падения preflight'а не нужен — defer FlushAndDeleteChain
+	// почистит за собой при любом исходе.
+	if err := ipt.EnsureChain(ctx, "mangle", probeChainName); err != nil {
+		return fmt.Errorf("preflight: создание probe-цепочки: %w", err)
+	}
+	defer func() { _ = ipt.FlushAndDeleteChain(ctx, "mangle", probeChainName) }()
+
+	// Probe match `set`: нужен xt_set (libxt_set.so + xt_set kernel module).
+	// Используем фиктивный set-name "signcraze_probe_set" — match сначала
+	// проверяется userspace, ошибка про модуль приходит ДО проверки существования
+	// набора, поэтому нет нужды реально создавать ipset.
+	res, err := runner.Run(ctx, "iptables",
+		"-t", "mangle", "-A", probeChainName,
+		"-m", "set", "--match-set", "signcraze_probe_set", "dst",
+		"-j", "MARK", "--set-mark", "0x1",
+	)
+	if err != nil {
 		stderr := string(res.Stderr)
-		if strings.Contains(stderr, "Couldn't find") || strings.Contains(stderr, "No such file") {
-			return false
+		if strings.Contains(stderr, "No chain/target/match by that name") ||
+			strings.Contains(stderr, "Couldn't load match") ||
+			strings.Contains(stderr, "Couldn't find match") {
+			return fmt.Errorf(
+				"iptables не имеет match `set` (xt_set/libxt_set.so). " +
+					"Установите ipset через Entware: `opkg install ipset`",
+			)
 		}
-		// Иные ошибки трактуем как недоступность во избежание ложного
-		// успеха (лучше явно ругнуться, чем упасть на Apply).
-		return false
+		// Если ошибка про несуществующий ipset (`set signcraze_probe_set doesn't exist`)
+		// — это означает что match `set` РАБОТАЕТ, просто наш фейковый набор не найден.
+		// Это положительный исход probe.
+		if strings.Contains(stderr, "doesn't exist") || strings.Contains(stderr, "not exist") {
+			return nil
+		}
+		return fmt.Errorf("preflight: probe iptables match set: %w (stderr: %s)", err, stderr)
 	}
-	if strings.Contains(string(res.Stderr), "Couldn't find") {
-		return false
-	}
-	return true
+	return nil
 }

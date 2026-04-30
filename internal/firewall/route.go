@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	scerrors "github.com/kittylabassistant/sign-craze/internal/errors"
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
@@ -76,42 +77,43 @@ func DeleteIPRule(ctx context.Context, runner exectx.Runner, fwmark uint32, tabl
 	return nil
 }
 
-// EnsureLocalRoute добавляет маршрут local 0.0.0.0/0 dev lo в таблицу. Идемпотентно.
+// EnsureTUNRoute добавляет default-маршрут через TUN-интерфейс sing-box в указанную
+// таблицу. Идемпотентно через `ip route replace` (создаёт если нет, переустанавливает
+// если есть — без RTNETLINK errors на busybox-`ip` Keenetic).
 //
-// Используем `ip route replace` вместо `add` — replace создаёт маршрут если
-// его нет и переустанавливает при наличии (без "RTNETLINK answers: File exists").
-// Это критично на busybox-`ip` Keenetic: `ip route show table N` иногда не
-// показывает `local`-type маршруты, поэтому пред-проверка через
-// localRouteExists даёт false negative и `add` падает на дубле.
-func EnsureLocalRoute(ctx context.Context, runner exectx.Runner, table int) error {
+// Должен вызываться ПОСЛЕ старта sing-box и появления TUN-интерфейса
+// (см. WaitForInterface), иначе `ip route` падает «Cannot find device».
+func EnsureTUNRoute(ctx context.Context, runner exectx.Runner, dev string, table int) error {
 	args := []string{
 		"route", "replace",
-		"local", "0.0.0.0/0",
-		"dev", "lo",
+		"default",
+		"dev", dev,
 		"table", fmt.Sprintf("%d", table),
 	}
 	if _, err := runner.Run(ctx, "ip", args...); err != nil {
-		return fmt.Errorf("firewall: добавление local route в таблицу %d: %w", table, err)
+		return fmt.Errorf("firewall: добавление default через %s в таблицу %d: %w", dev, table, err)
 	}
-	log.L().Debug("firewall: local route добавлен/обновлён", "table", table)
+	log.L().Debug("firewall: TUN route добавлен/обновлён", "dev", dev, "table", table)
 	return nil
 }
 
-// DeleteLocalRoute удаляет маршрут local 0.0.0.0/0 dev lo из таблицы. Идемпотентно.
-func DeleteLocalRoute(ctx context.Context, runner exectx.Runner, table int) error {
-	if !localRouteExists(ctx, runner, table) {
-		return nil
-	}
+// DeleteTUNRoute удаляет default-маршрут через dev из таблицы. Идемпотентно.
+//
+// Используем безусловный `ip route del default table N` — если маршрута нет,
+// busybox-`ip` возвращает ошибку, которую логируем как Debug и игнорируем
+// (стандартный паттерн для idempotent cleanup).
+func DeleteTUNRoute(ctx context.Context, runner exectx.Runner, dev string, table int) error {
 	args := []string{
 		"route", "del",
-		"local", "0.0.0.0/0",
-		"dev", "lo",
+		"default",
+		"dev", dev,
 		"table", fmt.Sprintf("%d", table),
 	}
 	if _, err := runner.Run(ctx, "ip", args...); err != nil {
-		return fmt.Errorf("firewall: удаление local route из таблицы %d: %w", table, err)
+		log.L().Debug("firewall: удаление TUN route (возможно отсутствует)", "dev", dev, "table", table, "err", err)
+		return nil
 	}
-	log.L().Debug("firewall: local route удалён", "table", table)
+	log.L().Debug("firewall: TUN route удалён", "dev", dev, "table", table)
 	return nil
 }
 
@@ -125,23 +127,27 @@ func ipRuleExists(ctx context.Context, runner exectx.Runner, fwmark uint32, tabl
 	return strings.Contains(string(res.Stdout), needle)
 }
 
-// localRouteExists проверяет наличие маршрута `local 0.0.0.0/0 dev lo` в таблице.
-// Полное line-by-line сравнение — иначе случайный route с подстрокой "local"
-// (например, locally-generated traffic от других правил) даёт false positive.
-func localRouteExists(ctx context.Context, runner exectx.Runner, table int) bool {
-	res, err := runner.Run(ctx, "ip", "route", "show", "table", fmt.Sprintf("%d", table))
-	if err != nil {
-		return false
-	}
-	for _, line := range strings.Split(string(res.Stdout), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 4 {
-			continue
+// WaitForInterface поллит `ip link show <dev>` пока интерфейс не появится или
+// не истечёт timeout. Используется applier'ом после Start sing-box (sing-box сам
+// создаёт TUN-интерфейс при инициализации tun-inbound, это занимает ~0.5–2s
+// на медленном MIPS).
+//
+// Возвращает nil если интерфейс появился, ошибку timeout — если нет.
+// Ошибки runner.Run между поллами игнорируются (busybox `ip link show <dev>`
+// возвращает exit 1 пока интерфейса нет — это и есть индикатор «ещё нет»).
+func WaitForInterface(ctx context.Context, runner exectx.Runner, dev string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
 		}
-		// "local 0.0.0.0/0 dev lo ..."
-		if fields[0] == "local" && fields[1] == "0.0.0.0/0" && fields[2] == "dev" && fields[3] == "lo" {
-			return true
+		res, err := runner.Run(ctx, "ip", "link", "show", dev)
+		if err == nil && strings.Contains(string(res.Stdout), dev) {
+			return nil
 		}
+		time.Sleep(200 * time.Millisecond)
 	}
-	return false
+	return fmt.Errorf("firewall: интерфейс %s не появился за %s", dev, timeout)
 }
