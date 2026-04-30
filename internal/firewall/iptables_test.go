@@ -2,6 +2,7 @@ package firewall
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
@@ -104,6 +105,46 @@ func TestIPTables_EnsureChain_ИгнорируетСуществующую(t *te
 	err := ipt.EnsureChain(context.Background(), "mangle", "signcraze")
 	if err != nil {
 		t.Fatalf("ожидался nil для существующей цепочки, получено: %v", err)
+	}
+}
+
+// countingRunner — N первых вызовов успех, дальше ошибка. Для теста
+// DeleteJumpAll, который повторяет -D пока exit==0.
+type countingRunner struct {
+	calls       int
+	successQty  int
+	errAfterMsg string
+}
+
+func (r *countingRunner) Run(_ context.Context, _ string, _ ...string) (exectx.Result, error) {
+	r.calls++
+	if r.calls <= r.successQty {
+		return exectx.Result{ExitCode: 0}, nil
+	}
+	return exectx.Result{ExitCode: 1}, fmt.Errorf("%s", r.errAfterMsg)
+}
+
+// TestIPTables_DeleteJumpAll_УдаляетВсе — несколько успешных -D подряд,
+// затем -D возвращает ошибку (правил больше нет) → метод выходит.
+// Используется в Remove() как замена comment-based чистки.
+func TestIPTables_DeleteJumpAll_УдаляетВсе(t *testing.T) {
+	r := &countingRunner{successQty: 2, errAfterMsg: "no rule"}
+	ipt := New(r)
+	if err := ipt.DeleteJumpAll(context.Background(), "mangle", "PREROUTING", "signcraze_policy"); err != nil {
+		t.Fatalf("неожиданная ошибка: %v", err)
+	}
+	if r.calls != 3 {
+		t.Errorf("ожидалось 3 вызова (2 успех + 1 not-found), получено %d", r.calls)
+	}
+}
+
+// TestIPTables_DeleteJumpAll_NoOpEслиОтсутствует — первый -D сразу возвращает
+// ошибку → выходим без ошибки наружу.
+func TestIPTables_DeleteJumpAll_NoOpЕслиОтсутствует(t *testing.T) {
+	r := exectx.Mock(map[string]exectx.Result{})
+	ipt := New(r)
+	if err := ipt.DeleteJumpAll(context.Background(), "mangle", "PREROUTING", "signcraze_policy"); err != nil {
+		t.Fatalf("ожидался nil, получено: %v", err)
 	}
 }
 

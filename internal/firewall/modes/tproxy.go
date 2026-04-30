@@ -22,7 +22,6 @@ func TProxyRules(port uint16, fwmark uint32) []RuleSpec {
 			Args: []string{
 				"-m", "set", "--match-set", "signcraze_ipv4", "dst",
 				"-j", "MARK", "--set-mark", mark,
-				"-m", "comment", "--comment", "signcraze:mark-ipv4",
 			},
 		},
 		// mark-маршрутизация по ipset signcraze_ipv6
@@ -31,7 +30,6 @@ func TProxyRules(port uint16, fwmark uint32) []RuleSpec {
 			Args: []string{
 				"-m", "set", "--match-set", "signcraze_ipv6", "dst",
 				"-j", "MARK", "--set-mark", mark,
-				"-m", "comment", "--comment", "signcraze:mark-ipv6",
 			},
 		},
 		// Bypass-RETURN внутри signcraze_full: разделяем -s фильтры на
@@ -39,27 +37,15 @@ func TProxyRules(port uint16, fwmark uint32) []RuleSpec {
 		// флагов в одном rule).
 		{
 			Table: "mangle", Chain: "signcraze_full",
-			Args: []string{
-				"-s", "127.0.0.0/8",
-				"-j", "RETURN",
-				"-m", "comment", "--comment", "signcraze:bypass-loopback-src",
-			},
+			Args:  []string{"-s", "127.0.0.0/8", "-j", "RETURN"},
 		},
 		{
 			Table: "mangle", Chain: "signcraze_full",
-			Args: []string{
-				"-s", "169.254.0.0/16",
-				"-j", "RETURN",
-				"-m", "comment", "--comment", "signcraze:bypass-linklocal-src",
-			},
+			Args:  []string{"-s", "169.254.0.0/16", "-j", "RETURN"},
 		},
 		{
 			Table: "mangle", Chain: "signcraze_full",
-			Args: []string{
-				"-i", "lo",
-				"-j", "RETURN",
-				"-m", "comment", "--comment", "signcraze:bypass-lo-iface",
-			},
+			Args:  []string{"-i", "lo", "-j", "RETURN"},
 		},
 		// tproxy TCP для помеченных пакетов; bypass-правила выше не дают
 		// loopback/link-local дойти сюда (safety-fixes #6).
@@ -69,7 +55,6 @@ func TProxyRules(port uint16, fwmark uint32) []RuleSpec {
 				"-m", "mark", "--mark", mark,
 				"-p", "tcp",
 				"-j", "TPROXY", "--tproxy-port", portStr, "--tproxy-mark", mark,
-				"-m", "comment", "--comment", "signcraze:tproxy-tcp",
 			},
 		},
 		// tproxy UDP для помеченных пакетов.
@@ -79,32 +64,22 @@ func TProxyRules(port uint16, fwmark uint32) []RuleSpec {
 				"-m", "mark", "--mark", mark,
 				"-p", "udp",
 				"-j", "TPROXY", "--tproxy-port", portStr, "--tproxy-mark", mark,
-				"-m", "comment", "--comment", "signcraze:tproxy-udp",
 			},
 		},
 		// переход в signcraze_dpi (пустая в proxy-режиме, заполняется в hybrid)
 		{
 			Table: "mangle", Chain: "PREROUTING",
-			Args: []string{
-				"-j", "signcraze_dpi",
-				"-m", "comment", "--comment", "signcraze:prerouting-dpi",
-			},
+			Args:  []string{"-j", "signcraze_dpi"},
 		},
 		// переход в signcraze для mark-маршрутизации
 		{
 			Table: "mangle", Chain: "PREROUTING",
-			Args: []string{
-				"-j", "signcraze",
-				"-m", "comment", "--comment", "signcraze:prerouting-mark",
-			},
+			Args:  []string{"-j", "signcraze"},
 		},
 		// переход в signcraze_full для TPROXY (после mark-маршрутизации).
 		{
 			Table: "mangle", Chain: "PREROUTING",
-			Args: []string{
-				"-j", "signcraze_full",
-				"-m", "comment", "--comment", "signcraze:prerouting-tproxy",
-			},
+			Args:  []string{"-j", "signcraze_full"},
 		},
 	}
 }

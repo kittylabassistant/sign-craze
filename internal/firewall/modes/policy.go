@@ -36,33 +36,18 @@ func PolicyRules(port uint16, keenMark, loopMark uint32) []RuleSpec {
 	return []RuleSpec{
 		// Bypass-RETURN: loopback и link-local источники не идут в TPROXY.
 		// Раздельные правила вместо `! -s X ! -s Y` в одном rule — iptables
-		// 1.4.21 (Keenetic) отвергает несколько -s флагов в одном правиле
-		// ("multiple -s flags not allowed"). Эти RETURN-правила вставляются
-		// в начало signcraze_policy, поэтому matching заканчивается до
-		// TPROXY-правил ниже.
+		// 1.4.21 (Keenetic) отвергает несколько -s флагов в одном правиле.
 		{
 			Table: "mangle", Chain: PolicyChainName,
-			Args: []string{
-				"-s", "127.0.0.0/8",
-				"-j", "RETURN",
-				"-m", "comment", "--comment", "signcraze:bypass-loopback-src",
-			},
+			Args: []string{"-s", "127.0.0.0/8", "-j", "RETURN"},
 		},
 		{
 			Table: "mangle", Chain: PolicyChainName,
-			Args: []string{
-				"-s", "169.254.0.0/16",
-				"-j", "RETURN",
-				"-m", "comment", "--comment", "signcraze:bypass-linklocal-src",
-			},
+			Args: []string{"-s", "169.254.0.0/16", "-j", "RETURN"},
 		},
 		{
 			Table: "mangle", Chain: PolicyChainName,
-			Args: []string{
-				"-i", "lo",
-				"-j", "RETURN",
-				"-m", "comment", "--comment", "signcraze:bypass-lo-iface",
-			},
+			Args: []string{"-i", "lo", "-j", "RETURN"},
 		},
 		// TPROXY TCP: помеченные Keenetic'ом пакеты идут в sing-box.
 		{
@@ -71,7 +56,6 @@ func PolicyRules(port uint16, keenMark, loopMark uint32) []RuleSpec {
 				"-m", "mark", "--mark", keen,
 				"-p", "tcp",
 				"-j", "TPROXY", "--tproxy-port", portStr, "--tproxy-mark", loop,
-				"-m", "comment", "--comment", "signcraze:tproxy-tcp",
 			},
 		},
 		// TPROXY UDP.
@@ -81,16 +65,12 @@ func PolicyRules(port uint16, keenMark, loopMark uint32) []RuleSpec {
 				"-m", "mark", "--mark", keen,
 				"-p", "udp",
 				"-j", "TPROXY", "--tproxy-port", portStr, "--tproxy-mark", loop,
-				"-m", "comment", "--comment", "signcraze:tproxy-udp",
 			},
 		},
 		// Переход PREROUTING → signcraze_policy.
 		{
 			Table: "mangle", Chain: "PREROUTING",
-			Args: []string{
-				"-j", PolicyChainName,
-				"-m", "comment", "--comment", "signcraze:prerouting-policy",
-			},
+			Args: []string{"-j", PolicyChainName},
 		},
 	}
 }
@@ -114,7 +94,6 @@ func PolicyDPIRules(keenMark uint32, nfqueueNum int) []RuleSpec {
 				"-m", "mark", "--mark", keen,
 				"-p", "tcp",
 				"-j", "NFQUEUE", "--queue-num", queue, "--queue-bypass",
-				"-m", "comment", "--comment", "signcraze:dpi-tcp",
 			},
 		},
 		{
@@ -123,16 +102,12 @@ func PolicyDPIRules(keenMark uint32, nfqueueNum int) []RuleSpec {
 				"-m", "mark", "--mark", keen,
 				"-p", "udp",
 				"-j", "NFQUEUE", "--queue-num", queue, "--queue-bypass",
-				"-m", "comment", "--comment", "signcraze:dpi-udp",
 			},
 		},
 		// Переход PREROUTING → signcraze_policy_dpi (вставляется ПЕРЕД signcraze_policy).
 		{
 			Table: "mangle", Chain: "PREROUTING",
-			Args: []string{
-				"-j", PolicyDPIChainName,
-				"-m", "comment", "--comment", "signcraze:prerouting-policy-dpi",
-			},
+			Args: []string{"-j", PolicyDPIChainName},
 		},
 	}
 }

@@ -8,18 +8,21 @@ import (
 func TestHybridRules_СодержитTProxyПравила(t *testing.T) {
 	rules := HybridRules(7895, 0x53, 200)
 
-	// Все tproxy-правила должны присутствовать
-	tproxyComments := []string{
-		"signcraze:mark-ipv4",
-		"signcraze:mark-ipv6",
-		"signcraze:tproxy-tcp",
-		"signcraze:tproxy-udp",
-		"signcraze:prerouting-dpi",
-		"signcraze:prerouting-mark",
+	checks := []struct {
+		desc    string
+		chain   string
+		needles []string
+	}{
+		{"mark-ipv4", "signcraze", []string{"--match-set signcraze_ipv4 dst", "-j MARK"}},
+		{"mark-ipv6", "signcraze", []string{"--match-set signcraze_ipv6 dst", "-j MARK"}},
+		{"tproxy-tcp", "signcraze_full", []string{"-p tcp", "-j TPROXY"}},
+		{"tproxy-udp", "signcraze_full", []string{"-p udp", "-j TPROXY"}},
+		{"prerouting-dpi", "PREROUTING", []string{"-j signcraze_dpi"}},
+		{"prerouting-mark", "PREROUTING", []string{"-j signcraze"}},
 	}
-	for _, c := range tproxyComments {
-		if !rulesContainComment(rules, c) {
-			t.Errorf("правило с комментарием %q отсутствует в hybrid-наборе", c)
+	for _, c := range checks {
+		if !rulesContain(rules, c.chain, c.needles...) {
+			t.Errorf("правило %s в %s не найдено (нужны substr: %v)", c.desc, c.chain, c.needles)
 		}
 	}
 }
@@ -27,12 +30,12 @@ func TestHybridRules_СодержитTProxyПравила(t *testing.T) {
 func TestHybridRules_СодержитNFQUEUE(t *testing.T) {
 	rules := HybridRules(7895, 0x53, 200)
 
-	// NFQUEUE-правила в signcraze_dpi
-	dpiComments := []string{"signcraze:dpi-tcp", "signcraze:dpi-udp"}
-	for _, c := range dpiComments {
-		if !rulesContainComment(rules, c) {
-			t.Errorf("NFQUEUE-правило с комментарием %q отсутствует", c)
-		}
+	// NFQUEUE-правила в signcraze_dpi: TCP и UDP
+	if !rulesContain(rules, "signcraze_dpi", "-p tcp", "-j NFQUEUE") {
+		t.Error("NFQUEUE TCP в signcraze_dpi отсутствует")
+	}
+	if !rulesContain(rules, "signcraze_dpi", "-p udp", "-j NFQUEUE") {
+		t.Error("NFQUEUE UDP в signcraze_dpi отсутствует")
 	}
 }
 
@@ -83,17 +86,8 @@ func TestHybridRules_ВсеВТаблицеMangle(t *testing.T) {
 	rules := HybridRules(7895, 0x53, 200)
 	for _, r := range rules {
 		if r.Table != "mangle" {
-			t.Errorf("правило %s/%s в таблице %q, ожидалась mangle",
-				r.Chain, findComment(r.Args), r.Table)
+			t.Errorf("правило в %s/%s в таблице %q, ожидалась mangle",
+				r.Table, r.Chain, r.Table)
 		}
 	}
-}
-
-func rulesContainComment(rules []RuleSpec, comment string) bool {
-	for _, r := range rules {
-		if findComment(r.Args) == comment {
-			return true
-		}
-	}
-	return false
 }

@@ -230,15 +230,31 @@ func (a *applierImpl) applyFullMode(ctx context.Context) error {
 func (a *applierImpl) Remove(ctx context.Context) error {
 	log.L().Info("firewall: удаление правил")
 
-	// 1. Удалить правила с комментариями signcraze: из таблицы mangle
-	if err := a.ipt.DeleteRulesByComment(ctx, "mangle", "signcraze:"); err != nil {
-		log.L().Warn("firewall: ошибка при удалении правил по комментарию", "err", err)
-	}
-
-	// 2. Удалить цепочки (включая signcraze_ports и policy-цепочки).
-	allChains := []string{
+	// 1. Удалить prerouting jumps на наши user-chains. На стоковой
+	// Keenetic-прошивке нет xt_comment → раньше использовался
+	// DeleteRulesByComment теперь не сработает (правила пишутся без
+	// --comment). Все наши правила в системной PREROUTING — это
+	// jumps на signcraze_*; перечислены явно.
+	preroutingJumps := []string{
 		modes.PolicyDPIChainName, // signcraze_policy_dpi
 		modes.PolicyChainName,    // signcraze_policy
+		"signcraze_dpi",
+		"signcraze_ports",
+		"signcraze_full",
+		"signcraze",
+	}
+	for _, target := range preroutingJumps {
+		if err := a.ipt.DeleteJumpAll(ctx, "mangle", "PREROUTING", target); err != nil {
+			log.L().Warn("firewall: ошибка удаления PREROUTING jump", "target", target, "err", err)
+		}
+	}
+
+	// 2. Удалить наши user-chains (flush очищает их содержимое — все наши
+	// правила, поскольку в системные цепочки мы кроме jumps ничего не
+	// клали).
+	allChains := []string{
+		modes.PolicyDPIChainName,
+		modes.PolicyChainName,
 		"signcraze_dpi",
 		"signcraze_ports",
 		"signcraze_full",

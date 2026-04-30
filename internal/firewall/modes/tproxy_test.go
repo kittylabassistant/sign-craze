@@ -5,37 +5,44 @@ import (
 	"testing"
 )
 
+// rulesContain — true, если хотя бы одно правило с заданными chain содержит
+// все substr (для проверки наличия конкретных match'ей/target'ов в args).
+func rulesContain(rules []RuleSpec, chain string, substrs ...string) bool {
+nextRule:
+	for _, r := range rules {
+		if r.Chain != chain {
+			continue
+		}
+		joined := strings.Join(r.Args, " ")
+		for _, s := range substrs {
+			if !strings.Contains(joined, s) {
+				continue nextRule
+			}
+		}
+		return true
+	}
+	return false
+}
+
 func TestTProxyRules_СодержитОбязательныеПравила(t *testing.T) {
 	rules := TProxyRules(7895, 0x53)
 
-	// Проверяем наличие ключевых правил
 	checks := []struct {
 		desc    string
-		comment string
+		chain   string
+		needles []string
 	}{
-		{"mark-ipv4", "signcraze:mark-ipv4"},
-		{"mark-ipv6", "signcraze:mark-ipv6"},
-		{"tproxy-tcp", "signcraze:tproxy-tcp"},
-		{"tproxy-udp", "signcraze:tproxy-udp"},
-		{"prerouting-dpi", "signcraze:prerouting-dpi"},
-		{"prerouting-mark", "signcraze:prerouting-mark"},
+		{"mark-ipv4", "signcraze", []string{"--match-set signcraze_ipv4 dst", "-j MARK"}},
+		{"mark-ipv6", "signcraze", []string{"--match-set signcraze_ipv6 dst", "-j MARK"}},
+		{"tproxy-tcp", "signcraze_full", []string{"-p tcp", "-j TPROXY"}},
+		{"tproxy-udp", "signcraze_full", []string{"-p udp", "-j TPROXY"}},
+		{"prerouting-dpi", "PREROUTING", []string{"-j signcraze_dpi"}},
+		{"prerouting-mark", "PREROUTING", []string{"-j signcraze"}},
+		{"prerouting-tproxy", "PREROUTING", []string{"-j signcraze_full"}},
 	}
-
 	for _, c := range checks {
-		found := false
-		for _, r := range rules {
-			for _, arg := range r.Args {
-				if arg == c.comment {
-					found = true
-					break
-				}
-			}
-			if found {
-				break
-			}
-		}
-		if !found {
-			t.Errorf("правило %s (%s) не найдено в наборе", c.desc, c.comment)
+		if !rulesContain(rules, c.chain, c.needles...) {
+			t.Errorf("правило %s в %s не найдено (нужны substr: %v)", c.desc, c.chain, c.needles)
 		}
 	}
 }
@@ -74,19 +81,10 @@ func TestTProxyRules_ВсеВТаблицеMangle(t *testing.T) {
 	rules := TProxyRules(7895, 0x53)
 	for _, r := range rules {
 		if r.Table != "mangle" {
-			t.Errorf("правило с комментарием %s находится в таблице %q, ожидалась mangle",
-				findComment(r.Args), r.Table)
+			t.Errorf("правило в %s/%s в таблице %q, ожидалась mangle",
+				r.Table, r.Chain, r.Table)
 		}
 	}
-}
-
-func findComment(args []string) string {
-	for i, a := range args {
-		if a == "--comment" && i+1 < len(args) {
-			return args[i+1]
-		}
-	}
-	return ""
 }
 
 // TestTProxyRules_BypassLoopback проверяет наличие RETURN-bypass правил
@@ -96,37 +94,31 @@ func findComment(args []string) string {
 // rule из-за iptables 1.4.21 (Keenetic) не принимающего multiple -s.
 func TestTProxyRules_BypassLoopback(t *testing.T) {
 	rules := TProxyRules(7895, 0x53)
-	wantBypass := map[string]string{
-		"signcraze:bypass-loopback-src":  "-s 127.0.0.0/8",
-		"signcraze:bypass-linklocal-src": "-s 169.254.0.0/16",
-		"signcraze:bypass-lo-iface":      "-i lo",
+	wantBypass := []struct {
+		desc string
+		need string
+	}{
+		{"bypass-loopback-src", "-s 127.0.0.0/8"},
+		{"bypass-linklocal-src", "-s 169.254.0.0/16"},
+		{"bypass-lo-iface", "-i lo"},
 	}
-	found := map[string]bool{}
-	for _, r := range rules {
-		comment := findComment(r.Args)
-		expectArg, ok := wantBypass[comment]
-		if !ok {
-			continue
-		}
-		args := strings.Join(r.Args, " ")
-		if !strings.Contains(args, expectArg) || !strings.Contains(args, "-j RETURN") {
-			t.Errorf("правило %s ожидало %q + `-j RETURN`, получено: %s", comment, expectArg, args)
-		}
-		found[comment] = true
-	}
-	for c := range wantBypass {
-		if !found[c] {
-			t.Errorf("отсутствует bypass-правило %s", c)
+	for _, w := range wantBypass {
+		if !rulesContain(rules, "signcraze_full", w.need, "-j RETURN") {
+			t.Errorf("отсутствует bypass-правило %s (нужно %q + -j RETURN в signcraze_full)", w.desc, w.need)
 		}
 	}
 }
 
-func TestTProxyRules_ВсеПравилаИмеютКомментарийSigncraze(t *testing.T) {
+// TestTProxyRules_БезКомментариев — busybox iptables 1.4.21 на Keenetic
+// часто без xt_comment. Контракт: правила пишутся без `-m comment`.
+func TestTProxyRules_БезКомментариев(t *testing.T) {
 	rules := TProxyRules(7895, 0x53)
 	for _, r := range rules {
-		comment := findComment(r.Args)
-		if !strings.HasPrefix(comment, "signcraze:") {
-			t.Errorf("правило в цепочке %s не имеет комментария signcraze:*, получено %q", r.Chain, comment)
+		for _, arg := range r.Args {
+			if arg == "--comment" {
+				t.Errorf("правило %s/%s содержит --comment: %v", r.Table, r.Chain, r.Args)
+				break
+			}
 		}
 	}
 }

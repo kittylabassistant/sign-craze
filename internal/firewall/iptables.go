@@ -82,6 +82,26 @@ func (t *IPTables) EnsureChain(ctx context.Context, table, chain string) error {
 	return fmt.Errorf("firewall: создание цепочки %s/%s: %w", table, chain, err)
 }
 
+// DeleteJumpAll удаляет все правила вида `-j target` из chain в table.
+// Идемпотентно: цикл -D пока exit==0, не более maxIter итераций (защита
+// от случайного бесконечного цикла при битом выводе iptables).
+//
+// Используется в Remove() как замена comment-based DeleteRulesByComment:
+// busybox iptables 1.4.21 на стоковой Keenetic-прошивке часто не имеет
+// модуля xt_comment, поэтому сами правила пишутся без --comment, а в
+// PREROUTING остаются только jumps на наши user-chains, которые легко
+// удалить по target-имени.
+func (t *IPTables) DeleteJumpAll(ctx context.Context, table, chain, target string) error {
+	const maxIter = 16
+	for i := 0; i < maxIter; i++ {
+		_, err := t.runner.Run(ctx, "iptables", "-t", table, "-D", chain, "-j", target)
+		if err != nil {
+			return nil
+		}
+	}
+	return nil
+}
+
 // FlushAndDeleteChain очищает и удаляет цепочку. Идемпотентно.
 func (t *IPTables) FlushAndDeleteChain(ctx context.Context, table, chain string) error {
 	if _, err := t.runner.Run(ctx, "iptables", "-t", table, "-F", chain); err != nil {

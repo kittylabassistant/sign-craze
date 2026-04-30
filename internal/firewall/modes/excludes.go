@@ -1,6 +1,6 @@
 package modes
 
-import "fmt"
+import "strconv"
 
 // ExcludeRules возвращает правило bypass: пакеты с dst в ipset signcraze_excludes
 // получают RETURN из цепочки signcraze ДО достижения MARK-правил.
@@ -13,7 +13,6 @@ func ExcludeRules() []RuleSpec {
 			Args: []string{
 				"-m", "set", "--match-set", "signcraze_excludes", "dst",
 				"-j", "RETURN",
-				"-m", "comment", "--comment", "signcraze:exclude-bypass",
 			},
 		},
 	}
@@ -29,23 +28,15 @@ func AdminPortsBypassRules(ports []uint16) []RuleSpec {
 		if port == 0 {
 			continue
 		}
-		portStr := fmt.Sprintf("%d", port)
+		portStr := strconv.Itoa(int(port))
 		rules = append(rules,
 			RuleSpec{
 				Table: "mangle", Chain: "signcraze",
-				Args: []string{
-					"-p", "tcp", "--dport", portStr,
-					"-j", "RETURN",
-					"-m", "comment", "--comment", "signcraze:admin-port-bypass-tcp",
-				},
+				Args:  []string{"-p", "tcp", "--dport", portStr, "-j", "RETURN"},
 			},
 			RuleSpec{
 				Table: "mangle", Chain: "signcraze",
-				Args: []string{
-					"-p", "udp", "--dport", portStr,
-					"-j", "RETURN",
-					"-m", "comment", "--comment", "signcraze:admin-port-bypass-udp",
-				},
+				Args:  []string{"-p", "udp", "--dport", portStr, "-j", "RETURN"},
 			},
 		)
 	}

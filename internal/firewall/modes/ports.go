@@ -1,7 +1,6 @@
 package modes
 
 import (
-	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,33 +17,29 @@ func PortRules(ports []uint16, fwmark uint32) []RuleSpec {
 		return nil
 	}
 
-	mark := fmt.Sprintf("0x%x", fwmark)
+	mark := "0x" + strconv.FormatUint(uint64(fwmark), 16)
 
 	// Сортируем для стабильного вывода (golden-тесты).
 	sorted := append([]uint16(nil), ports...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
 
 	var rules []RuleSpec
-	for batchIdx, batch := range chunk(sorted, MaxPortsPerRule) {
+	for _, batch := range chunk(sorted, MaxPortsPerRule) {
 		portList := joinPorts(batch)
-		comment := fmt.Sprintf("signcraze:port-mark-tcp-%d", batchIdx)
 		rules = append(rules, RuleSpec{
 			Table: "mangle", Chain: "signcraze_ports",
 			Args: []string{
 				"-p", "tcp",
 				"-m", "multiport", "--dports", portList,
 				"-j", "MARK", "--set-mark", mark,
-				"-m", "comment", "--comment", comment,
 			},
 		})
-		comment = fmt.Sprintf("signcraze:port-mark-udp-%d", batchIdx)
 		rules = append(rules, RuleSpec{
 			Table: "mangle", Chain: "signcraze_ports",
 			Args: []string{
 				"-p", "udp",
 				"-m", "multiport", "--dports", portList,
 				"-j", "MARK", "--set-mark", mark,
-				"-m", "comment", "--comment", comment,
 			},
 		})
 	}
@@ -52,10 +47,7 @@ func PortRules(ports []uint16, fwmark uint32) []RuleSpec {
 	// Переход PREROUTING -> signcraze_ports.
 	rules = append(rules, RuleSpec{
 		Table: "mangle", Chain: "PREROUTING",
-		Args: []string{
-			"-j", "signcraze_ports",
-			"-m", "comment", "--comment", "signcraze:prerouting-ports",
-		},
+		Args:  []string{"-j", "signcraze_ports"},
 	})
 
 	return rules

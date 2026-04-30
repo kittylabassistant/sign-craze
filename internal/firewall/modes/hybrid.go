@@ -18,7 +18,6 @@ func HybridRules(port uint16, fwmark uint32, nfqueueNum int) []RuleSpec {
 				"-m", "mark", "!", "--mark", mark,
 				"-p", "tcp",
 				"-j", "NFQUEUE", "--queue-num", queue, "--queue-bypass",
-				"-m", "comment", "--comment", "signcraze:dpi-tcp",
 			},
 		},
 		// UDP трафик без метки → NFQUEUE
@@ -28,7 +27,6 @@ func HybridRules(port uint16, fwmark uint32, nfqueueNum int) []RuleSpec {
 				"-m", "mark", "!", "--mark", mark,
 				"-p", "udp",
 				"-j", "NFQUEUE", "--queue-num", queue, "--queue-bypass",
-				"-m", "comment", "--comment", "signcraze:dpi-udp",
 			},
 		},
 	}
