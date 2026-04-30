@@ -344,6 +344,8 @@ sign-craze --install
 - При выборе `dpi`/`hybrid` — скачается `nfqws2` и сгенерируется `/opt/etc/sign-craze/nfqws2.conf`
 - Создастся init.d shim `/opt/etc/init.d/S05signcraze` для автозапуска
 
+> **Защита от SSH-lockout и LAN-трафик**: SSH-порты роутера (`22` Entware/dropbear, `222` Keenetic admin) и локальные сети (RFC1918 + loopback + multicast + link-local) автоматически исключены из проксирования через ipset `signcraze_excludes` и RETURN-правила в mangle. Дополнительной настройки не требуется. Для кастомизации (другие порты, bypass публичных IP) править поля `admin_ports` и `admin_ips` в `/opt/etc/sign-craze/state.json` и перезапустить sign-craze.
+
 ### 6.2. Без вопросов
 
 ```sh

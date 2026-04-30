@@ -5,11 +5,13 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
@@ -179,12 +181,31 @@ func extractBinaryToFile(tarPath, dstPath string, perm os.FileMode) error {
 	return nil
 }
 
+// checkConfigTimeout — потолок длительности `sing-box check`. На MIPS softfloat
+// проверка большого конфига может занимать десятки секунд; SIGINT от пользователя
+// не должен убивать процесс посреди валидации (иначе install упадёт с
+// "context canceled" непонятной этиологии). Используем detached ctx + timeout.
+const checkConfigTimeout = 180 * time.Second
+
 // checkConfig запускает `sing-box check -c configPath` для валидации конфига.
+// Изолирован от parent ctx cancel — Ctrl+C пользователя не прерывает проверку.
 func checkConfig(ctx context.Context, runner exectx.Runner, binPath, configPath string) error {
-	res, err := runner.Run(ctx, binPath, "check", "-c", configPath)
+	log.L().Info("sing-box check: проверка конфига (на slow MIPS CPU до 60s)")
+	cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), checkConfigTimeout)
+	defer cancel()
+
+	start := time.Now()
+	res, err := runner.Run(cctx, binPath, "check", "-c", configPath)
+	dur := time.Since(start)
 	if err != nil {
-		return fmt.Errorf("sing-box check: %w (stderr: %s)", err, res.Stderr)
+		if errors.Is(cctx.Err(), context.DeadlineExceeded) {
+			return fmt.Errorf("sing-box check: таймаут %s — медленный CPU или зависание (stderr: %s, stdout: %s)",
+				checkConfigTimeout, res.Stderr, res.Stdout)
+		}
+		return fmt.Errorf("sing-box check: %w (длительность: %s, exit: %d, stderr: %s, stdout: %s)",
+			err, dur, res.ExitCode, res.Stderr, res.Stdout)
 	}
+	log.L().Info("sing-box check: ok", "duration", dur.String())
 	return nil
 }
 

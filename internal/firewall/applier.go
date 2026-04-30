@@ -30,7 +30,7 @@ type Config struct {
 	NFQueueNum int            // 200
 	Ports      []uint16       // дополнительные порты для маркировки в signcraze_ports
 	Excludes   []netip.Prefix // CIDR-исключения (RETURN из signcraze)
-	AdminPort  uint16         // SSH/web admin port для bypass (0 = выкл)
+	AdminPorts []uint16       // SSH/web admin порты для bypass (пусто = выкл)
 
 	// PolicyMark — fwmark, присвоенный Keenetic'ом IP-policy через RCI.
 	// Используется только в режиме ModePolicy. Читается через ndm.GetPolicy()
@@ -190,11 +190,9 @@ func (a *applierImpl) applyFullMode(ctx context.Context) error {
 	}
 
 	// 4. RETURN-bypass правила должны идти ПЕРЕД mark-правилами в цепочке.
-	if a.cfg.AdminPort > 0 {
-		for _, spec := range modes.AdminPortBypassRule(a.cfg.AdminPort) {
-			if err := a.ipt.InsertRule(ctx, spec.Table, spec.Chain, 1, spec.Args...); err != nil {
-				return err
-			}
+	for _, spec := range modes.AdminPortsBypassRules(a.cfg.AdminPorts) {
+		if err := a.ipt.InsertRule(ctx, spec.Table, spec.Chain, 1, spec.Args...); err != nil {
+			return err
 		}
 	}
 	if len(a.cfg.Excludes) > 0 {

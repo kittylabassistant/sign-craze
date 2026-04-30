@@ -26,30 +26,44 @@ func TestExcludeRules_Structure(t *testing.T) {
 	}
 }
 
-// TestAdminPortBypassRule защищает SSH/web admin от попадания в TPROXY:
-// пакеты на admin порт получают RETURN раньше mark-правил (safety-fixes #2).
-func TestAdminPortBypassRule_Structure(t *testing.T) {
-	rules := AdminPortBypassRule(22)
-	if len(rules) != 2 {
-		t.Fatalf("ожидалось 2 правила (TCP+UDP), получено %d", len(rules))
+// TestAdminPortsBypassRules защищает SSH/web admin от попадания в TPROXY:
+// пакеты на admin порты получают RETURN раньше mark-правил (safety-fixes #2).
+func TestAdminPortsBypassRules_Structure(t *testing.T) {
+	rules := AdminPortsBypassRules([]uint16{22, 222})
+	if len(rules) != 4 {
+		t.Fatalf("ожидалось 4 правила (TCP+UDP × 2 порта), получено %d", len(rules))
 	}
 	for _, r := range rules {
 		if r.Table != "mangle" || r.Chain != "signcraze" {
 			t.Errorf("неверная позиция: %s/%s", r.Table, r.Chain)
 		}
 		args := strings.Join(r.Args, " ")
-		if !strings.Contains(args, "--dport 22") {
-			t.Errorf("отсутствует --dport 22: %s", args)
-		}
 		if !strings.Contains(args, "-j RETURN") {
 			t.Errorf("должно быть RETURN: %s", args)
 		}
 	}
+	all := strings.Join(flattenArgs(rules), " ")
+	if !strings.Contains(all, "--dport 22 ") || !strings.Contains(all, "--dport 222") {
+		t.Errorf("отсутствует один из портов 22/222: %s", all)
+	}
 }
 
-func TestAdminPortBypassRule_ZeroPort(t *testing.T) {
-	// port=0 — пропустить (admin bypass отключён).
-	if rules := AdminPortBypassRule(0); len(rules) != 0 {
-		t.Errorf("port=0 должен дать пустой slice, получено %d правил", len(rules))
+func TestAdminPortsBypassRules_Empty(t *testing.T) {
+	if rules := AdminPortsBypassRules(nil); len(rules) != 0 {
+		t.Errorf("nil должен дать пустой slice, получено %d", len(rules))
 	}
+	if rules := AdminPortsBypassRules([]uint16{}); len(rules) != 0 {
+		t.Errorf("[] должен дать пустой slice, получено %d", len(rules))
+	}
+	if rules := AdminPortsBypassRules([]uint16{0, 0}); len(rules) != 0 {
+		t.Errorf("[0,0] должен дать пустой slice, получено %d", len(rules))
+	}
+}
+
+func flattenArgs(rules []RuleSpec) []string {
+	var out []string
+	for _, r := range rules {
+		out = append(out, r.Args...)
+	}
+	return out
 }

@@ -105,8 +105,32 @@ func TestDefault_LocalNetsExcluded(t *testing.T) {
 		}
 	}
 
-	if s.AdminPort != 22 {
-		t.Errorf("Default().AdminPort = %d, ожидалось 22", s.AdminPort)
+	if len(s.AdminPorts) != 2 || s.AdminPorts[0] != 22 || s.AdminPorts[1] != 222 {
+		t.Errorf("Default().AdminPorts = %v, ожидалось [22 222]", s.AdminPorts)
+	}
+	if s.AdminPort != 0 {
+		t.Errorf("Default().AdminPort = %d, ожидалось 0 (legacy field)", s.AdminPort)
+	}
+}
+
+// TestLoad_MigratesAdminPort — старые state.json с admin_port:22 должны
+// мигрировать в admin_ports:[22] при загрузке.
+func TestLoad_MigratesAdminPort(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/state.json"
+	legacy := `{"mode":"policy","admin_port":2222}`
+	if err := os.WriteFile(path, []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(s.AdminPorts) != 1 || s.AdminPorts[0] != 2222 {
+		t.Errorf("после миграции AdminPorts = %v, ожидалось [2222]", s.AdminPorts)
+	}
+	if s.AdminPort != 0 {
+		t.Errorf("legacy AdminPort должен быть обнулён, получено %d", s.AdminPort)
 	}
 }
 

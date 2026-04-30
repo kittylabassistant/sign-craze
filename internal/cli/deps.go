@@ -28,7 +28,7 @@ func newDPILifecycle() service.Lifecycle { return dpi.DefaultLifecycle() }
 func newFirewallApplier(s *state.State) (firewall.Applier, error) {
 	cfg := firewall.DefaultConfig()
 	cfg.Ports = append([]uint16(nil), s.Ports...)
-	cfg.AdminPort = s.AdminPort
+	cfg.AdminPorts = append([]uint16(nil), s.AdminPorts...)
 	cfg.PolicyMark = s.PolicyMark
 	cfg.DPIEnabled = s.DPIEnabled
 

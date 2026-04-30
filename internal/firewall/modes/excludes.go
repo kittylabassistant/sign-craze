@@ -19,30 +19,35 @@ func ExcludeRules() []RuleSpec {
 	}
 }
 
-// AdminPortBypassRule возвращает RETURN-правила для трафика на admin port (TCP+UDP),
-// защищая SSH и web admin от случайного попадания в TPROXY (safety-fixes #2).
-// При port=0 возвращает пустой slice.
-func AdminPortBypassRule(port uint16) []RuleSpec {
-	if port == 0 {
-		return nil
-	}
-	portStr := fmt.Sprintf("%d", port)
-	return []RuleSpec{
-		{
-			Table: "mangle", Chain: "signcraze",
-			Args: []string{
-				"-p", "tcp", "--dport", portStr,
-				"-j", "RETURN",
-				"-m", "comment", "--comment", "signcraze:admin-port-bypass-tcp",
+// AdminPortsBypassRules возвращает RETURN-правила для трафика на admin порты
+// (TCP+UDP на каждый порт), защищая SSH и web admin от случайного попадания
+// в TPROXY (safety-fixes #2). Порты со значением 0 пропускаются.
+// Пустой/nil slice → возвращает nil.
+func AdminPortsBypassRules(ports []uint16) []RuleSpec {
+	var rules []RuleSpec
+	for _, port := range ports {
+		if port == 0 {
+			continue
+		}
+		portStr := fmt.Sprintf("%d", port)
+		rules = append(rules,
+			RuleSpec{
+				Table: "mangle", Chain: "signcraze",
+				Args: []string{
+					"-p", "tcp", "--dport", portStr,
+					"-j", "RETURN",
+					"-m", "comment", "--comment", "signcraze:admin-port-bypass-tcp",
+				},
 			},
-		},
-		{
-			Table: "mangle", Chain: "signcraze",
-			Args: []string{
-				"-p", "udp", "--dport", portStr,
-				"-j", "RETURN",
-				"-m", "comment", "--comment", "signcraze:admin-port-bypass-udp",
+			RuleSpec{
+				Table: "mangle", Chain: "signcraze",
+				Args: []string{
+					"-p", "udp", "--dport", portStr,
+					"-j", "RETURN",
+					"-m", "comment", "--comment", "signcraze:admin-port-bypass-udp",
+				},
 			},
-		},
+		)
 	}
+	return rules
 }

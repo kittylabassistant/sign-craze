@@ -31,17 +31,22 @@ var DefaultExcludes = []string{
 	"192.168.0.0/16", // RFC1918
 }
 
-// DefaultAdminPort — порт SSH/админки, исключаемый из проксирования по умолчанию.
-const DefaultAdminPort uint16 = 22
+// DefaultAdminPorts — порты SSH/админки роутера, исключаемые из проксирования
+// по умолчанию: 22 (Entware/dropbear), 222 (Keenetic admin SSH).
+var DefaultAdminPorts = []uint16{22, 222}
 
 // State — персистентное состояние sign-craze.
 type State struct {
-	Mode           types.Mode       `json:"mode"`
-	Outbounds      []types.Outbound `json:"outbounds"`
-	Ports          []uint16         `json:"ports"`
-	Excludes       []string         `json:"excludes"`
-	AdminPort      uint16           `json:"admin_port,omitempty"`
-	AdminIPs       []string         `json:"admin_ips,omitempty"`
+	Mode      types.Mode       `json:"mode"`
+	Outbounds []types.Outbound `json:"outbounds"`
+	Ports     []uint16         `json:"ports"`
+	Excludes  []string         `json:"excludes"`
+	// AdminPort — legacy single-port поле. Сохранено для миграции старых state.json;
+	// после Load() значение переносится в AdminPorts и обнуляется.
+	// Deprecated: использовать AdminPorts.
+	AdminPort  uint16   `json:"admin_port,omitempty"`
+	AdminPorts []uint16 `json:"admin_ports,omitempty"`
+	AdminIPs   []string `json:"admin_ips,omitempty"`
 	DPIEnabled     bool             `json:"dpi_enabled"`
 	DPIStrategy    string           `json:"dpi_strategy,omitempty"`
 	BootTimeoutSec int              `json:"boot_timeout_sec,omitempty"` // таймаут waitDefaultRoute, 0 = default 60
@@ -67,7 +72,7 @@ func Default() *State {
 		},
 		Ports:      []uint16{},
 		Excludes:   excludes,
-		AdminPort:  DefaultAdminPort,
+		AdminPorts: append([]uint16(nil), DefaultAdminPorts...),
 		AdminIPs:   []string{},
 		PolicyName: DefaultPolicyName,
 	}
@@ -88,6 +93,7 @@ func Load(path string) (*State, error) {
 		return nil, fmt.Errorf("state: парсинг %s: %w", path, err)
 	}
 	migrateLegacyMode(&s)
+	migrateAdminPort(&s)
 	if s.Outbounds == nil {
 		s.Outbounds = []types.Outbound{}
 	}
@@ -99,6 +105,9 @@ func Load(path string) (*State, error) {
 	}
 	if s.AdminIPs == nil {
 		s.AdminIPs = []string{}
+	}
+	if s.AdminPorts == nil {
+		s.AdminPorts = []uint16{}
 	}
 	if s.PolicyName == "" {
 		s.PolicyName = DefaultPolicyName
@@ -120,9 +129,19 @@ func migrateLegacyMode(s *State) {
 	}
 }
 
+// migrateAdminPort переносит legacy-поле AdminPort в AdminPorts.
+// Если AdminPorts пуст и AdminPort задан — копируем; AdminPort обнуляется
+// чтобы при следующем Save() в JSON попало только admin_ports.
+func migrateAdminPort(s *State) {
+	if len(s.AdminPorts) == 0 && s.AdminPort != 0 {
+		s.AdminPorts = []uint16{s.AdminPort}
+	}
+	s.AdminPort = 0
+}
+
 // Validate проверяет корректность критичных полей State.
-// Нулевые значения для optional-полей (BootTimeoutSec=0, AdminPort=0) допустимы,
-// но если AdminPort задан явно — должен быть в диапазоне 1-65535.
+// Нулевые значения для optional-полей (BootTimeoutSec=0) допустимы.
+// AdminPorts пустой = bypass выключен.
 func (s *State) Validate() error {
 	if s == nil {
 		return fmt.Errorf("state: nil State")
@@ -132,13 +151,14 @@ func (s *State) Validate() error {
 			return err
 		}
 	}
-	// AdminPort=0 трактуем как «выключено» (не вставляем bypass-правило);
-	// явное значение должно быть валидным портом. Проверяем верхнюю границу
-	// (uint16 не может быть >65535, но Validate() остаётся компактной защитой
-	// на случай миграции типа поля).
 	for _, p := range s.Ports {
 		if p == 0 {
 			return fmt.Errorf("state: ports содержит 0 (некорректный порт)")
+		}
+	}
+	for _, p := range s.AdminPorts {
+		if p == 0 {
+			return fmt.Errorf("state: admin_ports содержит 0 (некорректный порт)")
 		}
 	}
 	return nil
