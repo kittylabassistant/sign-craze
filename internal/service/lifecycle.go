@@ -207,6 +207,16 @@ func readPID(path string) (int, error) {
 	return pid, nil
 }
 
+// processExists возвращает true если /proc/<pid> существует — процесс есть в
+// таблице, даже если он zombie/dead. Используется в waitAlive: cmd.Start()
+// мог вернуть успех, потом процесс упал через мс — наша задача убедиться,
+// что fork прошёл (PID валиден); живёт ли он сейчас — отдельная проверка
+// через processAlive в stabilization-шаге.
+func processExists(pid int) bool {
+	_, err := os.Stat(fmt.Sprintf("/proc/%d", pid))
+	return err == nil
+}
+
 // processAlive возвращает true если процесс с данным PID существует и НЕ зомби.
 // Зомби-процесс остаётся в /proc до тех пор, пока родитель не вызовет Wait();
 // для целей stabilization-проверки и Status() — он уже мёртв.
@@ -234,11 +244,13 @@ func processAlive(pid int) bool {
 	return true
 }
 
-// waitAlive опрашивает /proc/<pid> до timeout.
+// waitAlive опрашивает /proc/<pid> до timeout. Принимает любое /proc/<pid>
+// (включая zombie) — это подтверждает, что fork прошёл; реальную проверку
+// "живой и стабильный" делает stabilization-шаг через processAlive.
 func waitAlive(ctx context.Context, pid int, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for {
-		if processAlive(pid) {
+		if processExists(pid) {
 			return nil
 		}
 		if time.Now().After(deadline) {
