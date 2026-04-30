@@ -152,11 +152,16 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string, force b
 	defer os.RemoveAll(filepath.Dir(tempBin))
 
 	// 7. Атомарно перенести валидированный бинарь в финальный путь.
-	binData, err := os.ReadFile(tempBin)
+	// Стримим через io.Reader: на 128MB-роутерах os.ReadFile(~12MB) +
+	// BackupAndReplace([]byte) даёт OOM-Kill (binary в RAM × 2 — copy
+	// в map[]byte). BackupAndReplaceFromReader держит только малый буфер.
+	binFile, err := os.Open(tempBin)
 	if err != nil {
-		return fmt.Errorf("--install: чтение валидированного бинаря: %w", err)
+		return fmt.Errorf("--install: открытие валидированного бинаря: %w", err)
 	}
-	if _, err := atomicfs.BackupAndReplace(singbox.DefaultBinPath, binData, 0o755); err != nil {
+	_, err = atomicfs.BackupAndReplaceFromReader(singbox.DefaultBinPath, binFile, 0o755)
+	_ = binFile.Close()
+	if err != nil {
 		return fmt.Errorf("--install: установка бинаря: %w", err)
 	}
 
