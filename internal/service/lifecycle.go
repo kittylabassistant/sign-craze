@@ -43,6 +43,10 @@ type ProcessConfig struct {
 	BinPath string   // путь к бинарю
 	Args    []string // аргументы запуска
 	PIDFile string   // путь к PID-файлу
+	// StderrPath — если задан, stdout+stderr процесса дописываются в этот файл.
+	// Нужно для диагностики ранних crash'ей: sing-box может упасть до открытия
+	// своего собственного лог-файла, унося stderr в /dev/null.
+	StderrPath string
 }
 
 // processLifecycle реализует Lifecycle для одного OS-процесса.
@@ -70,8 +74,27 @@ func (l *processLifecycle) Start(ctx context.Context) error {
 	// детач: процесс становится лидером группы и не умирает вместе с sign-craze
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
+	var stderrFile *os.File
+	if l.cfg.StderrPath != "" {
+		f, openErr := os.OpenFile(l.cfg.StderrPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o640)
+		if openErr != nil {
+			log.L().Warn("не удалось открыть stderr-файл для процесса", "service", l.cfg.Name, "path", l.cfg.StderrPath, "err", openErr)
+		} else {
+			stderrFile = f
+			cmd.Stdout = f
+			cmd.Stderr = f
+		}
+	}
+
 	if err := cmd.Start(); err != nil {
+		if stderrFile != nil {
+			_ = stderrFile.Close()
+		}
 		return fmt.Errorf("service %s: запуск: %w", l.cfg.Name, err)
+	}
+	// fd удерживается дочерним процессом; родитель свой может закрыть.
+	if stderrFile != nil {
+		_ = stderrFile.Close()
 	}
 
 	pid := cmd.Process.Pid
@@ -108,7 +131,11 @@ func (l *processLifecycle) Start(ctx context.Context) error {
 		if rmErr := os.Remove(l.cfg.PIDFile); rmErr != nil {
 			log.L().Warn("не удалось удалить PID-файл после ранней смерти", "service", l.cfg.Name, "err", rmErr)
 		}
-		return fmt.Errorf("service %s: процесс упал сразу после старта (см. логи %s)", l.cfg.Name, l.cfg.BinPath)
+		hint := fmt.Sprintf("см. логи %s", l.cfg.BinPath)
+		if l.cfg.StderrPath != "" {
+			hint = fmt.Sprintf("см. stderr-лог %s", l.cfg.StderrPath)
+		}
+		return fmt.Errorf("service %s: процесс упал сразу после старта (%s)", l.cfg.Name, hint)
 	}
 
 	// Асинхронно подбираем зомби-статус чтобы не засорять таблицу процессов.

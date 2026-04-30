@@ -62,10 +62,8 @@
         "detour": {{ jsonMarshal .DefaultOutboundTag }}
       },
       {
-        "type": "udp",
-        "tag": "local",
-        "server": "223.5.5.5",
-        "detour": "direct"
+        "type": "local",
+        "tag": "local"
       }
     ],
     "rules": [{{ if .Routing.GeoSiteDirect }}

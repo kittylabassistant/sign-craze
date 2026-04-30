@@ -10,10 +10,8 @@
         "type": "tls"
       },
       {
-        "detour": "direct",
-        "server": "223.5.5.5",
         "tag": "local",
-        "type": "udp"
+        "type": "local"
       }
     ]
   },
