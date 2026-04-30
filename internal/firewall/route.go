@@ -77,12 +77,15 @@ func DeleteIPRule(ctx context.Context, runner exectx.Runner, fwmark uint32, tabl
 }
 
 // EnsureLocalRoute добавляет маршрут local 0.0.0.0/0 dev lo в таблицу. Идемпотентно.
+//
+// Используем `ip route replace` вместо `add` — replace создаёт маршрут если
+// его нет и переустанавливает при наличии (без "RTNETLINK answers: File exists").
+// Это критично на busybox-`ip` Keenetic: `ip route show table N` иногда не
+// показывает `local`-type маршруты, поэтому пред-проверка через
+// localRouteExists даёт false negative и `add` падает на дубле.
 func EnsureLocalRoute(ctx context.Context, runner exectx.Runner, table int) error {
-	if localRouteExists(ctx, runner, table) {
-		return nil
-	}
 	args := []string{
-		"route", "add",
+		"route", "replace",
 		"local", "0.0.0.0/0",
 		"dev", "lo",
 		"table", fmt.Sprintf("%d", table),
@@ -90,7 +93,7 @@ func EnsureLocalRoute(ctx context.Context, runner exectx.Runner, table int) erro
 	if _, err := runner.Run(ctx, "ip", args...); err != nil {
 		return fmt.Errorf("firewall: добавление local route в таблицу %d: %w", table, err)
 	}
-	log.L().Debug("firewall: local route добавлен", "table", table)
+	log.L().Debug("firewall: local route добавлен/обновлён", "table", table)
 	return nil
 }
 

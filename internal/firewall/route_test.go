@@ -99,20 +99,12 @@ func TestDeleteIPRule_ПропускаетЕслиОтсутствует(t *test
 	}
 }
 
-func TestEnsureLocalRoute_ДобавляетЕслиОтсутствует(t *testing.T) {
+// EnsureLocalRoute использует `ip route replace` — идемпотентно без
+// предварительной проверки (см. route.go: busybox-`ip` не показывает
+// local-type routes в `route show table N`, давая false negatives).
+func TestEnsureLocalRoute_ReplaceИдемпотентно(t *testing.T) {
 	r := exectx.Mock(map[string]exectx.Result{
-		"ip route show table 83":                       {ExitCode: 0, Stdout: []byte("")},
-		"ip route add local 0.0.0.0/0 dev lo table 83": {ExitCode: 0},
-	})
-	err := EnsureLocalRoute(context.Background(), r, 83)
-	if err != nil {
-		t.Fatalf("неожиданная ошибка: %v", err)
-	}
-}
-
-func TestEnsureLocalRoute_ПропускаетЕслиСуществует(t *testing.T) {
-	r := exectx.Mock(map[string]exectx.Result{
-		"ip route show table 83": {ExitCode: 0, Stdout: []byte("local 0.0.0.0/0 dev lo scope host\n")},
+		"ip route replace local 0.0.0.0/0 dev lo table 83": {ExitCode: 0},
 	})
 	err := EnsureLocalRoute(context.Background(), r, 83)
 	if err != nil {
