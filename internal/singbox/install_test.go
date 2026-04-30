@@ -75,7 +75,7 @@ func TestPrepareAndValidate_OK(t *testing.T) {
 	params.Outbounds = []types.Outbound{{Tag: "direct", Type: "direct"}}
 	params.DefaultOutboundTag = "direct"
 
-	tempBin, err := PrepareAndValidate(context.Background(), r, tarPath, configPath, params)
+	tempBin, err := PrepareAndValidate(context.Background(), r, t.TempDir(), tarPath, configPath, params)
 	if err != nil {
 		t.Fatalf("PrepareAndValidate: %v", err)
 	}
@@ -114,7 +114,7 @@ func TestPrepareAndValidate_InvalidConfig(t *testing.T) {
 	params.Outbounds = []types.Outbound{{Tag: "direct", Type: "direct"}}
 	params.DefaultOutboundTag = "direct"
 
-	_, err := PrepareAndValidate(context.Background(), r, tarPath, configPath, params)
+	_, err := PrepareAndValidate(context.Background(), r, t.TempDir(), tarPath, configPath, params)
 	if err == nil {
 		t.Fatal("ожидалась ошибка валидации")
 	}

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/kittylabassistant/sign-craze/internal/dpi"
+	"github.com/kittylabassistant/sign-craze/internal/singbox"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
@@ -42,8 +43,11 @@ func dpiEnable(ctx context.Context) error {
 		if archErr != nil {
 			return fmt.Errorf("--dpi on: %w", archErr)
 		}
+		if err := os.MkdirAll(singbox.DefaultCacheDir, 0o755); err != nil {
+			return fmt.Errorf("--dpi on: mkdir cache: %w", err)
+		}
 		fmt.Printf("Загрузка nfqws2 (arch=%s)...\n", arch)
-		res, dlErr := dpi.Download(ctx, arch, "/tmp")
+		res, dlErr := dpi.Download(ctx, arch, singbox.DefaultCacheDir)
 		if dlErr != nil {
 			return fmt.Errorf("--dpi on: download: %w", dlErr)
 		}
@@ -115,8 +119,11 @@ func handleDPIUpdate(ctx context.Context, _ []string) error {
 		if err != nil {
 			return fmt.Errorf("--dpi-update: %w", err)
 		}
+		if err := os.MkdirAll(singbox.DefaultCacheDir, 0o755); err != nil {
+			return fmt.Errorf("--dpi-update: mkdir cache: %w", err)
+		}
 		fmt.Printf("Загрузка nfqws2 (arch=%s)...\n", arch)
-		res, err := dpi.Download(ctx, arch, "/tmp")
+		res, err := dpi.Download(ctx, arch, singbox.DefaultCacheDir)
 		if err != nil {
 			return fmt.Errorf("--dpi-update: %w", err)
 		}

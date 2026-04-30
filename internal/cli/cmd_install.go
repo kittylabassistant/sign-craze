@@ -80,6 +80,7 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string, force b
 		"/opt/var/lib/sign-craze",
 		"/opt/var/lib/sign-craze/geo",
 		"/opt/var/lib/sign-craze/backups",
+		singbox.DefaultCacheDir,
 		"/opt/var/log/sign-craze",
 		"/opt/var/run",
 		"/opt/var/lock",
@@ -104,7 +105,7 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string, force b
 			return fmt.Errorf("--install: %w", err)
 		}
 		fmt.Printf("Загрузка sing-box (arch=%s)...\n", arch)
-		res, err := singbox.Download(ctx, arch, "/tmp")
+		res, err := singbox.Download(ctx, arch, singbox.DefaultCacheDir)
 		if err != nil {
 			return fmt.Errorf("--install: %w", err)
 		}
@@ -145,7 +146,7 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string, force b
 		params.DefaultOutboundTag = st.Outbounds[0].Tag
 	}
 
-	tempBin, err := singbox.PrepareAndValidate(ctx, newRunner(), tarPath, configPath(), params)
+	tempBin, err := singbox.PrepareAndValidate(ctx, newRunner(), singbox.DefaultCacheDir, tarPath, configPath(), params)
 	if err != nil {
 		return fmt.Errorf("--install: %w", err)
 	}

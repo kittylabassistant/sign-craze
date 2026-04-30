@@ -23,6 +23,11 @@ const (
 	DefaultBinPath = "/opt/sbin/sing-box"
 	// DefaultConfigDir — директория конфигурации.
 	DefaultConfigDir = "/opt/etc/sign-craze"
+	// DefaultCacheDir — постоянный каталог под кеш tarball'ов и
+	// временную распаковку. Использует /opt (флешка, GB места), а не /tmp
+	// (tmpfs ~50MB на Keenetic), чтобы избежать "no space left on device"
+	// при распаковке ~12MB sing-box.
+	DefaultCacheDir = "/opt/var/lib/sign-craze/cache"
 )
 
 // PrepareAndValidate распаковывает бинарь во временный файл и валидирует конфиг
@@ -33,8 +38,11 @@ const (
 // успешной валидации сделать атомарный move temp → final binPath, либо удалить
 // temp при отказе. Конфиг в configPath остаётся как есть (либо валиден, либо
 // требует ручной коррекции/отката).
-func PrepareAndValidate(ctx context.Context, runner exectx.Runner, tarPath, configPath string, params ConfigParams) (tempBinPath string, err error) {
-	tmpDir, err := os.MkdirTemp("", "sign-craze-install-*")
+// workDir — родительская директория для temp-папки распаковки. Должна быть
+// на постоянной FS с достаточным местом (см. DefaultCacheDir). Пустая строка =
+// system tmp (TMPDIR/`/tmp`); подходит только для тестов на хосте.
+func PrepareAndValidate(ctx context.Context, runner exectx.Runner, workDir, tarPath, configPath string, params ConfigParams) (tempBinPath string, err error) {
+	tmpDir, err := os.MkdirTemp(workDir, "sign-craze-install-*")
 	if err != nil {
 		return "", fmt.Errorf("singbox prepare: tempdir: %w", err)
 	}

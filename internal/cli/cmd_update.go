@@ -125,8 +125,12 @@ func handleUpdateCore(ctx context.Context, _ []string) error {
 		if err != nil {
 			return fmt.Errorf("--update-core: %w", err)
 		}
+		// Cache на /opt — на /tmp tmpfs Keenetic ~50MB, 12MB бинарь не влезает.
+		if err := os.MkdirAll(singbox.DefaultCacheDir, 0o755); err != nil {
+			return fmt.Errorf("--update-core: mkdir cache: %w", err)
+		}
 		fmt.Printf("Загрузка sing-box (arch=%s)...\n", arch)
-		res, err := singbox.Download(ctx, arch, "/tmp")
+		res, err := singbox.Download(ctx, arch, singbox.DefaultCacheDir)
 		if err != nil {
 			return fmt.Errorf("--update-core: %w", err)
 		}
@@ -147,17 +151,20 @@ func handleUpdateCore(ctx context.Context, _ []string) error {
 			params.DefaultOutboundTag = st.Outbounds[0].Tag
 		}
 
-		tempBin, err := singbox.PrepareAndValidate(ctx, newRunner(), res.Path, configPath(), params)
+		tempBin, err := singbox.PrepareAndValidate(ctx, newRunner(), singbox.DefaultCacheDir, res.Path, configPath(), params)
 		if err != nil {
 			return fmt.Errorf("--update-core: %w", err)
 		}
 		defer os.RemoveAll(filepath.Dir(tempBin))
 
-		binData, err := os.ReadFile(tempBin)
+		// Стримим бинарь, чтобы не держать ~12MB в Go heap (см. cmd_install.go).
+		binFile, err := os.Open(tempBin)
 		if err != nil {
-			return fmt.Errorf("--update-core: чтение валидированного бинаря: %w", err)
+			return fmt.Errorf("--update-core: открытие валидированного бинаря: %w", err)
 		}
-		if _, err := atomicfs.BackupAndReplace(singbox.DefaultBinPath, binData, 0o755); err != nil {
+		_, err = atomicfs.BackupAndReplaceFromReader(singbox.DefaultBinPath, binFile, 0o755)
+		_ = binFile.Close()
+		if err != nil {
 			return fmt.Errorf("--update-core: установка бинаря: %w", err)
 		}
 
