@@ -90,14 +90,15 @@ func TestExtractBinary_НаходитВложенныйФайл(t *testing.T) {
 
 	dir := t.TempDir()
 	tarPath := filepath.Join(dir, "test.tar.gz")
+	dstPath := filepath.Join(dir, "nfqws2")
 	if err := os.WriteFile(tarPath, tarData, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	got, err := extractBinary(tarPath)
-	if err != nil {
-		t.Fatalf("extractBinary: %v", err)
+	if err := extractBinaryToFile(tarPath, dstPath, 0o755); err != nil {
+		t.Fatalf("extractBinaryToFile: %v", err)
 	}
+	got, _ := os.ReadFile(dstPath)
 	if !bytes.Equal(got, content) {
 		t.Errorf("содержимое не совпадает")
 	}

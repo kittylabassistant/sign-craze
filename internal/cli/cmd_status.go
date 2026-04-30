@@ -42,9 +42,9 @@ func handleStatus(ctx context.Context, _ []string) error {
 	fmt.Printf("nfqws2:    %s\n", formatService(dpi.Running, dpi.PID))
 	fmt.Printf("режим:     %s\n", string(st.Mode))
 	if sbVer != "" {
-		fmt.Printf("версия:    sign-craze v%s / sing-box v%s\n", version.Version, sbVer)
+		fmt.Printf("версия:    sign-craze %s / sing-box v%s\n", version.Short(), sbVer)
 	} else {
-		fmt.Printf("версия:    sign-craze v%s / sing-box не установлен\n", version.Version)
+		fmt.Printf("версия:    sign-craze %s / sing-box не установлен\n", version.Short())
 	}
 	return nil
 }

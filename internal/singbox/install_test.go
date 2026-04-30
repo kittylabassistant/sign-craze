@@ -15,7 +15,7 @@ import (
 )
 
 // makeTarball создаёт в памяти .tar.gz с одним файлом sing-box.
-// Префиксует content ELF-magic, чтобы пройти проверку extractBinary.
+// Префиксует content ELF-magic, чтобы пройти проверку extractBinaryToFile.
 func makeTarball(content []byte) []byte {
 	full := append([]byte{0x7f, 'E', 'L', 'F'}, content...)
 	return makeTarballRaw(full)
@@ -39,14 +39,19 @@ func makeTarballRaw(content []byte) []byte {
 }
 
 // TestExtractBinary_RejectsNonELF — если файл sing-box в tarball не ELF,
-// extractBinary должен вернуть error до записи бинаря на диск.
+// extractBinaryToFile должен вернуть error до записи бинаря на диск.
 func TestExtractBinary_RejectsNonELF(t *testing.T) {
-	tarPath := filepath.Join(t.TempDir(), "sb.tar.gz")
+	dir := t.TempDir()
+	tarPath := filepath.Join(dir, "sb.tar.gz")
+	dstPath := filepath.Join(dir, "sing-box")
 	_ = os.WriteFile(tarPath, makeTarballRaw([]byte("#!/bin/sh\necho fake")), 0o644)
 
-	_, err := extractBinary(tarPath)
+	err := extractBinaryToFile(tarPath, dstPath, 0o755)
 	if err == nil {
 		t.Fatal("ожидалась ошибка для non-ELF binary")
+	}
+	if _, statErr := os.Stat(dstPath); statErr == nil {
+		t.Errorf("dst создан несмотря на ошибку ELF-magic")
 	}
 }
 
@@ -117,17 +122,22 @@ func TestPrepareAndValidate_InvalidConfig(t *testing.T) {
 
 func TestExtractBinary_Found(t *testing.T) {
 	content := []byte("fake-sing-box-binary")
-	tarPath := filepath.Join(t.TempDir(), "sing-box.tar.gz")
+	dir := t.TempDir()
+	tarPath := filepath.Join(dir, "sing-box.tar.gz")
+	dstPath := filepath.Join(dir, "sing-box")
 	_ = os.WriteFile(tarPath, makeTarball(content), 0o644)
 
-	got, err := extractBinary(tarPath)
-	if err != nil {
-		t.Fatalf("extractBinary: %v", err)
+	if err := extractBinaryToFile(tarPath, dstPath, 0o755); err != nil {
+		t.Fatalf("extractBinaryToFile: %v", err)
 	}
-	// makeTarball префиксует ELF-magic, поэтому ожидаемое содержимое — magic+content
+	got, _ := os.ReadFile(dstPath)
 	want := append([]byte{0x7f, 'E', 'L', 'F'}, content...)
 	if !bytes.Equal(got, want) {
 		t.Errorf("содержимое = %q, ожидалось %q", got, want)
+	}
+	info, _ := os.Stat(dstPath)
+	if info.Mode().Perm() != 0o755 {
+		t.Errorf("права = %o, ожидалось 0755", info.Mode().Perm())
 	}
 }
 
@@ -141,10 +151,12 @@ func TestExtractBinary_NotFound(t *testing.T) {
 	_ = tw.Close()
 	_ = gz.Close()
 
-	tarPath := filepath.Join(t.TempDir(), "empty.tar.gz")
+	dir := t.TempDir()
+	tarPath := filepath.Join(dir, "empty.tar.gz")
+	dstPath := filepath.Join(dir, "sing-box")
 	_ = os.WriteFile(tarPath, buf.Bytes(), 0o644)
 
-	_, err := extractBinary(tarPath)
+	err := extractBinaryToFile(tarPath, dstPath, 0o755)
 	if err == nil {
 		t.Fatal("ожидалась ошибка для архива без sing-box")
 	}

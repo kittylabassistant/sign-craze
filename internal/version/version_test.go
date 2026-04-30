@@ -19,11 +19,34 @@ func TestVersion_NoWhitespace(t *testing.T) {
 
 func TestString_ContainsVersion(t *testing.T) {
 	s := String()
-	if !strings.Contains(s, Version) {
-		t.Errorf("String() = %q не содержит версию %q", s, Version)
+	core := strings.TrimPrefix(Version, "v")
+	if !strings.Contains(s, core) {
+		t.Errorf("String() = %q не содержит версию %q", s, core)
 	}
 	if !strings.HasPrefix(s, "v") {
 		t.Errorf("String() = %q должен начинаться с 'v'", s)
+	}
+	if strings.HasPrefix(s, "vv") {
+		t.Errorf("String() = %q содержит двойной префикс 'vv'", s)
+	}
+}
+
+func TestShort_NoDoubleV(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"0.2.2", "v0.2.2"},
+		{"v0.2.2", "v0.2.2"},
+		{"vv0.2.2", "v0.2.2"},
+	}
+	orig := Version
+	defer func() { Version = orig }()
+	for _, c := range cases {
+		Version = c.in
+		got := Short()
+		if got != c.want {
+			t.Errorf("Short() при Version=%q = %q, ожидалось %q", c.in, got, c.want)
+		}
 	}
 }
 

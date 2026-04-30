@@ -124,6 +124,24 @@ func BackupAndReplace(dst string, newData []byte, perm os.FileMode) (backupPath 
 	return backupPath, nil
 }
 
+// BackupAndReplaceFromReader — потоковая версия BackupAndReplace.
+// Бэкап существующего dst делается через rename (без чтения файла в RAM),
+// новое содержимое стримится из r через WriteFileAtomicFromReader.
+// Защита от OOM при установке больших бинарей на роутере с 128MB.
+func BackupAndReplaceFromReader(dst string, r io.Reader, perm os.FileMode) (backupPath string, err error) {
+	if _, statErr := os.Stat(dst); statErr == nil {
+		backupPath = fmt.Sprintf("%s.bak.%d", dst, time.Now().Unix())
+		if renameErr := os.Rename(dst, backupPath); renameErr != nil {
+			return "", fmt.Errorf("atomicfs: rename для бэкапа: %w", renameErr)
+		}
+	}
+
+	if err := WriteFileAtomicFromReader(dst, r, perm); err != nil {
+		return backupPath, err
+	}
+	return backupPath, nil
+}
+
 // RestoreBackup восстанавливает dst из резервной копии backupPath и удаляет резервный файл.
 func RestoreBackup(backupPath, dst string) error {
 	data, err := os.ReadFile(backupPath)

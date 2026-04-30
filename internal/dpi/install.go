@@ -23,20 +23,21 @@ const (
 
 // Install устанавливает бинарь nfqws2 из tarball в binDst.
 // Алгоритм:
-//  1. Резервная копия текущего бинаря (если существует).
-//  2. Распаковка tarball — ищет файл с именем "nfqws2" в любом подкаталоге.
-//  3. Атомарная запись бинаря в binDst с правами 0755.
-//  4. При ошибке записи — откат через RestoreBackup.
+//  1. Резервная копия текущего бинаря (rename, без чтения в RAM).
+//  2. Стриминговая распаковка tarball → атомарная запись в binDst с правами 0755.
+//  3. При ошибке записи — откат через RestoreBackup.
+//
+// Не загружает бинарь в RAM — критично для роутеров с 128MB.
 func Install(tarPath, binDst string) error {
 	log.L().Info("установка nfqws2", "tarball", tarPath, "dst", binDst)
 
-	binData, err := extractBinary(tarPath)
+	stream, err := openNfqwsBinaryStream(tarPath)
 	if err != nil {
 		return fmt.Errorf("dpi install: распаковка tarball: %w", err)
 	}
+	defer stream.Close()
 
-	_, err = atomicfs.BackupAndReplace(binDst, binData, 0o755)
-	if err != nil {
+	if _, err := atomicfs.BackupAndReplaceFromReader(binDst, stream.Reader, 0o755); err != nil {
 		return fmt.Errorf("dpi install: запись бинаря: %w", err)
 	}
 
@@ -44,40 +45,65 @@ func Install(tarPath, binDst string) error {
 	return nil
 }
 
-// extractBinary распаковывает tarball и возвращает содержимое бинаря nfqws2.
-// Ищет файл с именем "nfqws2" в любом подкаталоге архива.
-func extractBinary(tarPath string) ([]byte, error) {
+// binaryStream — потоковый ридер на содержимое бинаря из tarball.
+type binaryStream struct {
+	Reader io.Reader
+	closer func() error
+}
+
+func (b *binaryStream) Close() error { return b.closer() }
+
+// openNfqwsBinaryStream открывает tarball, ищет файл "nfqws2" в любом
+// подкаталоге, возвращает stream без буферизации в RAM.
+func openNfqwsBinaryStream(tarPath string) (*binaryStream, error) {
 	f, err := os.Open(tarPath)
 	if err != nil {
 		return nil, fmt.Errorf("открытие tarball: %w", err)
 	}
-	defer f.Close()
 
 	gz, err := gzip.NewReader(f)
 	if err != nil {
+		_ = f.Close()
 		return nil, fmt.Errorf("gzip reader: %w", err)
 	}
-	defer gz.Close()
 
 	tr := tar.NewReader(gz)
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
-			break
+			_ = gz.Close()
+			_ = f.Close()
+			return nil, fmt.Errorf("бинарь 'nfqws2' не найден в архиве %s", tarPath)
 		}
 		if err != nil {
+			_ = gz.Close()
+			_ = f.Close()
 			return nil, fmt.Errorf("чтение tar: %w", err)
 		}
 		if hdr.Typeflag != tar.TypeReg {
 			continue
 		}
-		if filepath.Base(hdr.Name) == "nfqws2" {
-			data, err := io.ReadAll(tr)
-			if err != nil {
-				return nil, fmt.Errorf("чтение бинаря из tar: %w", err)
-			}
-			return data, nil
+		if filepath.Base(hdr.Name) != "nfqws2" {
+			continue
 		}
+		closer := func() error {
+			_ = gz.Close()
+			return f.Close()
+		}
+		return &binaryStream{Reader: tr, closer: closer}, nil
 	}
-	return nil, fmt.Errorf("бинарь 'nfqws2' не найден в архиве %s", tarPath)
+}
+
+// extractBinaryToFile стримит бинарь nfqws2 из tarball напрямую в dstPath.
+func extractBinaryToFile(tarPath, dstPath string, perm os.FileMode) error {
+	stream, err := openNfqwsBinaryStream(tarPath)
+	if err != nil {
+		return err
+	}
+	defer stream.Close()
+
+	if err := atomicfs.WriteFileAtomicFromReader(dstPath, stream.Reader, perm); err != nil {
+		return fmt.Errorf("запись бинаря: %w", err)
+	}
+	return nil
 }

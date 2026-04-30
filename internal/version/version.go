@@ -50,12 +50,17 @@ func Get() BuildInfo {
 	return bi
 }
 
+// Short возвращает версию с единственным префиксом "v" (например "v0.2.2").
+// Принимает Version как с префиксом "v" (из git tag), так и без.
+func Short() string {
+	return "v" + strings.TrimLeft(Version, "vV")
+}
+
 // String возвращает строку вида "v0.1.0 (коммит abc1234, 2026-04-27)".
 func String() string {
 	bi := Get()
 	sb := new(strings.Builder)
-	sb.WriteString("v")
-	sb.WriteString(Version)
+	sb.WriteString(Short())
 	if bi.Commit != "" {
 		sb.WriteString(" (коммит ")
 		sb.WriteString(bi.Commit)

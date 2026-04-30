@@ -32,19 +32,14 @@ const (
 // temp при отказе. Конфиг в configPath остаётся как есть (либо валиден, либо
 // требует ручной коррекции/отката).
 func PrepareAndValidate(ctx context.Context, runner exectx.Runner, tarPath, configPath string, params ConfigParams) (tempBinPath string, err error) {
-	binData, err := extractBinary(tarPath)
-	if err != nil {
-		return "", fmt.Errorf("singbox prepare: распаковка: %w", err)
-	}
-
 	tmpDir, err := os.MkdirTemp("", "sign-craze-install-*")
 	if err != nil {
 		return "", fmt.Errorf("singbox prepare: tempdir: %w", err)
 	}
 	tempBin := filepath.Join(tmpDir, "sing-box")
-	if err := os.WriteFile(tempBin, binData, 0o755); err != nil {
+	if err := extractBinaryToFile(tarPath, tempBin, 0o755); err != nil {
 		_ = os.RemoveAll(tmpDir)
-		return "", fmt.Errorf("singbox prepare: запись tmp бинаря: %w", err)
+		return "", fmt.Errorf("singbox prepare: распаковка: %w", err)
 	}
 
 	// WriteConfig пишет конфиг и валидирует через `tempBin check -c configPath`.
@@ -69,12 +64,13 @@ func PrepareAndValidate(ctx context.Context, runner exectx.Runner, tarPath, conf
 func Install(ctx context.Context, runner exectx.Runner, tarPath, binDst, configPath string) error {
 	log.L().Info("установка sing-box", "tarball", tarPath, "dst", binDst)
 
-	binData, err := extractBinary(tarPath)
+	stream, err := openSingboxBinaryStream(tarPath)
 	if err != nil {
 		return fmt.Errorf("singbox install: распаковка tarball: %w", err)
 	}
+	defer stream.Close()
 
-	backupPath, err := atomicfs.BackupAndReplace(binDst, binData, 0o755)
+	backupPath, err := atomicfs.BackupAndReplaceFromReader(binDst, stream.Reader, 0o755)
 	if err != nil {
 		return fmt.Errorf("singbox install: запись бинаря: %w", err)
 	}
@@ -98,48 +94,89 @@ func Install(ctx context.Context, runner exectx.Runner, tarPath, binDst, configP
 // elfMagic — первые 4 байта Linux ELF-бинаря (\x7f E L F).
 var elfMagic = []byte{0x7f, 'E', 'L', 'F'}
 
-// extractBinary распаковывает tarball и возвращает содержимое бинаря sing-box.
-// Ищет файл с именем "sing-box" в любом подкаталоге архива и проверяет
-// ELF-magic — защита от подмены бинаря текстовым/script-файлом в tarball.
-func extractBinary(tarPath string) ([]byte, error) {
+// binaryStream — потоковый ридер на содержимое бинаря из tarball.
+// Caller обязан вызвать Close() для освобождения tar/gzip/file.
+type binaryStream struct {
+	Reader io.Reader
+	closer func() error
+}
+
+func (b *binaryStream) Close() error { return b.closer() }
+
+// openSingboxBinaryStream открывает tarball, ищет файл "sing-box" в любом
+// подкаталоге, проверяет ELF-magic первых 4 байт и возвращает stream на
+// полное содержимое (включая magic). Не буферизует бинарь в RAM —
+// критично для роутеров с 128MB.
+func openSingboxBinaryStream(tarPath string) (*binaryStream, error) {
 	f, err := os.Open(tarPath)
 	if err != nil {
 		return nil, fmt.Errorf("открытие tarball: %w", err)
 	}
-	defer f.Close()
 
 	gz, err := gzip.NewReader(f)
 	if err != nil {
+		_ = f.Close()
 		return nil, fmt.Errorf("gzip reader: %w", err)
 	}
-	defer gz.Close()
 
 	tr := tar.NewReader(gz)
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
-			break
+			_ = gz.Close()
+			_ = f.Close()
+			return nil, fmt.Errorf("бинарь 'sing-box' не найден в архиве %s", tarPath)
 		}
 		if err != nil {
+			_ = gz.Close()
+			_ = f.Close()
 			return nil, fmt.Errorf("чтение tar: %w", err)
 		}
 		if hdr.Typeflag != tar.TypeReg {
 			continue
 		}
-		// ищем файл с именем "sing-box" (без расширения) в любом каталоге
-		if filepath.Base(hdr.Name) == "sing-box" || strings.HasSuffix(hdr.Name, "/sing-box") {
-			data, err := io.ReadAll(tr)
-			if err != nil {
-				return nil, fmt.Errorf("чтение бинаря из tar: %w", err)
-			}
-			if len(data) < len(elfMagic) || !bytes.Equal(data[:len(elfMagic)], elfMagic) {
-				return nil, fmt.Errorf("singbox install: %s/sing-box не ELF-бинарь (magic=%x)",
-					filepath.Dir(hdr.Name), data[:min(len(elfMagic), len(data))])
-			}
-			return data, nil
+		if filepath.Base(hdr.Name) != "sing-box" && !strings.HasSuffix(hdr.Name, "/sing-box") {
+			continue
 		}
+
+		// ELF-magic проверяется без чтения всего бинаря: первые 4 байта
+		// в буфер, остаток стримится через MultiReader.
+		magic := make([]byte, len(elfMagic))
+		n, readErr := io.ReadFull(tr, magic)
+		if readErr != nil && readErr != io.ErrUnexpectedEOF {
+			_ = gz.Close()
+			_ = f.Close()
+			return nil, fmt.Errorf("чтение ELF-magic: %w", readErr)
+		}
+		if n < len(elfMagic) || !bytes.Equal(magic[:n], elfMagic) {
+			_ = gz.Close()
+			_ = f.Close()
+			return nil, fmt.Errorf("singbox install: %s/sing-box не ELF-бинарь (magic=%x)",
+				filepath.Dir(hdr.Name), magic[:n])
+		}
+
+		full := io.MultiReader(bytes.NewReader(magic), tr)
+		closer := func() error {
+			_ = gz.Close()
+			return f.Close()
+		}
+		return &binaryStream{Reader: full, closer: closer}, nil
 	}
-	return nil, fmt.Errorf("бинарь 'sing-box' не найден в архиве %s", tarPath)
+}
+
+// extractBinaryToFile стримит бинарь sing-box из tarball напрямую в dstPath
+// через atomicfs.WriteFileAtomicFromReader. Не загружает бинарь в RAM.
+func extractBinaryToFile(tarPath, dstPath string, perm os.FileMode) error {
+	stream, err := openSingboxBinaryStream(tarPath)
+	if err != nil {
+		return err
+	}
+	defer stream.Close()
+
+	if err := atomicfs.WriteFileAtomicFromReader(dstPath, stream.Reader, perm); err != nil {
+		return fmt.Errorf("запись бинаря: %w", err)
+	}
+	return nil
 }
 
 // checkConfig запускает `sing-box check -c configPath` для валидации конфига.
