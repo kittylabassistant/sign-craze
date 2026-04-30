@@ -89,21 +89,34 @@ func findComment(args []string) string {
 	return ""
 }
 
-// TestTProxyRules_BypassLoopback проверяет что TPROXY-правила не применяются
-// к loopback и link-local трафику — иначе TCP/UDP-стек роутера ломается
-// (safety-fixes #6).
+// TestTProxyRules_BypassLoopback проверяет наличие RETURN-bypass правил
+// для loopback (127.0.0.0/8), link-local (169.254.0.0/16) и интерфейса lo
+// перед TPROXY-правилами — иначе TCP/UDP-стек роутера ломается
+// (safety-fixes #6). Раздельные правила вместо `! -s X ! -s Y` в одном
+// rule из-за iptables 1.4.21 (Keenetic) не принимающего multiple -s.
 func TestTProxyRules_BypassLoopback(t *testing.T) {
 	rules := TProxyRules(7895, 0x53)
+	wantBypass := map[string]string{
+		"signcraze:bypass-loopback-src":  "-s 127.0.0.0/8",
+		"signcraze:bypass-linklocal-src": "-s 169.254.0.0/16",
+		"signcraze:bypass-lo-iface":      "-i lo",
+	}
+	found := map[string]bool{}
 	for _, r := range rules {
 		comment := findComment(r.Args)
-		if comment != "signcraze:tproxy-tcp" && comment != "signcraze:tproxy-udp" {
+		expectArg, ok := wantBypass[comment]
+		if !ok {
 			continue
 		}
 		args := strings.Join(r.Args, " ")
-		for _, want := range []string{"! -s 127.0.0.0/8", "! -s 169.254.0.0/16", "! -i lo"} {
-			if !strings.Contains(args, want) {
-				t.Errorf("правило %s не содержит %q:\n%s", comment, want, args)
-			}
+		if !strings.Contains(args, expectArg) || !strings.Contains(args, "-j RETURN") {
+			t.Errorf("правило %s ожидало %q + `-j RETURN`, получено: %s", comment, expectArg, args)
+		}
+		found[comment] = true
+	}
+	for c := range wantBypass {
+		if !found[c] {
+			t.Errorf("отсутствует bypass-правило %s", c)
 		}
 	}
 }

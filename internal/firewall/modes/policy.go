@@ -34,13 +34,40 @@ func PolicyRules(port uint16, keenMark, loopMark uint32) []RuleSpec {
 	_ = loop // зарезервировано для будущей опциональной anti-loop-проверки
 
 	return []RuleSpec{
+		// Bypass-RETURN: loopback и link-local источники не идут в TPROXY.
+		// Раздельные правила вместо `! -s X ! -s Y` в одном rule — iptables
+		// 1.4.21 (Keenetic) отвергает несколько -s флагов в одном правиле
+		// ("multiple -s flags not allowed"). Эти RETURN-правила вставляются
+		// в начало signcraze_policy, поэтому matching заканчивается до
+		// TPROXY-правил ниже.
+		{
+			Table: "mangle", Chain: PolicyChainName,
+			Args: []string{
+				"-s", "127.0.0.0/8",
+				"-j", "RETURN",
+				"-m", "comment", "--comment", "signcraze:bypass-loopback-src",
+			},
+		},
+		{
+			Table: "mangle", Chain: PolicyChainName,
+			Args: []string{
+				"-s", "169.254.0.0/16",
+				"-j", "RETURN",
+				"-m", "comment", "--comment", "signcraze:bypass-linklocal-src",
+			},
+		},
+		{
+			Table: "mangle", Chain: PolicyChainName,
+			Args: []string{
+				"-i", "lo",
+				"-j", "RETURN",
+				"-m", "comment", "--comment", "signcraze:bypass-lo-iface",
+			},
+		},
 		// TPROXY TCP: помеченные Keenetic'ом пакеты идут в sing-box.
 		{
 			Table: "mangle", Chain: PolicyChainName,
 			Args: []string{
-				"!", "-s", "127.0.0.0/8",
-				"!", "-s", "169.254.0.0/16",
-				"!", "-i", "lo",
 				"-m", "mark", "--mark", keen,
 				"-p", "tcp",
 				"-j", "TPROXY", "--tproxy-port", portStr, "--tproxy-mark", loop,
@@ -51,9 +78,6 @@ func PolicyRules(port uint16, keenMark, loopMark uint32) []RuleSpec {
 		{
 			Table: "mangle", Chain: PolicyChainName,
 			Args: []string{
-				"!", "-s", "127.0.0.0/8",
-				"!", "-s", "169.254.0.0/16",
-				"!", "-i", "lo",
 				"-m", "mark", "--mark", keen,
 				"-p", "udp",
 				"-j", "TPROXY", "--tproxy-port", portStr, "--tproxy-mark", loop,

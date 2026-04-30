@@ -34,27 +34,48 @@ func TProxyRules(port uint16, fwmark uint32) []RuleSpec {
 				"-m", "comment", "--comment", "signcraze:mark-ipv6",
 			},
 		},
-		// tproxy TCP для помеченных пакетов; bypass loopback и link-local,
-		// иначе TCP-стек ломается (safety-fixes #6).
+		// Bypass-RETURN внутри signcraze_full: разделяем -s фильтры на
+		// отдельные правила (iptables 1.4.21 не принимает несколько -s
+		// флагов в одном rule).
 		{
-			Table: "mangle", Chain: "PREROUTING",
+			Table: "mangle", Chain: "signcraze_full",
 			Args: []string{
-				"!", "-s", "127.0.0.0/8",
-				"!", "-s", "169.254.0.0/16",
-				"!", "-i", "lo",
+				"-s", "127.0.0.0/8",
+				"-j", "RETURN",
+				"-m", "comment", "--comment", "signcraze:bypass-loopback-src",
+			},
+		},
+		{
+			Table: "mangle", Chain: "signcraze_full",
+			Args: []string{
+				"-s", "169.254.0.0/16",
+				"-j", "RETURN",
+				"-m", "comment", "--comment", "signcraze:bypass-linklocal-src",
+			},
+		},
+		{
+			Table: "mangle", Chain: "signcraze_full",
+			Args: []string{
+				"-i", "lo",
+				"-j", "RETURN",
+				"-m", "comment", "--comment", "signcraze:bypass-lo-iface",
+			},
+		},
+		// tproxy TCP для помеченных пакетов; bypass-правила выше не дают
+		// loopback/link-local дойти сюда (safety-fixes #6).
+		{
+			Table: "mangle", Chain: "signcraze_full",
+			Args: []string{
 				"-m", "mark", "--mark", mark,
 				"-p", "tcp",
 				"-j", "TPROXY", "--tproxy-port", portStr, "--tproxy-mark", mark,
 				"-m", "comment", "--comment", "signcraze:tproxy-tcp",
 			},
 		},
-		// tproxy UDP для помеченных пакетов; bypass loopback и link-local.
+		// tproxy UDP для помеченных пакетов.
 		{
-			Table: "mangle", Chain: "PREROUTING",
+			Table: "mangle", Chain: "signcraze_full",
 			Args: []string{
-				"!", "-s", "127.0.0.0/8",
-				"!", "-s", "169.254.0.0/16",
-				"!", "-i", "lo",
 				"-m", "mark", "--mark", mark,
 				"-p", "udp",
 				"-j", "TPROXY", "--tproxy-port", portStr, "--tproxy-mark", mark,
@@ -75,6 +96,14 @@ func TProxyRules(port uint16, fwmark uint32) []RuleSpec {
 			Args: []string{
 				"-j", "signcraze",
 				"-m", "comment", "--comment", "signcraze:prerouting-mark",
+			},
+		},
+		// переход в signcraze_full для TPROXY (после mark-маршрутизации).
+		{
+			Table: "mangle", Chain: "PREROUTING",
+			Args: []string{
+				"-j", "signcraze_full",
+				"-m", "comment", "--comment", "signcraze:prerouting-tproxy",
 			},
 		},
 	}
