@@ -45,8 +45,8 @@ func doStart(ctx context.Context) error {
 	// и закешировать актуальный mark в state. Mark может смениться при reboot
 	// или если юзер удалил policy через UI — поэтому читаем при каждом старте.
 	if st.Mode == types.ModePolicy {
-		if err := ensureKeeneticPolicy(ctx, st); err != nil {
-			return fmt.Errorf("--start: %w", err)
+		if pErr := ensureKeeneticPolicy(ctx, st); pErr != nil {
+			return fmt.Errorf("--start: %w", pErr)
 		}
 	}
 

@@ -49,9 +49,9 @@ type State struct {
 	// Поля режима ModePolicy: интеграция с Keenetic IP Policy через RCI.
 	// PolicyMark и PolicyTable — кеш runtime-значений, актуальные читаются
 	// при каждом --start через ndm.GetPolicy().
-	PolicyName  string `json:"policy_name,omitempty"`  // имя policy в RCI, default "sign-craze"
-	PolicyMark  uint32 `json:"policy_mark,omitempty"`  // присвоенный Keenetic'ом fwmark (cache)
-	PolicyTable int    `json:"policy_table,omitempty"` // routing table policy в Keenetic (cache, IPv4)
+	PolicyName   string `json:"policy_name,omitempty"`   // имя policy в RCI, default "sign-craze"
+	PolicyMark   uint32 `json:"policy_mark,omitempty"`   // присвоенный Keenetic'ом fwmark (cache)
+	PolicyTable  int    `json:"policy_table,omitempty"`  // routing table policy в Keenetic (cache, IPv4)
 	WANInterface string `json:"wan_interface,omitempty"` // Keenetic-имя WAN, e.g. GigabitEthernet1
 }
 
