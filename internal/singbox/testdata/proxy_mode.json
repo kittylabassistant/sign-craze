@@ -33,7 +33,6 @@
       "auto_route": false,
       "interface_name": "signbox-tun",
       "mtu": 1500,
-      "sniff": true,
       "stack": "system",
       "tag": "tun-in",
       "type": "tun"
