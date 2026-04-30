@@ -125,9 +125,11 @@ func parseVLESS(s string) (types.Outbound, error) {
 	if v := q.Get("flow"); v != "" {
 		settings["flow"] = v
 	}
-	if v := q.Get("encryption"); v != "" {
-		settings["encryption"] = v // включая mlkem768x25519plus (PQ)
-	}
+	// encryption=none — XRay/V2Ray-специфичный URL-параметр, в sing-box VLESS
+	// outbound поля encryption нет (см. https://sing-box.sagernet.org/configuration/outbound/vless/).
+	// Игнорируем, чтобы не получить FATAL "unknown field encryption" на 1.13+.
+	// PQ (mlkem768x25519plus) в sing-box настраивается через отдельные поля,
+	// а не encryption — поддержим отдельно если потребуется.
 	if v := q.Get("packetEncoding"); v != "" {
 		settings["packet_encoding"] = v
 	}

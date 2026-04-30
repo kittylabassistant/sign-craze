@@ -155,16 +155,25 @@ type Outbound struct {
 // MarshalJSON эмитит Outbound в формате sing-box: tag/type/server/server_port
 // + Settings мерджатся как top-level поля (uuid, flow, tls, transport и т.п.).
 // Это отличает sing-box от XRay-формата, где все спец-поля живут в "settings".
+//
+// Для служебных типов (direct/block/dns) поля server/server_port не эмитятся —
+// sing-box ≥ 1.12 не принимает эти поля для direct (override_address/port были
+// removed), block и dns как outbound-типы тоже удалены (заменены route actions).
 func (o Outbound) MarshalJSON() ([]byte, error) {
 	out := map[string]any{
 		"tag":  o.Tag,
 		"type": o.Type,
 	}
-	if o.Server != "" {
-		out["server"] = o.Server
-	}
-	if o.Port != 0 {
-		out["server_port"] = uint16(o.Port)
+	switch o.Type {
+	case "direct", "block", "dns":
+		// служебный outbound — без server/server_port
+	default:
+		if o.Server != "" {
+			out["server"] = o.Server
+		}
+		if o.Port != 0 {
+			out["server_port"] = uint16(o.Port)
+		}
 	}
 	for k, v := range o.Settings {
 		out[k] = v

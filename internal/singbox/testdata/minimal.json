@@ -1,12 +1,7 @@
 {
   "dns": {
     "final": "remote",
-    "rules": [
-      {
-        "outbound": "any",
-        "server": "local"
-      }
-    ],
+    "rules": [],
     "servers": [
       {
         "detour": "out",
@@ -24,12 +19,9 @@
   },
   "inbounds": [
     {
-      "domain_strategy": "prefer_ipv4",
       "listen": "::",
       "listen_port": 7895,
       "routing_mark": 83,
-      "sniff": true,
-      "sniff_override_destination": false,
       "tag": "tproxy-in",
       "tcp_fast_open": false,
       "type": "tproxy"
@@ -42,31 +34,31 @@
   },
   "outbounds": [
     {
-      "server": "0.0.0.0",
-      "server_port": 1,
       "tag": "out",
       "type": "direct"
     },
     {
       "tag": "direct",
       "type": "direct"
-    },
-    {
-      "tag": "block",
-      "type": "block"
-    },
-    {
-      "tag": "dns-out",
-      "type": "dns"
     }
   ],
   "route": {
     "auto_detect_interface": true,
+    "default_domain_resolver": "local",
     "final": "out",
     "rule_set": null,
     "rules": [
       {
-        "outbound": "dns-out",
+        "action": "resolve",
+        "inbound": "tproxy-in",
+        "strategy": "prefer_ipv4"
+      },
+      {
+        "action": "sniff",
+        "inbound": "tproxy-in"
+      },
+      {
+        "action": "hijack-dns",
         "protocol": "dns"
       }
     ]

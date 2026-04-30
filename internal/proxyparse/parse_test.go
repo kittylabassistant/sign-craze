@@ -93,7 +93,9 @@ func TestParseVLESS_Reality(t *testing.T) {
 	}
 }
 
-// TestParseVLESS_PostQuantum — encryption=mlkem768x25519plus + mldsa65 поля.
+// TestParseVLESS_PostQuantum — mldsa65 поля для PQ-режима reality.
+// Поле encryption из URL игнорируется: в sing-box VLESS outbound его нет
+// (см. parse.go комментарий + https://sing-box.sagernet.org/configuration/outbound/vless/).
 func TestParseVLESS_PostQuantum(t *testing.T) {
 	url := "vless://uuid-1@srv:443?security=reality&encryption=mlkem768x25519plus" +
 		"&pbk=PK&sid=ab&mldsa65Verify=VERIFY_KEY&mldsa65Seed=SEED_VAL&fp=chrome"
@@ -102,8 +104,8 @@ func TestParseVLESS_PostQuantum(t *testing.T) {
 		t.Fatalf("Parse: %v", err)
 	}
 
-	if o.Settings["encryption"] != "mlkem768x25519plus" {
-		t.Errorf("encryption должен быть top-level: %+v", o.Settings)
+	if _, ok := o.Settings["encryption"]; ok {
+		t.Errorf("encryption не должен попадать в settings: %+v", o.Settings)
 	}
 
 	tls, _ := o.Settings["tls"].(map[string]any)

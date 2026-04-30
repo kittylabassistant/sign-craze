@@ -11,9 +11,6 @@
       "listen": "::",
       "listen_port": {{ .InboundPort }},
       "tcp_fast_open": false,
-      "sniff": true,
-      "sniff_override_destination": false,
-      "domain_strategy": "prefer_ipv4",
       "routing_mark": {{ .Mark }}
     }
   ],
@@ -24,21 +21,23 @@
     {
       "type": "direct",
       "tag": "direct"
-    },
-    {
-      "type": "block",
-      "tag": "block"
-    },
-    {
-      "type": "dns",
-      "tag": "dns-out"
     }
   ],
   "route": {
+    "default_domain_resolver": "local",
     "rules": [
       {
+        "inbound": "tproxy-in",
+        "action": "resolve",
+        "strategy": "prefer_ipv4"
+      },
+      {
+        "inbound": "tproxy-in",
+        "action": "sniff"
+      },
+      {
         "protocol": "dns",
-        "outbound": "dns-out"
+        "action": "hijack-dns"
       }{{ if .Routing.GeoSiteDirect }},
       {
         "rule_set": {{ jsonMarshal .Routing.GeoSiteDirect }},
@@ -68,16 +67,12 @@
         "detour": "direct"
       }
     ],
-    "rules": [
-      {
-        "outbound": "any",
-        "server": "local"
-      }{{ if .Routing.GeoSiteDirect }},
+    "rules": [{{ if .Routing.GeoSiteDirect }}
       {
         "rule_set": {{ jsonMarshal .Routing.GeoSiteDirect }},
         "server": "local"
-      }{{ end }}
-    ],
+      }
+    {{ end }}],
     "final": "remote"
   }
 }
