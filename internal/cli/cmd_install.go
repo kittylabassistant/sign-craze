@@ -170,6 +170,13 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string, force b
 		return fmt.Errorf("--install: init.d shim: %w", err)
 	}
 
+	// 9. Создать NDM netfilter.d hook. Без него правила mangle теряются при
+	// первом же rebuild iptables со стороны Keenetic (привязка устройства к
+	// policy через UI, save startup-config, reconnect WAN).
+	if err := service.WriteHook(service.DefaultNetfilterHookPath, service.HookParams{BinPath: service.DefaultSignCrazeBin}); err != nil {
+		return fmt.Errorf("--install: netfilter.d hook: %w", err)
+	}
+
 	fmt.Println()
 	fmt.Println("Установка завершена.")
 	if outbounds[0].Type == "direct" {

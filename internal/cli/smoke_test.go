@@ -20,6 +20,7 @@ var expectedCommands = []string{
 	"--port-add", "--port-del", "--port-list",
 	"--exclude-add", "--exclude-del", "--exclude-list",
 	"--backup", "--restore", "--config-backup", "--config-restore",
+	"--reapply",
 }
 
 func TestRegistry_AllCommandsRegistered(t *testing.T) {
@@ -66,6 +67,14 @@ func TestServiceStartIsHidden(t *testing.T) {
 	for _, c := range registry {
 		if c.Long == "--service-start" && !c.Hidden {
 			t.Error("--service-start должна быть Hidden")
+		}
+	}
+}
+
+func TestReapplyIsHidden(t *testing.T) {
+	for _, c := range registry {
+		if c.Long == "--reapply" && !c.Hidden {
+			t.Error("--reapply должна быть Hidden (вызывается из netfilter.d hook)")
 		}
 	}
 }

@@ -35,6 +35,8 @@
 - Создаёт директорию конфигов `/opt/etc/sign-craze/`, права `0755`.
 - Генерирует `/opt/etc/sign-craze/config.json` (tproxy inbound на порту `7895`, fwmark `0x53`).
 - Создаёт init.d shim `/opt/etc/init.d/S05signcraze`, права `0755`.
+- Создаёт NDM netfilter.d hook `/opt/etc/ndm/netfilter.d/50-sign-craze`,
+  права `0755` (см. §3c — persistence через NDM rebuild).
 - Создаёт директорию состояния `/opt/var/lib/sign-craze/`, права `0755`.
 - Создаёт директорию логов `/opt/var/log/sign-craze/`, права `0755`.
 - Сервис **не запускает** (пользователь вызывает `--start` отдельно).
@@ -412,6 +414,61 @@ ipset:     signcraze_ipv4   Type: hash:net  Family: inet
            signcraze_excludes  Type: hash:net  Family: inet
 ```
 
+### 3c. NDM netfilter.d hook (persistence)
+
+Keenetic NDM пересобирает iptables при изменениях конфигурации (привязка
+устройства к IP-policy через web UI, save startup-config, reconnect WAN).
+После rebuild сторонние chain'ы из mangle (включая `signcraze_policy`)
+теряются. ip rule и таблицы маршрутизации NDM не трогает.
+
+Стандартный механизм восстановления — hook-скрипты в
+`/opt/etc/ndm/netfilter.d/`, NDM вызывает их после каждого rebuild с env:
+
+- `type` — `iptables` | `ip6tables` | `ipset`
+- `table` — `mangle` | `nat` | `filter` | `raw` (для iptables/ip6tables)
+
+`--install` создаёт `/opt/etc/ndm/netfilter.d/50-sign-craze` (executable).
+Hook фильтрует event'ы по `type`/`table` (только mangle и ipset) и вызывает
+`sign-craze --reapply`.
+
+`--reapply` — hidden CLI-команда:
+
+1. Non-blocking flock на `/opt/var/lock/sign-craze.lock`. При занятой блокировке
+   (другой mutator работает) — exit 0; mutator сам сделает Apply.
+2. Status sing-box: если процесс не запущен — exit 0 (правила без живого TUN
+   маршрутизировали бы в несуществующий dev).
+3. `applierImpl.Apply(ctx, mode)` идемпотентно восстанавливает chain'ы и
+   правила. Не вызывает `AttachTUN` (TUN жив пока sing-box жив; default-route
+   в table 83 NDM не трогает).
+4. Все ошибки логируются как Warn, exit 0 ВСЕГДА — hook не должен ломать
+   обработку NDM event-chain.
+
+`--uninstall` и `--purge` удаляют hook вместе с другими установленными файлами.
+
+#### Окно reapply: leak-анализ
+
+Между NDM flush и завершением hook'а (~100-500ms на MIPS softfloat) chain
+`signcraze_policy` отсутствует. Пакет клиента в этом окне:
+
+1. Keenetic mark пакета остаётся (`0xffffaab` или похожий).
+2. Без `signcraze_policy` ремаркинга в `0x53` нет → ip rule
+   `32765 fwmark 0x53 lookup 83` (TUN) не срабатывает.
+3. Пакет идёт по Keenetic-правилам:
+   - `ip rule 102: fwmark 0xffffaab lookup 4098` — Keenetic-managed table
+     policy. Sign-craze туда не пишет; у policy без выходного канала пуста.
+   - `ip rule 103: fwmark 0xffffaab blackhole` — auto-добавлено Keenetic'ом
+     как fail-closed.
+4. Пакет → `blackhole` → дроп.
+
+**Утечки нет**: пакеты блекхольнутся пока reapply не вернёт chain. Side-effect —
+кратковременная потеря connectivity у клиентов в политике.
+
+**Известное ограничение**: если оператор вручную назначит sign-craze policy
+WAN-fallback в Keenetic UI (`permit` с активным interface), table 4098
+получит default через провайдера и в окне reapply возможен leak. Sign-craze
+создаёт policy без `permit`-канала (`ndm.EnsurePolicy` без interface-параметра)
+именно для предотвращения этого сценария.
+
 ---
 
 ## 4. Жизненный цикл
@@ -486,8 +543,11 @@ SIGHUP-перезагрузки нет. Изменения конфига тре
 │   │   ├── config.json     # конфиг sing-box (генерируется)
 │   │   ├── nfqws2.conf     # конфиг nfqws2 (генерируется, опционально)
 │   │   └── admin.creds     # bcrypt-хэш пароля для web UI
-│   └── init.d/
-│       └── S05signcraze    # init.d shim (генерируется)
+│   ├── init.d/
+│   │   └── S05signcraze    # init.d shim (генерируется)
+│   └── ndm/
+│       └── netfilter.d/
+│           └── 50-sign-craze   # NDM hook для persistence (генерируется)
 └── var/
     ├── lib/
     │   └── sign-craze/

@@ -2,6 +2,7 @@ package locks
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -59,6 +60,32 @@ func TestAcquire_SecondBlocksUntilRelease(t *testing.T) {
 	}
 
 	wg.Wait()
+}
+
+func TestTryAcquire_ReturnsLockWhenFree(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "test.lock")
+
+	lk, err := TryAcquire(path)
+	if err != nil {
+		t.Fatalf("TryAcquire: %v", err)
+	}
+	if err := lk.Release(); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+}
+
+func TestTryAcquire_ReturnsErrLockedWhenHeld(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "test.lock")
+
+	held, err := Acquire(context.Background(), path)
+	if err != nil {
+		t.Fatalf("первый Acquire: %v", err)
+	}
+	defer held.Release()
+
+	if _, err := TryAcquire(path); !errors.Is(err, ErrLocked) {
+		t.Fatalf("ожидался ErrLocked, получено: %v", err)
+	}
 }
 
 func TestAcquire_ContextCancelledWhileWaiting(t *testing.T) {

@@ -1,5 +1,10 @@
 # Инструкция проверки sign-craze на Keenetic KN-1810 (mipsle)
 
+> **Архитектура v0.3+**: TUN-mode (не TPROXY). sing-box создаёт интерфейс `signbox-tun`,
+> sign-craze управляет маршрутизацией через `ip rule fwmark → table → default dev signbox-tun`.
+> Default `policy` mode — интеграция с Keenetic IP-policy (трафик помеченных
+> устройств перехватывается через PolicyMark из RCI).
+
 ## 0. Предварительные требования
 
 На роутере должен быть установлен **Entware** (OPKG). Проверка:
@@ -16,6 +21,18 @@ ls /opt/sbin
 ```sh
 ssh root@192.168.1.1
 ```
+
+**Keenetic NDM rebuild iptables.** Keenetic пересобирает iptables при изменениях конфигурации (привязка устройства к IP-policy через web UI, save startup-config, reconnect WAN). После rebuild сторонние chain'ы из mangle теряются. Стандартный механизм восстановления — hook-скрипты в `/opt/etc/ndm/netfilter.d/`, NDM вызывает их после каждого rebuild с env `type=` и `table=`.
+
+Sign-craze v0.3.x ставит свой hook автоматически при `--install`:
+
+```sh
+ls -la /opt/etc/ndm/netfilter.d/50-sign-craze   # должен быть, executable
+```
+
+Hook вызывает hidden CLI-команду `sign-craze --reapply`, которая идемпотентно переустанавливает mangle-чейн `signcraze_policy` (и ipset для full mode), не трогая sing-box и TUN — они переживают rebuild (NDM не управляет процессами и rtnetlink).
+
+**Совместимость с XKeen** (если установлен на том же роутере): XKeen использует тот же hook-механизм, его hook ставится как `/opt/etc/ndm/netfilter.d/xkeen` (или похоже). Оба инструмента могут сосуществовать, поскольку реапплаят свои собственные chain'ы независимо. Однако если оба пытаются перехватить трафик одной и той же IP-policy — конфликт по mark. Базовый рекомендованный сценарий: одновременно запускать только sign-craze ИЛИ только XKeen.
 
 ## 1. Получить бинарь
 
@@ -89,45 +106,67 @@ Wizard спросит:
 - сгенерирован `/opt/etc/sign-craze/config.json`
 - сгенерирован `/opt/etc/sign-craze/state.json`
 - создан `/opt/etc/init.d/S05signcraze`
+- создан `/opt/etc/ndm/netfilter.d/50-sign-craze` (NDM hook для persistence)
 
 Проверить:
 
 ```sh
 ls -la /opt/sbin/sing-box /opt/etc/sign-craze/ /opt/etc/init.d/S05signcraze
-cat /opt/etc/sign-craze/state.json   # Outbound видимый
+ls -la /opt/etc/ndm/netfilter.d/50-sign-craze       # NDM hook executable
+cat /opt/etc/ndm/netfilter.d/50-sign-craze          # должен вызывать --reapply
+cat /opt/etc/sign-craze/state.json                  # Outbound видимый
 sing-box version
 sing-box check -c /opt/etc/sign-craze/config.json   # должен пройти
 ```
 
-## 4. Запуск
+## 4. Запуск (TUN-mode, v0.3+)
+
+Архитектура v0.3+:
+- sing-box создаёт TUN-интерфейс `signbox-tun`.
+- `policy` mode (default): Keenetic IP-policy маркит пакеты привязанных устройств своим mark (`0xffffaab` или похожим). Sign-craze в `mangle/PREROUTING` ремаркирует их в `0x53`. `ip rule fwmark 0x53 lookup 83` поднимает в таблицу 83 → `default dev signbox-tun` → sing-box → proxy.
+- `full` mode (legacy): без интеграции с Keenetic, использует ipset `signcraze_ipv4`/`signcraze_ipv6` и собственные chains `signcraze`/`signcraze_dpi`/`signcraze_ports`.
 
 ```sh
 sign-craze --start
 ```
 
-Ожидается: `Сервис запущен (sing-box pid=NNN, режим=proxy)`.
+Ожидается:
+- `ndm: policy готова` с `mark=0x...` и `table4=...`.
+- `firewall: применение правил mode=policy` (или `mode=full`).
+- `firewall: TUN подключён dev=signbox-tun table=83`.
+- `Сервис запущен (sing-box pid=NNN, режим=policy)`.
 
-**Проверки на роутере:**
+**Проверки на роутере (policy mode):**
 
 ```sh
-# процесс жив
+# 1. Процесс жив, TUN поднят
 ps | grep sing-box
-
-# PID-файлы
 cat /opt/var/run/sign-craze-singbox.pid
+ip link show signbox-tun       # state UP, MTU 1500
+ip addr show signbox-tun       # 172.19.0.1/30 + IPv6
 
-# iptables-цепочки созданы
+# 2. ip rule + table 83 (loopMark sign-craze)
+ip rule | grep 0x53            # ожидаем "from all fwmark 0x53 lookup 83"
+ip route show table 83         # ожидаем "default dev signbox-tun"
+
+# 3. Mangle chains (НЕ "signcraze" — старое имя; в policy mode это signcraze_policy)
+iptables -t mangle -L signcraze_policy -n -v
+iptables -t mangle -L PREROUTING -n -v | grep signcraze_policy
+# с DPI: iptables -t mangle -L signcraze_policy_dpi -n -v
+
+# 4. PolicyMark из state совпадает с mark в Keenetic IP-policy
+cat /opt/etc/sign-craze/state.json | grep -i policy
+# В roadmap §6 ниже — как сверить с Keenetic UI / RCI.
+```
+
+**Проверки full mode** (если переключали `--mode full`):
+
+```sh
 iptables -t mangle -L signcraze -n -v
 iptables -t mangle -L signcraze_dpi -n -v
 iptables -t mangle -L signcraze_ports -n -v
 iptables -t mangle -L PREROUTING -n -v | grep signcraze
-
-# ipset
 ipset list -n | grep signcraze
-
-# ip rule
-ip rule | grep 0x53
-ip route show table 83
 ```
 
 ## 5. Status + Diag
@@ -144,37 +183,103 @@ sign-craze --diag
 
 Желательно: всё PASS. WARN допустимы для `geo-files` (если ещё не качали).
 
-## 6. Проверка трафика через прокси
+## 6. Проверка трафика через прокси (policy mode)
 
-### С самого роутера
+Идея: устройство клиента (LAN) добавлено в Keenetic IP-policy `sign-craze`. Keenetic ставит mark на его пакеты → sign-craze ремаркит в `0x53` → пакет уходит в `signbox-tun` → sing-box → VPS.
+
+### 6.1. Сверить PolicyMark
 
 ```sh
-# IP без прокси (прямое подключение)
+# Какой mark Keenetic присвоил policy "sign-craze":
+ndmc -c "show ip policy"
+# или через RCI:
+curl -s 'http://localhost:79/rci/show/ip/policy' | head
+
+# Сверить с state:
+grep -i policymark /opt/etc/sign-craze/state.json
+```
+
+Mark в Keenetic должен совпадать с PolicyMark в state. Если не совпадает — `sign-craze --restart` (читает заново из RCI).
+
+### 6.2. Привязка устройства
+
+В Keenetic web UI: «Список устройств» → выбрать клиента → «Профиль доступа в интернет» → выставить `sign-craze`. Сохранить.
+
+Проверить, что Keenetic реально маркит пакеты клиента (заменить `<CLIENT_IP>`):
+
+```sh
+# Счётчик попаданий в signcraze_policy должен расти при трафике клиента:
+iptables -t mangle -L signcraze_policy -n -v
+sleep 5
+iptables -t mangle -L signcraze_policy -n -v
+# pkts/bytes выросли → Keenetic mark работает, ремаркинг работает.
+```
+
+Если **pkts=0** даже при активном клиенте — Keenetic не ставит mark. Причины: устройство не в политике, политика без выходного канала, profile не сохранён. См. §6.4 диагностика.
+
+### 6.3. Проверить смену IP
+
+С клиентского устройства (телефон/ноут в LAN):
+
+```sh
+# До привязки к политике — IP провайдера:
 curl -s ifconfig.me
 
-# IP через ipset (добавить тестовый IP в signcraze_ipv4 — туда трафик пойдёт через прокси)
-ipset add signcraze_ipv4 1.1.1.1
-curl --resolve ifconfig.me:443:1.1.1.1 https://ifconfig.me
-# (это спорный тест — лучше с клиентского устройства)
+# После привязки + reconnect WiFi (сбросить conntrack-сессии):
+curl -s ifconfig.me   # должен показать IP VPS-сервера sing-box
 ```
 
-### С клиентского устройства
+Если IP не сменился — переходить к §6.4.
 
-На устройстве в LAN роутера:
+### 6.4. Диагностика «IP не меняется»
+
+Идти сверху вниз — каждый шаг отсекает уровень:
 
 ```sh
-# исходный IP (прямой)
-curl ifconfig.me
+# A. Keenetic ставит mark на пакеты клиента?
+iptables -t mangle -L signcraze_policy -n -v
+# pkts==0 → клиент не в policy / policy без mark.
+#   - проверить web UI Keenetic: устройство привязано к "sign-craze".
+#   - sign-craze --restart (перечитает PolicyMark).
+#   - reconnect клиента (DHCP renew / WiFi off-on) — Keenetic привязывает по MAC.
+
+# B. Ремаркинг 0x53 работает? (счётчик правил MARK):
+iptables -t mangle -L signcraze_policy -n -v -x
+# у правила -j MARK --set-xmark должен расти pkts при трафике клиента.
+
+# C. ip rule + table подняты?
+ip rule | grep 0x53                     # должно быть "fwmark 0x53 lookup 83"
+ip route show table 83                  # "default dev signbox-tun"
+# Если пусто — sign-craze --restart.
+
+# D. Пакеты реально идут в TUN?
+tcpdump -i signbox-tun -n -c 20 &
+# с клиента: curl ifconfig.me
+# должны появиться пакеты на signbox-tun. Если 0 — проблема выше (A/B/C).
+
+# E. Sing-box принимает и форвардит?
+tail -50 /opt/var/log/sign-craze/sing-box.log
+tail -50 /opt/var/log/sign-craze/sing-box.stderr.log
+# искать ошибки outbound/dial. На MIPS slow CPU connect к VPS может занимать 1–3s.
+
+# F. Conntrack с устаревшим маршрутом
+# Старые TCP-сессии клиента (открытые до --start) ходят без mark.
+# Workaround: перезагрузить клиента или conntrack -F (если есть).
+conntrack -F 2>/dev/null || echo "conntrack tool отсутствует — reconnect клиента"
+
+# G. Loopback из самого роутера НЕ прокси-роутится в policy mode!
+# curl ifconfig.me с самого Keenetic пойдёт прямо: трафик роутера НЕ привязан
+# к policy. Тестировать ТОЛЬКО с LAN-клиента.
 ```
 
-На роутере добавить geo-файлы:
+### 6.5. Geo-маршрутизация (опц.)
 
 ```sh
 sign-craze --update-geo
 ls /opt/var/lib/sign-craze/geo
 ```
 
-После добавления нужных категорий в outbounds (через `--ui` или прямо в `state.json`) → проверять что для проксированных доменов внешний IP меняется на прокси-сервер.
+В TUN-mode geo-категории применяются sing-box'ом внутри TUN: входящий трафик клиента уже в TUN, дальше sing-box по geosite/geoip разделяет на `direct`/`proxy` outbound. Конфиг: `route.rules` в `config.json`.
 
 ## 7. Web UI
 
@@ -240,9 +345,13 @@ ps | grep nfqws2
 
 ```sh
 sign-craze --stop
-ps | grep sing-box                          # пусто
-iptables -t mangle -L signcraze -n -v 2>&1  # No chain
-ipset list -n | grep signcraze              # пусто
+ps | grep sing-box                                # пусто
+ip link show signbox-tun 2>&1                     # "does not exist"
+ip rule | grep 0x53                               # пусто
+ip route show table 83                            # пусто
+iptables -t mangle -L signcraze_policy -n 2>&1    # "No chain" (policy mode)
+iptables -t mangle -L signcraze -n 2>&1           # "No chain" (full mode)
+ipset list -n | grep signcraze                    # пусто (full mode)
 ```
 
 ## 12. Init.d автостарт
@@ -276,13 +385,15 @@ sign-craze --restore /opt/var/lib/sign-craze/backups/backup-2026-04-28T...tar.gz
 
 ```sh
 sign-craze --uninstall
-ls /opt/sbin/sing-box                        # отсутствует
-ls /opt/etc/sign-craze/                      # отсутствует
-ls /opt/sbin/sign-craze                      # ОСТАЛСЯ
+ls /opt/sbin/sing-box                                # отсутствует
+ls /opt/etc/sign-craze/                              # отсутствует
+ls /opt/etc/init.d/S05signcraze                      # отсутствует
+ls /opt/etc/ndm/netfilter.d/50-sign-craze            # отсутствует
+ls /opt/sbin/sign-craze                              # ОСТАЛСЯ
 
 # Полная очистка
 sign-craze --purge
-ls /opt/sbin/sign-craze                      # отсутствует
+ls /opt/sbin/sign-craze                              # отсутствует
 ```
 
 ## 15. Дополнительные команды установки
@@ -342,20 +453,30 @@ sign-craze --config-restore /opt/var/lib/sign-craze/backups/config-*.tar.gz
 
 ## 19. IPv6 проверки
 
-```sh
-# IPv6 цепочки
-ip6tables -t mangle -L signcraze -n -v
-ip6tables -t mangle -L signcraze_dpi -n -v
-ip6tables -t mangle -L PREROUTING -n -v | grep signcraze
+В TUN-mode IPv6 идёт **внутри TUN** (sing-box получает v6-пакеты на `fdfe:dcba:9876::1/126` и форвардит). Policy mode для v6 требует `ip6tables` и `ip -6 rule`.
 
-# IPv6 ipset
-ipset list signcraze_ipv6
-ipset list signcraze_excludes_v6
+```sh
+# TUN имеет IPv6
+ip -6 addr show signbox-tun
+# fdfe:dcba:9876::1/126 ожидается
+
+# Если IPv6 у провайдера активен — должен быть mangle-хук v6:
+ip6tables -t mangle -L signcraze_policy -n -v
+ip6tables -t mangle -L PREROUTING -n -v | grep signcraze_policy
 
 # IPv6 routing
 ip -6 rule | grep 0x53
-ip -6 route show table 83
+ip -6 route show table 83        # "default dev signbox-tun"
+
+# Full mode
+ip6tables -t mangle -L signcraze -n -v
+ipset list signcraze_ipv6 2>/dev/null
+ipset list signcraze_excludes_v6 2>/dev/null
 ```
+
+**Если IPv6 disabled** в kernel sysctl (`/proc/sys/net/ipv6/conf/all/disable_ipv6=1`):
+- sing-box не сможет назначить `fdfe:dcba:9876::1/126` на TUN → краш на старте.
+- Workaround: убрать v6 адрес из state.json `TUNAddresses` (оставить только v4).
 
 ## 20. DNS перехват (если включён)
 
@@ -466,18 +587,18 @@ sign-craze --diag
 - **Размер бинаря:** без UPX ~9MB. С UPX будет ~3MB. Если ставишь свежесобранный — без UPX. Если из релиза — с UPX.
 - **GOMIPS=softfloat обязателен** — KN-1810 не имеет FPU, hardfloat будет SIGILL.
 - **Лимит RAM 256MB на KN-1810:** sing-box обычно <30MB RSS. Если выше — подозрительно.
-- **iptables в Keenetic** может быть только базовый, без `multiport` модуля. Проверь:
-
-  ```sh
-  iptables -m multiport --help 2>&1 | head
-  iptables -m comment --help 2>&1 | head
-  ```
-
-  Если модуль отсутствует — нужно `opkg install iptables-mod-extra` (или аналог).
-- **TPROXY** аналогично: `opkg install kmod-ipt-tproxy iptables-mod-tproxy`.
-- **ipset** должен быть: `opkg install ipset`.
-- **NFQUEUE** для DPI: `opkg install kmod-nfnetlink-queue iptables-mod-nfqueue`.
+- **TUN-модуль обязателен** — `ls -l /dev/net/tun` должен показать char device. На стоковой Keenetic-прошивке TUN включён (используется встроенным OpenVPN/WireGuard).
+- **xt_comment НЕ требуется** — sign-craze v0.3+ не использует `-m comment` (busybox iptables его не имеет).
+- **xt_TPROXY НЕ требуется** — sign-craze v0.3+ перешёл на TUN-mode (не TPROXY).
+- **iptables match `set` нужен только для `full` mode**: `opkg install iptables-mod-ipset` если планируется legacy режим.
+- **ipset нужен только для `full` mode**: `opkg install ipset`.
+- **NFQUEUE для DPI**: `opkg install kmod-nfnetlink-queue iptables-mod-nfqueue`.
 - **iptables backend**: проверь `iptables --version` — Keenetic обычно `iptables-legacy`. Если `nf_tables` — поведение MARK/CONNMARK может отличаться.
 - **fwmark `0x53` единственный**: `ip rule | grep 0x53` — других правил с этой меткой быть не должно (коллизия с другим софтом → silent breakage).
+- **Loopback с самого роутера НЕ проксируется** в `policy` mode. Keenetic ставит mark только на пакеты LAN-устройств, привязанных к политике. `curl ifconfig.me` с самого Keenetic SSH пойдёт прямо. Тестировать ТОЛЬКО с LAN-клиента.
+- **Conntrack помнит старые сессии** — после `--start` уже открытые соединения клиента продолжат идти прямо (без mark). Reconnect клиента (Wi-Fi off/on) или `conntrack -F` сбросит.
+- **DNS-server `local`** в config.json — sing-box 1.13 использует тип `local` (системный resolver), не `udp` с `detour: direct` (запрещено в 1.13).
+- **NDM rebuilds iptables** — Keenetic пересобирает iptables при привязке устройства к policy / save startup-config / WAN reconnect, теряя сторонние mangle-чейны. Решение — netfilter.d hook (`/opt/etc/ndm/netfilter.d/50-sign-craze`), который sign-craze ставит автоматически при `--install`. Hook вызывает `sign-craze --reapply`. Если hook отсутствует или не executable — `signcraze_policy` будет пропадать после первого NDM-event'а.
+- **Лог-файл пуст при интерактивном запуске** — `/opt/var/log/sign-craze/sign-craze.log` пишется только когда `stderr` не терминал (init.d/cron). При запуске из ssh-shell лог идёт в stderr (`internal/log/log.go:42`). Для диагностики смотреть `tail` на live-выводе команды или запустить через `sign-craze --start 2>&1 | tee /tmp/run.log`.
 
-Если что-то не работает — пришли вывод `sign-craze --diag` и вывод проблемной команды.
+Если что-то не работает — пришли вывод `sign-craze --diag`, `sign-craze --status`, `tail -50 /opt/var/log/sign-craze/sing-box.log` и `tail -50 /opt/var/log/sign-craze/sing-box.stderr.log`.

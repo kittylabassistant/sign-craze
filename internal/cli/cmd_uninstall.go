@@ -74,6 +74,7 @@ func doUninstall(ctx context.Context, label string) []string {
 
 	files := map[string]string{
 		service.DefaultShimPath:               "init.d shim",
+		service.DefaultNetfilterHookPath:      "NDM netfilter hook",
 		singbox.DefaultBinPath:                "бинарь sing-box",
 		"/opt/var/run/sign-craze-singbox.pid": "PID-файл sing-box",
 		"/opt/var/run/sign-craze-nfqws2.pid":  "PID-файл nfqws2",
