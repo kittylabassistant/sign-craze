@@ -37,11 +37,19 @@ func (c *Client) DetectWANInterface(ctx context.Context) (string, error) {
 	if jerr := json.Unmarshal(body, &asArray); jerr == nil && len(asArray) > 0 {
 		return findDefaultRoute(asArray)
 	}
+	// Реальные Keenetic-прошивки используют ключ "route" (singular), часть
+	// документации/моков — "routes". Поддерживаем оба.
 	var asWrap struct {
+		Route  []rawIPRouteEntry `json:"route"`
 		Routes []rawIPRouteEntry `json:"routes"`
 	}
-	if jerr := json.Unmarshal(body, &asWrap); jerr == nil && len(asWrap.Routes) > 0 {
-		return findDefaultRoute(asWrap.Routes)
+	if jerr := json.Unmarshal(body, &asWrap); jerr == nil {
+		if len(asWrap.Route) > 0 {
+			return findDefaultRoute(asWrap.Route)
+		}
+		if len(asWrap.Routes) > 0 {
+			return findDefaultRoute(asWrap.Routes)
+		}
 	}
 	return "", fmt.Errorf("ndm: не удалось распарсить /show/ip/route: %s", string(body))
 }
