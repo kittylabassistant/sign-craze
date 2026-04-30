@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
+	"github.com/kittylabassistant/sign-craze/internal/log"
 )
 
 // probeChainName — короткое имя цепочки, используемое preflight'ом для
@@ -61,7 +62,11 @@ func CheckRequiredIptablesModules(ctx context.Context, runner exectx.Runner) err
 	if err := ipt.EnsureChain(ctx, "mangle", probeChainName); err != nil {
 		return fmt.Errorf("preflight: создание probe-цепочки: %w", err)
 	}
-	defer func() { _ = ipt.FlushAndDeleteChain(ctx, "mangle", probeChainName) }()
+	defer func() {
+		if cleanupErr := ipt.FlushAndDeleteChain(ctx, "mangle", probeChainName); cleanupErr != nil {
+			log.L().Debug("preflight: cleanup probe chain", "err", cleanupErr)
+		}
+	}()
 
 	// Probe match `set`: нужен xt_set (libxt_set.so + xt_set kernel module).
 	// Используем фиктивный set-name "signcraze_probe_set" — match сначала
