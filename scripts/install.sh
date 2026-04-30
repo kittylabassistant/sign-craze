@@ -31,8 +31,8 @@ case "$ARCH" in
     SUFFIX="arm7"
     ;;
   mips*)
-    # Endianness через od -x (BusyBox-совместимо, нет опции -t)
-    HEX=$(printf '\001\002' | od -An -x -N2 | tr -d ' \n\t')
+    # Endianness через od -x + awk (BusyBox без -A/-N/-t)
+    HEX=$(printf '\001\002' | od -x | awk 'NR==1{print $2; exit}')
     case "$HEX" in
       0201) SUFFIX="mipsle" ;;
       0102) SUFFIX="mips" ;;

@@ -300,7 +300,9 @@ curl -kfsSL https://github.com/kittylabassistant/sign-craze/releases/latest/down
 | Ошибка | Причина | Решение |
 |--------|---------|---------|
 | `wget: not an http or ftp url: https://...` | BusyBox `wget` без SSL | `opkg install curl` или `wget-ssl` |
-| `od: invalid option -- 't'` | Старая версия скрипта | Скачать новую версию `install.sh` |
+| `od: invalid option -- 't'` | Старая версия скрипта (BusyBox `od` без `-t`) | Обновить `install.sh` до последнего релиза |
+| `od: invalid option -- 'A'` | Старая версия скрипта (BusyBox `od` без `-A`/`-N`) | Обновить `install.sh` до последнего релиза |
+| `Не удалось определить endianness MIPS` | `od` вывел неожиданный формат | Сообщить вывод `printf '\\001\\002' \| od -x` в issue |
 | `Нужен curl или wget с поддержкой SSL` | Ни `curl`, ни `wget-ssl` не установлены | `opkg install curl` |
 | `Недостаточно места в /opt` | < 30 МБ свободно | Очистить `/opt`, либо подключить swap/USB |
 
