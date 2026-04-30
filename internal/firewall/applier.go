@@ -76,6 +76,14 @@ type applierImpl struct {
 func (a *applierImpl) Apply(ctx context.Context, mode types.Mode) error {
 	log.L().Info("firewall: применение правил", "mode", mode)
 
+	// Pre-flight: проверить наличие нужных iptables-модулей. На стоковой
+	// Keenetic часто нет xt_TPROXY/xt_set; без них Apply падает с
+	// невнятной ошибкой про unknown option. Лучше упасть рано с
+	// инструкцией opkg install.
+	if err := CheckRequiredIptablesModules(ctx, a.runner); err != nil {
+		return fmt.Errorf("firewall: pre-flight: %w", err)
+	}
+
 	// Pre-flight: убедиться что fwmark не занят другим инструментом.
 	if err := CheckFWMarkAvailable(ctx, a.runner, a.cfg.FWMark, a.cfg.Table); err != nil {
 		return fmt.Errorf("firewall: pre-flight: %w", err)
