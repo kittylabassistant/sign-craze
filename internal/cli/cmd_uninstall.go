@@ -6,8 +6,10 @@ import (
 	"os"
 
 	"github.com/kittylabassistant/sign-craze/internal/log"
+	"github.com/kittylabassistant/sign-craze/internal/ndm"
 	"github.com/kittylabassistant/sign-craze/internal/service"
 	"github.com/kittylabassistant/sign-craze/internal/singbox"
+	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
 func init() {
@@ -20,6 +22,18 @@ func handleUninstall(ctx context.Context, _ []string) error {
 		if err := doStop(ctx); err != nil {
 			log.L().Warn("--uninstall: ошибка stop, продолжаем", "err", err)
 		}
+
+		// В режиме ModePolicy: удалить policy из Keenetic RCI до того, как
+		// очистим state. Используем policy_name из state, fallback на default.
+		if st, err := loadState(); err == nil && st.Mode == types.ModePolicy && st.PolicyName != "" {
+			client := ndm.NewClient()
+			if err := client.DeletePolicy(ctx, st.PolicyName); err != nil {
+				log.L().Warn("--uninstall: ndm.DeletePolicy", "name", st.PolicyName, "err", err)
+			} else if err := client.SaveConfig(ctx); err != nil {
+				log.L().Warn("--uninstall: ndm.SaveConfig", "err", err)
+			}
+		}
+
 		paths := []string{
 			service.DefaultShimPath,
 			singbox.DefaultBinPath,

@@ -7,8 +7,12 @@ import (
 	"os"
 
 	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
+	"github.com/kittylabassistant/sign-craze/internal/log"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
+
+// DefaultPolicyName — имя IP-policy в Keenetic RCI для режима ModePolicy.
+const DefaultPolicyName = "sign-craze"
 
 // DefaultPath — стандартное расположение state.json.
 const DefaultPath = "/opt/etc/sign-craze/state.json"
@@ -41,22 +45,31 @@ type State struct {
 	DPIEnabled     bool             `json:"dpi_enabled"`
 	DPIStrategy    string           `json:"dpi_strategy,omitempty"`
 	BootTimeoutSec int              `json:"boot_timeout_sec,omitempty"` // таймаут waitDefaultRoute, 0 = default 60
+
+	// Поля режима ModePolicy: интеграция с Keenetic IP Policy через RCI.
+	// PolicyMark и PolicyTable — кеш runtime-значений, актуальные читаются
+	// при каждом --start через ndm.GetPolicy().
+	PolicyName  string `json:"policy_name,omitempty"`  // имя policy в RCI, default "sign-craze"
+	PolicyMark  uint32 `json:"policy_mark,omitempty"`  // присвоенный Keenetic'ом fwmark (cache)
+	PolicyTable int    `json:"policy_table,omitempty"` // routing table policy в Keenetic (cache, IPv4)
+	WANInterface string `json:"wan_interface,omitempty"` // Keenetic-имя WAN, e.g. GigabitEthernet1
 }
 
-// Default возвращает state с настройками по умолчанию: режим proxy, stub direct outbound,
+// Default возвращает state с настройками по умолчанию: режим policy, stub direct outbound,
 // безопасные локальные исключения и admin port 22.
 func Default() *State {
 	excludes := make([]string, len(DefaultExcludes))
 	copy(excludes, DefaultExcludes)
 	return &State{
-		Mode: types.ModeProxy,
+		Mode: types.ModePolicy,
 		Outbounds: []types.Outbound{
 			{Tag: "direct", Type: "direct"},
 		},
-		Ports:     []uint16{},
-		Excludes:  excludes,
-		AdminPort: DefaultAdminPort,
-		AdminIPs:  []string{},
+		Ports:      []uint16{},
+		Excludes:   excludes,
+		AdminPort:  DefaultAdminPort,
+		AdminIPs:   []string{},
+		PolicyName: DefaultPolicyName,
 	}
 }
 
@@ -74,6 +87,7 @@ func Load(path string) (*State, error) {
 	if err := json.Unmarshal(data, &s); err != nil {
 		return nil, fmt.Errorf("state: парсинг %s: %w", path, err)
 	}
+	migrateLegacyMode(&s)
 	if s.Outbounds == nil {
 		s.Outbounds = []types.Outbound{}
 	}
@@ -86,7 +100,24 @@ func Load(path string) (*State, error) {
 	if s.AdminIPs == nil {
 		s.AdminIPs = []string{}
 	}
+	if s.PolicyName == "" {
+		s.PolicyName = DefaultPolicyName
+	}
 	return &s, nil
+}
+
+// migrateLegacyMode конвертирует legacy-режимы (proxy/dpi/hybrid) в ModePolicy
+// и пишет WARN в лог. Подсказка про --mode full даётся, чтобы пользователь
+// мог вернуть старое поведение, если сознательно его выбирал.
+func migrateLegacyMode(s *State) {
+	if newMode, ok := types.LegacyModes[s.Mode]; ok {
+		log.L().Warn("state: режим устарел, переключено в policy",
+			"old_mode", string(s.Mode),
+			"new_mode", string(newMode),
+			"hint", "для возврата старого поведения: sign-craze --mode full --restart",
+		)
+		s.Mode = newMode
+	}
 }
 
 // Validate проверяет корректность критичных полей State.

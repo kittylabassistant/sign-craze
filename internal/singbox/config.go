@@ -55,7 +55,7 @@ type ruleSetRef struct {
 // DefaultConfigParams возвращает ConfigParams с разумными значениями по умолчанию.
 func DefaultConfigParams() ConfigParams {
 	return ConfigParams{
-		Mode:        types.ModeProxy,
+		Mode:        types.ModePolicy,
 		InboundPort: 7895,
 		Mark:        0x53,
 		LogLevel:    "info",

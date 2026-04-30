@@ -325,4 +325,4 @@ func ParsedAdminIPs(s *State) ([]netip.Prefix, error) {
 
 // ApplyOutboundsToPorts — заглушка: types.Outbound пока не используется здесь.
 // Сохраняет ссылку на пакет types во избежание неиспользованного импорта.
-var _ = types.ModeProxy
+var _ = types.ModePolicy

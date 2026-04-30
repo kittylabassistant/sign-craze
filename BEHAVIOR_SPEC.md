@@ -218,9 +218,21 @@ sing-box   v<VERSION>  (установлен в /opt/sbin/sing-box)
 
 Скачивает последний tarball nfqws2-keenetic для текущей архитектуры. Сервис **не перезапускает**.
 
-### `--mode proxy|dpi|hybrid`
+### `--mode policy|full`
 
 Переключает режим маршрутизации. Для применения требует перезапуска (`--restart`).
+
+- `policy` *(default)* — интеграция с Keenetic IP Policy. Sign-craze создаёт
+  через RCI policy с `description=sign-craze`, читает присвоенный Keenetic mark
+  и ставит TPROXY с фильтром `-m mark --mark <keenetic-mark>`. Выбор устройств
+  делается в web-UI Keenetic «Приоритеты подключений».
+- `full` — legacy-схема: ipset `signcraze_ipv4/v6` по dst-IP + fwmark `0x53` +
+  цепочки `signcraze*`. Эквивалент бывшего `hybrid` (с опциональным DPI через
+  `--dpi on`).
+
+Legacy-имена (`proxy`, `dpi`, `hybrid`) принимаются для обратной совместимости
+и автоматически конвертируются в `policy` с WARN в логе. Для возврата старого
+поведения после миграции: `sign-craze --mode full --restart`.
 
 ---
 
@@ -276,11 +288,91 @@ NFQWS_ARGS_UDP=""
 
 ## 3. Системные инварианты (после `--install` + `--start`)
 
-### iptables (таблица mangle, режим proxy)
+### 3a. Режим `policy` (default)
+
+В этом режиме маркировку трафика по src-устройству выполняет Keenetic
+самостоятельно (через UI «Приоритеты подключений»). Sign-craze добавляет
+только TPROXY-перенаправление помеченных пакетов в sing-box и собственный
+ip rule для loop-prevention выходного трафика sing-box.
+
+#### Keenetic-генерируемое (sign-craze не трогает)
+
+```plain
+ip rule:    N:   from all fwmark 0xffffaaXX lookup <T>
+            N+1: from all fwmark 0xffffaaXX blackhole
+ip route:   table <T>: default via <gw> dev <WAN>, ...
+```
+
+`<T>` и `XX` присваиваются Keenetic'ом инкрементально. Пример: XKeen получает
+`mark=0xffffaaa`/`table=4096`, sign-craze — `mark=0xffffaab`/`table=4098`.
+
+#### iptables (mangle), добавляет sign-craze
+
+```plain
+Chain PREROUTING
+  -j signcraze_policy_dpi   # только если DPIEnabled=true; фильтр по Keenetic-mark
+  -j signcraze_policy
+
+Chain signcraze_policy
+  ! -s 127.0.0.0/8 ! -s 169.254.0.0/16 ! -i lo \
+    -m mark --mark 0xffffaaXX -p tcp -j TPROXY --tproxy-port 7895 --tproxy-mark 0x53
+    -m comment --comment "signcraze:tproxy-tcp"
+  ! -s 127.0.0.0/8 ! -s 169.254.0.0/16 ! -i lo \
+    -m mark --mark 0xffffaaXX -p udp -j TPROXY --tproxy-port 7895 --tproxy-mark 0x53
+    -m comment --comment "signcraze:tproxy-udp"
+
+Chain signcraze_policy_dpi  # только если DPIEnabled=true
+  -m mark --mark 0xffffaaXX -p tcp -j NFQUEUE --queue-num 200 --queue-bypass
+    -m comment --comment "signcraze:dpi-tcp"
+  -m mark --mark 0xffffaaXX -p udp -j NFQUEUE --queue-num 200 --queue-bypass
+    -m comment --comment "signcraze:dpi-udp"
+```
+
+`--queue-bypass`: если nfqws2 не запущен, пакеты проходят без обработки.
+
+#### ip rule + ip route (loop-prevention для sing-box)
+
+```plain
+ip rule:    32765: from all fwmark 0x53 lookup 83
+ip route:   table 83: local 0.0.0.0/0 dev lo
+```
+
+`mark=0x53` ставится sing-box'ом на исходящих сокетах (SO_MARK через
+`tproxy-mark`), чтобы пакеты от прокси не попадали повторно в собственный
+TPROXY.
+
+#### IP Policy в Keenetic RCI
+
+```json
+{
+  "sign-craze": {
+    "description": "sign-craze",
+    "mark": "ffffaab",
+    "table4": 4098,
+    "table6": 4098,
+    "permit": [{"enabled": true, "interface": "GigabitEthernet1"}],
+    "multipath": true
+  }
+}
+```
+
+Создаётся при первом `--start` через RCI POST на `127.0.0.1:79/rci/`.
+Сохраняется в startup-config через `/rci/system/configuration/save`.
+
+#### Что НЕ создаётся в режиме policy
+
+- ipset (`signcraze_ipv4/v6/excludes`) — не нужен, src-фильтрацию делает Keenetic.
+- Цепочки `signcraze`, `signcraze_full`, `signcraze_dpi`, `signcraze_ports`.
+
+### 3b. Режим `full` (legacy)
+
+Эквивалент бывшего hybrid. Включается через `--mode full`.
+
+#### iptables (mangle)
 
 ```
 Chain PREROUTING (policy ACCEPT)
-  -j signcraze_dpi          # цепочка DPI первой (пустая в режиме proxy)
+  -j signcraze_dpi          # цепочка DPI первой (пустая если DPIEnabled=false)
   -j signcraze              # mark-маршрутизация
 
 Chain signcraze
@@ -291,46 +383,26 @@ Chain signcraze_full
   -p tcp -j MARK --set-mark 0x53 -m comment --comment "signcraze:mark-full-tcp"
   -p udp -j MARK --set-mark 0x53 -m comment --comment "signcraze:mark-full-udp"
 
-Chain signcraze_dpi  # пустая в режиме proxy; правила NFQUEUE добавляются в dpi/hybrid
+Chain signcraze_dpi  # пустая если DPIEnabled=false
+  -m mark ! --mark 0x53 -p tcp -j NFQUEUE --queue-num 200 --queue-bypass -m comment --comment "signcraze:dpi-tcp"
+  -m mark ! --mark 0x53 -p udp -j NFQUEUE --queue-num 200 --queue-bypass -m comment --comment "signcraze:dpi-udp"
 ```
 
-### iptables (таблица mangle, TPROXY)
-
 ```plain
-Chain PREROUTING
+Chain PREROUTING (TPROXY)
   -m mark --mark 0x53 -p tcp -j TPROXY --tproxy-port 7895 --tproxy-mark 0x53
   -m mark --mark 0x53 -p udp -j TPROXY --tproxy-port 7895 --tproxy-mark 0x53
 ```
 
-### ip rules
+#### ip rule + ip route + ipset (как раньше)
 
 ```plain
-32765: from all fwmark 0x53 lookup 83
+ip rule:   32765: from all fwmark 0x53 lookup 83
+ip route:  table 83: local 0.0.0.0/0 dev lo
+ipset:     signcraze_ipv4   Type: hash:net  Family: inet
+           signcraze_ipv6   Type: hash:net  Family: inet6
+           signcraze_excludes  Type: hash:net  Family: inet
 ```
-
-### ip route (таблица 83)
-
-```plain
-local 0.0.0.0/0 dev lo
-```
-
-### ipset-наборы
-
-```plain
-Name: signcraze_ipv4   Type: hash:net  Family: inet
-Name: signcraze_ipv6   Type: hash:net  Family: inet6
-```
-
-### Дополнения DPI (режимы dpi / hybrid)
-
-В цепочке `signcraze_dpi` (mangle:PREROUTING, до signcraze):
-
-```plain
--m mark ! --mark 0x53 -p tcp -j NFQUEUE --queue-num 200 --queue-bypass -m comment --comment "signcraze:dpi-tcp"
--m mark ! --mark 0x53 -p udp -j NFQUEUE --queue-num 200 --queue-bypass -m comment --comment "signcraze:dpi-udp"
-```
-
-`--queue-bypass`: если nfqws2 не запущен, пакеты проходят без обработки (трафик не теряется).
 
 ---
 
@@ -348,6 +420,27 @@ Shim делегирует в `sign-craze --service-start` (внутренняя 
 - Без интерактивного вывода (всё в slog).
 - Ждёт сети: опрашивает `ip route show default` до 30 с.
 - При ошибке: логирует ERROR, выходит с ненулевым кодом (init.d не будет повторять, syslog зафиксирует).
+
+### `--start` в режиме `policy`
+
+Перед применением iptables sign-craze выполняет последовательность:
+
+1. `ndm.DetectWANInterface()` — найти Keenetic-имя WAN (или взять закешированный).
+2. `ndm.EnsurePolicy(name=PolicyName, description=PolicyName, wanIface=<WAN>)` —
+   идемпотентно создать или подтвердить policy через RCI.
+3. `ndm.WaitForMark()` — дождаться, пока Keenetic присвоит mark (обычно <5s).
+4. `ndm.SaveConfig()` — записать в startup-config (иначе policy не переживёт reboot).
+5. Закешировать `mark`/`table4`/`wan_interface` в state.json.
+6. Применить iptables (PolicyRules + опц. PolicyDPIRules).
+
+Если RCI на `127.0.0.1:79` недоступен (например, sign-craze запущен в Docker
+для тестов): `--start` возвращает ошибку с подсказкой переключиться в
+`--mode full`.
+
+### `--uninstall` в режиме `policy`
+
+Перед удалением sing-box и iptables: `ndm.DeletePolicy()` + `SaveConfig()`.
+Ошибки RCI логируются как WARN, но не прерывают uninstall.
 
 ### Мониторинг процессов
 

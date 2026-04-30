@@ -124,6 +124,33 @@
 - [ ] `--ui on` → доступ к Zashboard на 9090
 - [ ] Перезагрузка роутера → автостарт через init.d shim
 
+## Phase 9 — `--mode policy` (Keenetic IP Policy integration) 🚧
+
+Детальный план: `tasks/phase9-policy.md`. Архитектура: `~/.claude/plans/floating-petting-globe.md`.
+
+Архитектура (после reconnaissance RCI на живом Keenetic 5.0.4): TUN отменён.
+Sign-craze создаёт IP-policy в Keenetic через RCI POST на `127.0.0.1:79/rci/`,
+читает присвоенный Keenetic mark, ставит TPROXY с фильтром
+`-m mark --mark <keenetic-mark>`. Sing-box остаётся в tproxy-режиме. Выбор
+устройств — штатный web-UI Keenetic «Приоритеты подключений». Старые режимы
+proxy/dpi/hybrid объединены в `--mode full`.
+
+- [x] 9.0 Reconnaissance: RCI Keenetic 5.0.4 → `~/Документы/rci-dump/`
+- [x] 9.1 `pkg/types` + `internal/state` + миграция legacy-режимов
+- [x] 9.2 `internal/ndm/` — RCI HTTP-клиент (Get/Post, Policy, WAN-detect)
+- [x] 9.3 `internal/firewall/modes/policy.go` + dispatch в `applier.go`
+- [x] 9.4 CLI: `cmd_mode.go`, `cmd_lifecycle.go` (ensureKeeneticPolicy), `cmd_uninstall.go`
+- [x] 9.5 DPI на Keenetic-mark: `PolicyDPIRules` в applier
+- [x] 9.6 `internal/diag/` — `checkKeeneticPolicy`
+- [x] 9.7 `BEHAVIOR_SPEC.md` §3/§4 переписать (policy + full)
+- [ ] 9.8 E2E на живом Keenetic 5.x:
+  - [ ] `--install` → policy создана в RCI с description=sign-craze
+  - [ ] `--start` → mark прочитан, iptables применены, sing-box живёт
+  - [ ] Web-UI Keenetic «Приоритеты подключений» назначить устройство → трафик идёт через прокси
+  - [ ] Другое устройство (без policy) → прямой выход
+  - [ ] `--mode full --restart` → переход на legacy-схему работает
+  - [ ] `--uninstall` → policy удалена из RCI, save выполнен
+
 ## Заметки
 
 - Go не установлен на хосте — тесты и `go mod tidy` запускать в toolbox/контейнере

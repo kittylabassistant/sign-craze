@@ -2,6 +2,7 @@ package diag
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -9,8 +10,11 @@ import (
 
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/locks"
+	"github.com/kittylabassistant/sign-craze/internal/ndm"
 	"github.com/kittylabassistant/sign-craze/internal/service"
 	"github.com/kittylabassistant/sign-craze/internal/singbox"
+	"github.com/kittylabassistant/sign-craze/internal/state"
+	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
 // Status — итог одной проверки.
@@ -74,6 +78,38 @@ func DefaultChecks(d Deps) []Check {
 		checkServiceRunning("nfqws2", d.DPILC),
 		checkGeoFiles(d.GeoDir, d.GeoMaxAgeDays),
 		checkLockFree(d.LockPath),
+		checkKeeneticPolicy(),
+	}
+}
+
+// checkKeeneticPolicy проверяет наличие IP-policy в Keenetic RCI и совпадение
+// присвоенного mark с закешированным в state. Срабатывает только в режиме
+// ModePolicy; для ModeFull проверка PASS со skip-сообщением.
+func checkKeeneticPolicy() Check {
+	return func(ctx context.Context) Result {
+		st, err := state.Load(state.DefaultPath)
+		if err != nil {
+			return Result{Name: "keenetic-policy", Status: WARN, Detail: fmt.Sprintf("state.Load: %v", err)}
+		}
+		if st.Mode != types.ModePolicy {
+			return Result{Name: "keenetic-policy", Status: PASS, Detail: "пропуск: режим " + string(st.Mode)}
+		}
+		client := ndm.NewClient()
+		info, err := client.GetPolicy(ctx, st.PolicyName)
+		if err != nil {
+			if errors.Is(err, ndm.ErrNotFound) {
+				return Result{Name: "keenetic-policy", Status: FAIL, Detail: fmt.Sprintf("policy %q не найдена в RCI", st.PolicyName)}
+			}
+			return Result{Name: "keenetic-policy", Status: FAIL, Detail: err.Error()}
+		}
+		if st.PolicyMark != 0 && info.Mark != st.PolicyMark {
+			return Result{Name: "keenetic-policy", Status: WARN,
+				Detail: fmt.Sprintf("mark в RCI 0x%x не совпадает с state 0x%x — будет обновлён при --start",
+					info.Mark, st.PolicyMark)}
+		}
+		return Result{Name: "keenetic-policy", Status: PASS,
+			Detail: fmt.Sprintf("name=%s mark=0x%x table=%d permit=%v",
+				info.Name, info.Mark, info.Table4, info.Permit)}
 	}
 }
 

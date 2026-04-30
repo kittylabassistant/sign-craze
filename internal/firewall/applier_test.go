@@ -52,11 +52,11 @@ func (r *autoRunner) hasCall(prefix string) bool {
 	return false
 }
 
-func TestApplier_Apply_Proxy_НетОшибок(t *testing.T) {
+func TestApplier_Apply_Full_НетОшибок(t *testing.T) {
 	r := &autoRunner{}
 	a := NewApplier(r, DefaultConfig())
-	if err := a.Apply(context.Background(), types.ModeProxy); err != nil {
-		t.Fatalf("Apply(proxy) вернул ошибку: %v", err)
+	if err := a.Apply(context.Background(), types.ModeFull); err != nil {
+		t.Fatalf("Apply(full) вернул ошибку: %v", err)
 	}
 	// ipsets созданы
 	if !r.hasCall("ipset create signcraze_ipv4") {
@@ -78,15 +78,49 @@ func TestApplier_Apply_Proxy_НетОшибок(t *testing.T) {
 	}
 }
 
-func TestApplier_Apply_Hybrid_ДобавляетNFQUEUE(t *testing.T) {
+func TestApplier_Apply_Full_ДобавляетNFQUEUE(t *testing.T) {
 	r := &autoRunner{}
-	a := NewApplier(r, DefaultConfig())
-	if err := a.Apply(context.Background(), types.ModeHybrid); err != nil {
-		t.Fatalf("Apply(hybrid) вернул ошибку: %v", err)
+	cfg := DefaultConfig()
+	cfg.DPIEnabled = true
+	a := NewApplier(r, cfg)
+	if err := a.Apply(context.Background(), types.ModeFull); err != nil {
+		t.Fatalf("Apply(full) с DPI вернул ошибку: %v", err)
 	}
 	// NFQUEUE-правило добавлено
 	if !r.hasCall("iptables -t mangle -A signcraze_dpi") {
 		t.Error("правило NFQUEUE в signcraze_dpi не добавлено")
+	}
+}
+
+func TestApplier_Apply_Policy_СоздаётСвоюЦепочку(t *testing.T) {
+	r := &autoRunner{}
+	cfg := DefaultConfig()
+	cfg.PolicyMark = 0xffffaab // имитация значения, присвоенного Keenetic
+	a := NewApplier(r, cfg)
+	if err := a.Apply(context.Background(), types.ModePolicy); err != nil {
+		t.Fatalf("Apply(policy) вернул ошибку: %v", err)
+	}
+	// Цепочка signcraze_policy создана.
+	if !r.hasCall("iptables -t mangle -N signcraze_policy") {
+		t.Error("цепочка signcraze_policy не создана")
+	}
+	// ipset НЕ создаётся в policy-режиме.
+	if r.hasCall("ipset create signcraze_ipv4") {
+		t.Error("ipset signcraze_ipv4 не должен создаваться в режиме policy")
+	}
+	// signcraze chain (legacy) НЕ создаётся.
+	if r.hasCall("iptables -t mangle -N signcraze ") || r.hasCall("iptables -t mangle -N signcraze\n") {
+		t.Error("цепочка signcraze (legacy) не должна создаваться в режиме policy")
+	}
+}
+
+func TestApplier_Apply_Policy_НулевойMarkОшибка(t *testing.T) {
+	r := &autoRunner{}
+	cfg := DefaultConfig()
+	// PolicyMark не задан → должна быть ошибка.
+	a := NewApplier(r, cfg)
+	if err := a.Apply(context.Background(), types.ModePolicy); err == nil {
+		t.Fatal("Apply(policy) с PolicyMark=0 должен вернуть ошибку")
 	}
 }
 

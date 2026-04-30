@@ -67,17 +67,32 @@ func TestMode_Validate(t *testing.T) {
 		mode    Mode
 		wantErr bool
 	}{
-		{ModeProxy, false},
-		{ModeDPI, false},
-		{ModeHybrid, false},
+		{ModePolicy, false},
+		{ModeFull, false},
 		{"", true},
 		{"xray", true},
-		{"PROXY", true},
+		{"POLICY", true},
+		{"proxy", true},  // legacy, миграция выполняется в state.Load(), Validate отвергает
+		{"dpi", true},    // legacy
+		{"hybrid", true}, // legacy
 	}
 	for _, tt := range tests {
 		err := tt.mode.Validate()
 		if (err != nil) != tt.wantErr {
 			t.Errorf("Mode(%q).Validate() error = %v, wantErr %v", tt.mode, err, tt.wantErr)
+		}
+	}
+}
+
+func TestLegacyModes_AllMigrateToPolicy(t *testing.T) {
+	for legacy, target := range LegacyModes {
+		if target != ModePolicy {
+			t.Errorf("LegacyModes[%q] = %q, ожидалось ModePolicy", legacy, target)
+		}
+	}
+	for _, want := range []Mode{"proxy", "dpi", "hybrid"} {
+		if _, ok := LegacyModes[want]; !ok {
+			t.Errorf("LegacyModes не содержит %q", want)
 		}
 	}
 }

@@ -13,8 +13,11 @@ func TestLoad_FileMissingReturnsDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if s.Mode != types.ModeProxy {
-		t.Errorf("Mode = %q, ожидалось proxy", s.Mode)
+	if s.Mode != types.ModePolicy {
+		t.Errorf("Mode = %q, ожидалось policy", s.Mode)
+	}
+	if s.PolicyName != DefaultPolicyName {
+		t.Errorf("PolicyName = %q, ожидалось %q", s.PolicyName, DefaultPolicyName)
 	}
 	if len(s.Outbounds) != 1 || s.Outbounds[0].Type != "direct" {
 		t.Errorf("ожидался stub direct outbound, получено %+v", s.Outbounds)
@@ -24,7 +27,7 @@ func TestLoad_FileMissingReturnsDefault(t *testing.T) {
 func TestSaveLoad_RoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
 	want := &State{
-		Mode: types.ModeHybrid,
+		Mode: types.ModeFull,
 		Outbounds: []types.Outbound{
 			{Tag: "proxy", Type: "socks", Server: "1.2.3.4", Port: 1080},
 		},
@@ -129,7 +132,7 @@ func TestState_Validate_RejectsInvalid(t *testing.T) {
 
 func TestLoad_NormalisesNilSlices(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
-	if err := os.WriteFile(path, []byte(`{"mode":"proxy"}`), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(`{"mode":"policy"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	s, err := Load(path)
@@ -138,5 +141,30 @@ func TestLoad_NormalisesNilSlices(t *testing.T) {
 	}
 	if s.Outbounds == nil || s.Ports == nil || s.Excludes == nil {
 		t.Errorf("ожидались инициализированные пустые слайсы, получено %+v", s)
+	}
+}
+
+// TestLoad_MigratesLegacyMode — режимы proxy/dpi/hybrid из старого state.json
+// при загрузке мигрируют в ModePolicy. Save() новой версии вернёт ModePolicy.
+func TestLoad_MigratesLegacyMode(t *testing.T) {
+	cases := []string{"proxy", "dpi", "hybrid"}
+	for _, legacy := range cases {
+		t.Run(legacy, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "state.json")
+			body := `{"mode":"` + legacy + `","outbounds":[{"tag":"direct","type":"direct"}]}`
+			if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			s, err := Load(path)
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if s.Mode != types.ModePolicy {
+				t.Errorf("Mode после миграции = %q, ожидалось %q", s.Mode, types.ModePolicy)
+			}
+			if s.PolicyName != DefaultPolicyName {
+				t.Errorf("PolicyName = %q, ожидалось %q", s.PolicyName, DefaultPolicyName)
+			}
+		})
 	}
 }

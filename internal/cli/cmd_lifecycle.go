@@ -10,8 +10,10 @@ import (
 
 	"github.com/kittylabassistant/sign-craze/internal/firewall"
 	"github.com/kittylabassistant/sign-craze/internal/log"
+	"github.com/kittylabassistant/sign-craze/internal/ndm"
 	"github.com/kittylabassistant/sign-craze/internal/singbox"
 	"github.com/kittylabassistant/sign-craze/internal/state"
+	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
 func init() {
@@ -39,7 +41,16 @@ func doStart(ctx context.Context) error {
 		return fmt.Errorf("--start: конфиг %s не найден", configPath())
 	}
 
-	// Применить firewall.
+	// В режиме ModePolicy: гарантировать наличие IP-policy в Keenetic RCI
+	// и закешировать актуальный mark в state. Mark может смениться при reboot
+	// или если юзер удалил policy через UI — поэтому читаем при каждом старте.
+	if st.Mode == types.ModePolicy {
+		if err := ensureKeeneticPolicy(ctx, st); err != nil {
+			return fmt.Errorf("--start: %w", err)
+		}
+	}
+
+	// Применить firewall (после ensureKeeneticPolicy: PolicyMark уже в state).
 	applier, err := newFirewallApplier(st)
 	if err != nil {
 		return err
@@ -135,6 +146,51 @@ func handleServiceStart(ctx context.Context, _ []string) error {
 		return err
 	}
 	return withLock(ctx, func() error { return doStart(ctx) })
+}
+
+// ensureKeeneticPolicy гарантирует наличие IP-policy в Keenetic RCI.
+//
+// Действия:
+//  1. Определить WAN-интерфейс через RCI (или взять закешированный из state).
+//  2. EnsurePolicy(name, description, wanIface) — идемпотентно создаст или
+//     вернёт существующую policy.
+//  3. SaveConfig — записать в startup-config (иначе policy не переживёт reboot).
+//  4. Обновить state.PolicyMark / PolicyTable / WANInterface.
+//
+// При недоступном RCI (например, sign-craze запущен в контейнере для CI)
+// функция возвращает понятную ошибку — оператор может временно переключиться
+// в `--mode full`.
+func ensureKeeneticPolicy(ctx context.Context, st *state.State) error {
+	client := ndm.NewClient()
+
+	wan := st.WANInterface
+	if wan == "" {
+		detected, err := client.DetectWANInterface(ctx)
+		if err != nil {
+			return fmt.Errorf("ndm: автодетект WAN: %w (укажите вручную через state.WANInterface)", err)
+		}
+		wan = detected
+	}
+
+	info, err := client.EnsurePolicy(ctx, st.PolicyName, st.PolicyName, wan)
+	if err != nil {
+		return fmt.Errorf("ndm: EnsurePolicy: %w", err)
+	}
+	if err := client.SaveConfig(ctx); err != nil {
+		log.L().Warn("ndm: SaveConfig не удался; policy не переживёт перезагрузку", "err", err)
+	}
+
+	st.PolicyMark = info.Mark
+	st.PolicyTable = info.Table4
+	st.WANInterface = wan
+	if err := saveState(st); err != nil {
+		log.L().Warn("ndm: state save не удался", "err", err)
+	}
+	log.L().Info("ndm: policy готова",
+		"name", info.Name, "mark", fmt.Sprintf("0x%x", info.Mark),
+		"table4", info.Table4, "wan", wan,
+	)
+	return nil
 }
 
 func waitDefaultRoute(ctx context.Context, timeout time.Duration) error {

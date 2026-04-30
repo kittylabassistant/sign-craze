@@ -108,7 +108,7 @@ func TestIntegration_IPSet_AtomicReplace(t *testing.T) {
 	}
 }
 
-func TestIntegration_Applier_ApplyAndRemove_Proxy(t *testing.T) {
+func TestIntegration_Applier_ApplyAndRemove_Full(t *testing.T) {
 	skipIfNoIPTables(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -118,9 +118,9 @@ func TestIntegration_Applier_ApplyAndRemove_Proxy(t *testing.T) {
 	cfg := DefaultConfig()
 	a := NewApplier(runner, cfg)
 
-	// Применяем правила
-	if err := a.Apply(ctx, types.ModeProxy); err != nil {
-		t.Fatalf("Apply(proxy): %v", err)
+	// Применяем правила (legacy режим full)
+	if err := a.Apply(ctx, types.ModeFull); err != nil {
+		t.Fatalf("Apply(full): %v", err)
 	}
 
 	// Откатываем — Remove должен быть идемпотентен

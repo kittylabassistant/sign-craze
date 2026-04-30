@@ -23,7 +23,7 @@ type Applier interface {
 
 // Config содержит параметры брандмауэра. Все значения из BEHAVIOR_SPEC §3.
 type Config struct {
-	FWMark     uint32         // 0x53 (83)
+	FWMark     uint32         // 0x53 (83) — собственный mark sign-craze (loop-prevention)
 	Table      int            // 83
 	Priority   int            // 32765
 	Port       uint16         // 7895
@@ -31,6 +31,14 @@ type Config struct {
 	Ports      []uint16       // дополнительные порты для маркировки в signcraze_ports
 	Excludes   []netip.Prefix // CIDR-исключения (RETURN из signcraze)
 	AdminPort  uint16         // SSH/web admin port для bypass (0 = выкл)
+
+	// PolicyMark — fwmark, присвоенный Keenetic'ом IP-policy через RCI.
+	// Используется только в режиме ModePolicy. Читается через ndm.GetPolicy()
+	// и передаётся в Config перед каждым Apply (mark может смениться при reboot).
+	PolicyMark uint32
+	// DPIEnabled управляет добавлением NFQUEUE-правил в режиме ModePolicy.
+	// В режиме ModeFull DPI-правила являются частью HybridRules.
+	DPIEnabled bool
 }
 
 // IPSetExcludes — имя ipset для bypass-исключений.
@@ -85,6 +93,69 @@ func (a *applierImpl) Apply(ctx context.Context, mode types.Mode) error {
 }
 
 func (a *applierImpl) applyInternal(ctx context.Context, mode types.Mode) error {
+	switch mode {
+	case types.ModePolicy:
+		return a.applyPolicyMode(ctx)
+	case types.ModeFull:
+		return a.applyFullMode(ctx)
+	default:
+		return fmt.Errorf("firewall: неподдерживаемый режим %q", mode)
+	}
+}
+
+// applyPolicyMode — режим интеграции с Keenetic IP Policy.
+//
+// Не создаёт ipset, не использует собственный fwmark для маркировки трафика.
+// Keenetic сам помечает пакеты устройств своим mark и создаёт ip rule.
+// Sign-craze добавляет TPROXY-правила с фильтром по этому mark и собственное
+// ip rule для loop-prevention исходящих от sing-box (SO_MARK=0x53).
+func (a *applierImpl) applyPolicyMode(ctx context.Context) error {
+	if a.cfg.PolicyMark == 0 {
+		return fmt.Errorf("firewall: ModePolicy требует PolicyMark != 0 (читать через ndm.GetPolicy)")
+	}
+
+	// 1. ip rule + локальный route для loop-prevention пакетов sing-box.
+	if err := EnsureIPRule(ctx, a.runner, a.cfg.FWMark, a.cfg.Table, a.cfg.Priority); err != nil {
+		return err
+	}
+	if err := EnsureLocalRoute(ctx, a.runner, a.cfg.Table); err != nil {
+		return err
+	}
+
+	// 2. Цепочки signcraze_policy и (опционально) signcraze_policy_dpi.
+	chains := []string{modes.PolicyChainName}
+	if a.cfg.DPIEnabled {
+		chains = append(chains, modes.PolicyDPIChainName)
+	}
+	for _, chain := range chains {
+		if err := a.ipt.EnsureChain(ctx, "mangle", chain); err != nil {
+			return err
+		}
+	}
+
+	// 3. DPI-правила (если включено) — добавляются ПЕРЕД policy-правилами,
+	// чтобы NFQUEUE сработал до TPROXY (DPI меняет SNI/первый пакет, потом
+	// поправленный пакет уже идёт в sing-box).
+	if a.cfg.DPIEnabled {
+		for _, spec := range modes.PolicyDPIRules(a.cfg.PolicyMark, a.cfg.NFQueueNum) {
+			if err := a.ipt.EnsureRule(ctx, spec.Table, spec.Chain, spec.Args...); err != nil {
+				return err
+			}
+		}
+	}
+
+	// 4. TPROXY-правила.
+	for _, spec := range modes.PolicyRules(a.cfg.Port, a.cfg.PolicyMark, a.cfg.FWMark) {
+		if err := a.ipt.EnsureRule(ctx, spec.Table, spec.Chain, spec.Args...); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// applyFullMode — legacy-режим: ipset/fwmark/signcraze chains (бывший hybrid).
+func (a *applierImpl) applyFullMode(ctx context.Context) error {
 	// 1. Создать ipset-наборы (включая signcraze_excludes).
 	if err := a.ipset.EnsureSet(ctx, string(types.IPSetIPv4), "hash:net", "inet"); err != nil {
 		return err
@@ -119,9 +190,6 @@ func (a *applierImpl) applyInternal(ctx context.Context, mode types.Mode) error 
 	}
 
 	// 4. RETURN-bypass правила должны идти ПЕРЕД mark-правилами в цепочке.
-	// Используем InsertRule (-I 1), чтобы порядок гарантировался независимо от
-	// предыдущего состояния цепочки (safety-fixes #1).
-	// Admin port bypass добавляется первым (если включён) — самые приоритетные.
 	if a.cfg.AdminPort > 0 {
 		for _, spec := range modes.AdminPortBypassRule(a.cfg.AdminPort) {
 			if err := a.ipt.InsertRule(ctx, spec.Table, spec.Chain, 1, spec.Args...); err != nil {
@@ -137,15 +205,12 @@ func (a *applierImpl) applyInternal(ctx context.Context, mode types.Mode) error 
 		}
 	}
 
-	// 5. Правила режима (TProxy / Hybrid).
+	// 5. Правила hybrid-режима (TProxy + опц. NFQUEUE по флагу DPIEnabled).
 	var ruleSpecs []modes.RuleSpec
-	switch mode {
-	case types.ModeProxy:
-		ruleSpecs = modes.TProxyRules(a.cfg.Port, a.cfg.FWMark)
-	case types.ModeHybrid:
+	if a.cfg.DPIEnabled {
 		ruleSpecs = modes.HybridRules(a.cfg.Port, a.cfg.FWMark, a.cfg.NFQueueNum)
-	default:
-		return fmt.Errorf("firewall: неподдерживаемый режим %q", mode)
+	} else {
+		ruleSpecs = modes.TProxyRules(a.cfg.Port, a.cfg.FWMark)
 	}
 	for _, spec := range ruleSpecs {
 		if err := a.ipt.EnsureRule(ctx, spec.Table, spec.Chain, spec.Args...); err != nil {
@@ -172,8 +237,16 @@ func (a *applierImpl) Remove(ctx context.Context) error {
 		log.L().Warn("firewall: ошибка при удалении правил по комментарию", "err", err)
 	}
 
-	// 2. Удалить цепочки (включая signcraze_ports).
-	for _, chain := range []string{"signcraze_dpi", "signcraze_ports", "signcraze_full", "signcraze"} {
+	// 2. Удалить цепочки (включая signcraze_ports и policy-цепочки).
+	allChains := []string{
+		modes.PolicyDPIChainName, // signcraze_policy_dpi
+		modes.PolicyChainName,    // signcraze_policy
+		"signcraze_dpi",
+		"signcraze_ports",
+		"signcraze_full",
+		"signcraze",
+	}
+	for _, chain := range allChains {
 		if err := a.ipt.FlushAndDeleteChain(ctx, "mangle", chain); err != nil {
 			log.L().Warn("firewall: ошибка удаления цепочки", "chain", chain, "err", err)
 		}

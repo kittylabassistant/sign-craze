@@ -17,18 +17,32 @@ var outboundTagRe = regexp.MustCompile(`^[a-zA-Z0-9._-]{1,64}$`)
 type Mode string
 
 const (
-	ModeProxy  Mode = "proxy"  // весь трафик через sing-box
-	ModeDPI    Mode = "dpi"    // DPI-обход через nfqws2, без прокси
-	ModeHybrid Mode = "hybrid" // sing-box + nfqws2 параллельно, выбор per-domain
+	// ModePolicy — режим интеграции с Keenetic IP Policy.
+	// Sign-craze создаёт policy в RCI Keenetic, читает присвоенный mark
+	// и ставит TPROXY-фильтр по этому mark. Выбор устройств идёт через
+	// штатный web-UI Keenetic «Приоритеты подключений».
+	ModePolicy Mode = "policy"
+	// ModeFull — legacy-режим: ipset signcraze_ipv4/v6 по dst-IP +
+	// fwmark 0x53 + signcraze chains, плюс опционально NFQUEUE/nfqws2
+	// при включённом --dpi on. Эквивалент бывшего hybrid.
+	ModeFull Mode = "full"
 )
+
+// LegacyModes — устаревшие значения режима, мигрируемые в ModePolicy
+// при загрузке state. Константы удалены, миграция работает через literal-сравнение.
+var LegacyModes = map[Mode]Mode{
+	"proxy":  ModePolicy,
+	"dpi":    ModePolicy,
+	"hybrid": ModePolicy,
+}
 
 // Validate проверяет допустимость значения Mode.
 func (m Mode) Validate() error {
 	switch m {
-	case ModeProxy, ModeDPI, ModeHybrid:
+	case ModePolicy, ModeFull:
 		return nil
 	default:
-		return fmt.Errorf("неизвестный режим %q (допустимо: proxy, dpi, hybrid)", m)
+		return fmt.Errorf("неизвестный режим %q (допустимо: policy, full)", m)
 	}
 }
 
