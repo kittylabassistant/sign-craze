@@ -43,8 +43,8 @@ func dpiEnable(ctx context.Context) error {
 		if archErr != nil {
 			return fmt.Errorf("--dpi on: %w", archErr)
 		}
-		if err := os.MkdirAll(singbox.DefaultCacheDir, 0o755); err != nil {
-			return fmt.Errorf("--dpi on: mkdir cache: %w", err)
+		if mkErr := os.MkdirAll(singbox.DefaultCacheDir, 0o755); mkErr != nil {
+			return fmt.Errorf("--dpi on: mkdir cache: %w", mkErr)
 		}
 		fmt.Printf("Загрузка nfqws2 (arch=%s)...\n", arch)
 		res, dlErr := dpi.Download(ctx, arch, singbox.DefaultCacheDir)
@@ -119,8 +119,8 @@ func handleDPIUpdate(ctx context.Context, _ []string) error {
 		if err != nil {
 			return fmt.Errorf("--dpi-update: %w", err)
 		}
-		if err := os.MkdirAll(singbox.DefaultCacheDir, 0o755); err != nil {
-			return fmt.Errorf("--dpi-update: mkdir cache: %w", err)
+		if mkErr := os.MkdirAll(singbox.DefaultCacheDir, 0o755); mkErr != nil {
+			return fmt.Errorf("--dpi-update: mkdir cache: %w", mkErr)
 		}
 		fmt.Printf("Загрузка nfqws2 (arch=%s)...\n", arch)
 		res, err := dpi.Download(ctx, arch, singbox.DefaultCacheDir)

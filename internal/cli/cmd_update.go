@@ -126,8 +126,8 @@ func handleUpdateCore(ctx context.Context, _ []string) error {
 			return fmt.Errorf("--update-core: %w", err)
 		}
 		// Cache на /opt — на /tmp tmpfs Keenetic ~50MB, 12MB бинарь не влезает.
-		if err := os.MkdirAll(singbox.DefaultCacheDir, 0o755); err != nil {
-			return fmt.Errorf("--update-core: mkdir cache: %w", err)
+		if mkErr := os.MkdirAll(singbox.DefaultCacheDir, 0o755); mkErr != nil {
+			return fmt.Errorf("--update-core: mkdir cache: %w", mkErr)
 		}
 		fmt.Printf("Загрузка sing-box (arch=%s)...\n", arch)
 		res, err := singbox.Download(ctx, arch, singbox.DefaultCacheDir)
