@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 
@@ -202,15 +201,17 @@ func checkOptMounted() error {
 }
 
 // runProxyWizard опрашивает пользователя и возвращает список outbound'ов.
+// Поддерживается только URL-режим (socks5/http/vless/vmess/ss/trojan через
+// proxyparse) — ручной ввод убран, т.к. URL покрывает все live-кейсы и
+// меньше шансов ошибиться с типом/портом/credentials.
 func runProxyWizard(in io.Reader, out io.Writer) ([]types.Outbound, error) {
 	r := bufio.NewReader(in)
 
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Настройка outbound прокси:")
-	fmt.Fprintln(out, "  1) Полный URL (socks5://, http://, vless://, vmess://, ss://)")
-	fmt.Fprintln(out, "  2) Ручной ввод (тип + параметры)")
-	fmt.Fprintln(out, "  3) Пропустить (создаст stub direct — sing-box без проксирования)")
-	fmt.Fprint(out, "Выбор [1/2/3]: ")
+	fmt.Fprintln(out, "  1) Полный URL (socks5://, http://, vless://, vmess://, ss://, trojan://)")
+	fmt.Fprintln(out, "  2) Пропустить (создаст stub direct — sing-box без проксирования)")
+	fmt.Fprint(out, "Выбор [1/2]: ")
 	choice, err := readLineE(r)
 	if err != nil {
 		return nil, fmt.Errorf("чтение выбора: %w", err)
@@ -219,9 +220,7 @@ func runProxyWizard(in io.Reader, out io.Writer) ([]types.Outbound, error) {
 	switch choice {
 	case "1":
 		return wizardURL(r, out)
-	case "2":
-		return wizardManual(r, out)
-	case "3", "":
+	case "2", "":
 		return nil, nil
 	default:
 		fmt.Fprintln(out, "Неизвестный выбор, пропускаем.")
@@ -243,89 +242,6 @@ func wizardURL(r *bufio.Reader, out io.Writer) ([]types.Outbound, error) {
 		return nil, fmt.Errorf("валидация: %w", err)
 	}
 	fmt.Fprintf(out, "Outbound: type=%s server=%s port=%d\n", o.Type, o.Server, o.Port)
-	return []types.Outbound{o}, nil
-}
-
-func wizardManual(r *bufio.Reader, out io.Writer) ([]types.Outbound, error) {
-	fmt.Fprintln(out, "Тип:")
-	fmt.Fprintln(out, "  1) socks (socks5)")
-	fmt.Fprintln(out, "  2) http")
-	fmt.Fprintln(out, "  3) vless")
-	fmt.Fprintln(out, "  4) vmess")
-	fmt.Fprintln(out, "  5) shadowsocks")
-	fmt.Fprint(out, "Выбор [1-5]: ")
-	choice := readLine(r)
-
-	var typ string
-	switch choice {
-	case "1":
-		typ = "socks"
-	case "2":
-		typ = "http"
-	case "3":
-		typ = "vless"
-	case "4":
-		typ = "vmess"
-	case "5":
-		typ = "shadowsocks"
-	default:
-		return nil, fmt.Errorf("неизвестный тип")
-	}
-
-	fmt.Fprint(out, "Сервер (host): ")
-	server := readLine(r)
-	if server == "" {
-		return nil, fmt.Errorf("сервер не указан")
-	}
-
-	fmt.Fprint(out, "Порт: ")
-	portStr := readLine(r)
-	port, err := strconv.Atoi(portStr)
-	if err != nil || port <= 0 || port > 65535 {
-		return nil, fmt.Errorf("некорректный порт %q", portStr)
-	}
-
-	o := types.Outbound{Tag: typ + "-proxy", Type: typ, Server: server, Port: types.Port(port)}
-	settings := map[string]any{}
-
-	switch typ {
-	case "socks", "http":
-		fmt.Fprint(out, "Логин (Enter — пропустить): ")
-		user := readLine(r)
-		if user != "" {
-			settings["username"] = user
-			fmt.Fprint(out, "Пароль: ")
-			settings["password"] = readLine(r)
-		}
-	case "vless":
-		fmt.Fprint(out, "UUID: ")
-		settings["uuid"] = readLine(r)
-		fmt.Fprint(out, "Flow (Enter — без flow): ")
-		if f := readLine(r); f != "" {
-			settings["flow"] = f
-		}
-	case "vmess":
-		fmt.Fprint(out, "UUID: ")
-		settings["uuid"] = readLine(r)
-		fmt.Fprint(out, "alterId [0]: ")
-		aid := readLine(r)
-		if aid == "" {
-			aid = "0"
-		}
-		settings["alterId"] = aid
-	case "shadowsocks":
-		fmt.Fprint(out, "Метод (например aes-256-gcm): ")
-		settings["method"] = readLine(r)
-		fmt.Fprint(out, "Пароль: ")
-		settings["password"] = readLine(r)
-	}
-
-	if len(settings) > 0 {
-		o.Settings = settings
-	}
-	if err := o.Validate(); err != nil {
-		return nil, err
-	}
 	return []types.Outbound{o}, nil
 }
 
