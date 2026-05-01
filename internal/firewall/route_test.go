@@ -137,6 +137,27 @@ func TestDeleteTUNRoute_ИгнорируетОшибкуЕслиОтсутств
 	}
 }
 
+func TestEnsureLinkUp_OK(t *testing.T) {
+	r := exectx.Mock(map[string]exectx.Result{
+		"ip link set signbox-tun up": {ExitCode: 0},
+	})
+	if err := EnsureLinkUp(context.Background(), r, "signbox-tun"); err != nil {
+		t.Fatalf("ожидался nil, получено: %v", err)
+	}
+}
+
+func TestEnsureLinkUp_KernelError(t *testing.T) {
+	r := exectx.Mock(map[string]exectx.Result{
+		"ip link set signbox-tun up": {
+			ExitCode: 2,
+			Stderr:   []byte("Cannot find device \"signbox-tun\""),
+		},
+	})
+	if err := EnsureLinkUp(context.Background(), r, "signbox-tun"); err == nil {
+		t.Fatal("ожидалась ошибка от kernel, получено nil")
+	}
+}
+
 func TestWaitForInterface_ПоявляетсяСразу(t *testing.T) {
 	r := exectx.Mock(map[string]exectx.Result{
 		"ip link show signbox-tun": {

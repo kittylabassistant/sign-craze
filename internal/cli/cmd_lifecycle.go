@@ -66,6 +66,12 @@ func doStart(ctx context.Context) error {
 		log.L().Warn("--start: восстановление ipset не удалось", "err", rstErr)
 	}
 
+	// Pre-cleanup: убрать сталый signbox-tun если остался от предыдущего
+	// failed --start (sing-box убит SIGKILL до закрытия TUN fd, kernel на slow
+	// MIPS не успевает зачистить netdev). Без этого следующий sing-box падает
+	// FATAL: TUNSETIFF: device or resource busy.
+	firewall.ForceDeleteTUNDevice(ctx, newRunner(), firewall.TUNDeviceName)
+
 	// Старт sing-box. sing-box создаёт TUN-интерфейс при инициализации
 	// tun-inbound, поэтому подключение route в TUN откладывается до AttachTUN.
 	sbLC := newSingboxLifecycle()
@@ -78,9 +84,18 @@ func doStart(ctx context.Context) error {
 
 	// Дождаться появления TUN-интерфейса и установить default-route в нашу таблицу.
 	if attachErr := applier.AttachTUN(ctx, firewall.TUNDeviceName); attachErr != nil {
+		// Подсветить причину: чаще всего sing-box упал или просто медленно
+		// инициализирует TUN. Tail sing-box.log даёт юзеру немедленный сигнал
+		// без необходимости лезть в /opt/var/log/sign-craze/ руками.
+		if tail := lastSingboxLogLines(20); tail != "" {
+			log.L().Warn("--start: последние строки sing-box.log", "tail", tail)
+		}
 		if stopErr := sbLC.Stop(ctx); stopErr != nil {
 			log.L().Warn("--start: остановка sing-box после ошибки AttachTUN", "err", stopErr)
 		}
+		// Post-stop cleanup: kernel на slow MIPS может не освободить netdev
+		// после kill — следующая попытка получит EBUSY.
+		firewall.ForceDeleteTUNDevice(ctx, newRunner(), firewall.TUNDeviceName)
 		if rmErr := applier.Remove(ctx); rmErr != nil {
 			log.L().Warn("--start: откат firewall не удался", "err", rmErr)
 		}
@@ -117,6 +132,11 @@ func doStop(ctx context.Context) error {
 	if err := sbLC.Stop(ctx); err != nil {
 		log.L().Debug("--stop: sing-box stop", "err", err)
 	}
+
+	// Принудительно зачистить TUN-интерфейс. На slow MIPS Keenetic kernel
+	// иногда не освобождает netdev сразу после kill sing-box — без этого
+	// следующий --start падает FATAL: TUNSETIFF: device or resource busy.
+	firewall.ForceDeleteTUNDevice(ctx, newRunner(), firewall.TUNDeviceName)
 
 	// Удалить firewall — даже если state нечитаем.
 	st, err := loadState()
@@ -203,6 +223,48 @@ func ensureKeeneticPolicy(ctx context.Context, st *state.State) error {
 		"table4", info.Table4, "wan", wan,
 	)
 	return nil
+}
+
+// singboxLogPath — путь sing-box собственного лог-файла. Хардкодится в
+// шаблоне config (`internal/singbox/templates/tun.json.tmpl`). Используется
+// для диагностического tail при ошибке AttachTUN.
+const singboxLogPath = "/opt/var/log/sign-craze/sing-box.log"
+
+// lastSingboxLogLines возвращает последние n непустых строк sing-box.log.
+// Возвращает пустую строку при ошибке чтения — caller использует это как
+// сигнал «нет данных, не логировать tail».
+func lastSingboxLogLines(n int) string {
+	const tailWindow = 8 * 1024 // 8KB — достаточно для ~80 строк sing-box
+
+	f, err := os.Open(singboxLogPath)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		return ""
+	}
+	size := info.Size()
+	off := int64(0)
+	if size > tailWindow {
+		off = size - tailWindow
+	}
+	buf := make([]byte, size-off)
+	if _, err := f.ReadAt(buf, off); err != nil {
+		return ""
+	}
+
+	lines := strings.Split(strings.TrimRight(string(buf), "\n"), "\n")
+	// Если читали с середины файла, первая строка обрезана — отбросить.
+	if off > 0 && len(lines) > 1 {
+		lines = lines[1:]
+	}
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, " | ")
 }
 
 func waitDefaultRoute(ctx context.Context, timeout time.Duration) error {

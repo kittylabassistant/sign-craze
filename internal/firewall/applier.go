@@ -58,9 +58,11 @@ const IPSetExcludes = "signcraze_excludes"
 // firewall-слое без зависимости от пакета singbox).
 const TUNDeviceName = "signbox-tun"
 
-// TUNAttachTimeout — максимальное ожидание появления TUN-интерфейса после
-// старта sing-box. На медленных MIPS до 2s; запас 10s.
-const TUNAttachTimeout = 10 * time.Second
+// TUNAttachTimeout — потолок ожидания TUN-интерфейса. На slow MIPS softfloat
+// sing-box cold-start может занимать 12-20s (загрузка geo, инициализация
+// outbounds, особенно после reboot без warmed page cache). На warm-start
+// обычно 0.6-2s. 30s — безопасный запас, не блокирующий быстрые случаи.
+const TUNAttachTimeout = 30 * time.Second
 
 // DefaultConfig возвращает конфигурацию по умолчанию согласно BEHAVIOR_SPEC §3.
 func DefaultConfig() Config {
@@ -256,6 +258,12 @@ func (a *applierImpl) applyFullMode(ctx context.Context) error {
 func (a *applierImpl) AttachTUN(ctx context.Context, dev string) error {
 	if err := WaitForInterface(ctx, a.runner, dev, TUNAttachTimeout); err != nil {
 		return fmt.Errorf("firewall: ожидание TUN-интерфейса: %w", err)
+	}
+	// Поднять link явно: WaitForInterface ловит netdev по имени даже когда
+	// он ещё в state DOWN (race на slow MIPS между TUNSETIFF и IFF_UP).
+	// Без этого следующий EnsureTUNRoute падает с "Network is down".
+	if err := EnsureLinkUp(ctx, a.runner, dev); err != nil {
+		return err
 	}
 	if err := EnsureTUNRoute(ctx, a.runner, dev, a.cfg.Table); err != nil {
 		return err

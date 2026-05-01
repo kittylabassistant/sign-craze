@@ -117,6 +117,45 @@ func DeleteTUNRoute(ctx context.Context, runner exectx.Runner, dev string, table
 	return nil
 }
 
+// ForceDeleteTUNDevice безусловно удаляет TUN-интерфейс dev через `ip tuntap del`.
+// Идемпотентно — отсутствующий интерфейс не считается ошибкой.
+//
+// Зачем: sing-box создаёт TUN при старте через TUNSETIFF на /dev/net/tun.
+// Если процесс sing-box убит SIGKILL раньше чем успел нормально закрыть fd,
+// или если ядро по какой-то причине не успевает зачистить netdev (наблюдалось
+// на slow MIPS Keenetic после AttachTUN-таймаута + sign-box Stop), интерфейс
+// остаётся "висеть" в kernel-таблице. Следующий sign-box при старте получает
+// `TUNSETIFF: device or resource busy` и падает FATAL до открытия лог-файла.
+// Этот хелпер вызывается перед стартом sing-box (cleanup) и после остановки
+// (post-stop), гарантируя пустой netdev-namespace для signbox-tun.
+func ForceDeleteTUNDevice(ctx context.Context, runner exectx.Runner, dev string) {
+	if _, err := runner.Run(ctx, "ip", "tuntap", "del", "dev", dev, "mode", "tun"); err != nil {
+		// busybox `ip tuntap del` возвращает exit 1 если интерфейс не существует —
+		// это и есть нормальный idempotent-кейс, не логируем как warning.
+		log.L().Debug("firewall: ForceDeleteTUNDevice (возможно отсутствует)", "dev", dev, "err", err)
+		return
+	}
+	log.L().Debug("firewall: TUN device удалён", "dev", dev)
+}
+
+// EnsureLinkUp поднимает link state интерфейса dev (`ip link set <dev> up`).
+// Идемпотентно — повторный вызов на уже UP-интерфейсе не считается ошибкой
+// (kernel молча возвращает успех).
+//
+// Зачем: sing-box создаёт TUN через TUNSETIFF (netdev появляется в state
+// DOWN), затем отдельным ioctl ставит IFF_UP. На slow MIPS между этими
+// шагами есть gap, в котором WaitForInterface уже видит интерфейс по имени,
+// а EnsureTUNRoute падает с "RTNETLINK answers: Network is down". Явный
+// `ip link set up` закрывает окно гонки без необходимости расширять
+// WaitForInterface парсингом state-флагов.
+func EnsureLinkUp(ctx context.Context, runner exectx.Runner, dev string) error {
+	if _, err := runner.Run(ctx, "ip", "link", "set", dev, "up"); err != nil {
+		return fmt.Errorf("firewall: ip link set %s up: %w", dev, err)
+	}
+	log.L().Debug("firewall: link UP", "dev", dev)
+	return nil
+}
+
 // ipRuleExists проверяет наличие правила fwmark → table в выводе `ip rule show`.
 func ipRuleExists(ctx context.Context, runner exectx.Runner, fwmark uint32, table int) bool {
 	res, err := runner.Run(ctx, "ip", "rule", "show")
@@ -147,7 +186,7 @@ func WaitForInterface(ctx context.Context, runner exectx.Runner, dev string, tim
 		if err == nil && strings.Contains(string(res.Stdout), dev) {
 			return nil
 		}
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 	}
 	return fmt.Errorf("firewall: интерфейс %s не появился за %s", dev, timeout)
 }
