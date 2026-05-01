@@ -122,6 +122,7 @@ sing-box check -c /opt/etc/sign-craze/config.json   # должен пройти
 ## 4. Запуск (TUN-mode, v0.3+)
 
 Архитектура v0.3+:
+
 - sing-box создаёт TUN-интерфейс `signbox-tun`.
 - `policy` mode (default): Keenetic IP-policy маркит пакеты привязанных устройств своим mark (`0xffffaab` или похожим). Sign-craze в `mangle/PREROUTING` ремаркирует их в `0x53`. `ip rule fwmark 0x53 lookup 83` поднимает в таблицу 83 → `default dev signbox-tun` → sing-box → proxy.
 - `full` mode (legacy): без интеграции с Keenetic, использует ipset `signcraze_ipv4`/`signcraze_ipv6` и собственные chains `signcraze`/`signcraze_dpi`/`signcraze_ports`.
@@ -131,6 +132,7 @@ sign-craze --start
 ```
 
 Ожидается:
+
 - `ndm: policy готова` с `mark=0x...` и `table4=...`.
 - `firewall: применение правил mode=policy` (или `mode=full`).
 - `firewall: TUN подключён dev=signbox-tun table=83`.
@@ -475,6 +477,7 @@ ipset list signcraze_excludes_v6 2>/dev/null
 ```
 
 **Если IPv6 disabled** в kernel sysctl (`/proc/sys/net/ipv6/conf/all/disable_ipv6=1`):
+
 - sing-box не сможет назначить `fdfe:dcba:9876::1/126` на TUN → краш на старте.
 - Workaround: убрать v6 адрес из state.json `TUNAddresses` (оставить только v4).
 

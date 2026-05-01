@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
 	"github.com/kittylabassistant/sign-craze/internal/log"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
@@ -21,7 +20,13 @@ import (
 const (
 	defaultDownloadTimeout = 10 * time.Minute
 	defaultConnectTimeout  = 30 * time.Second
-	userAgent              = "sign-craze"
+	// userAgent — curl-like UA. GitHub anonymous-downloads throttles
+	// нестандартные User-Agents в low-priority bucket (наблюдалось ~3 минуты
+	// на 16MB файл против ~2s через curl). Использование curl-like UA
+	// возвращает обычную полосу.
+	userAgent = "curl/8.12.1"
+	// progressInterval — частота прогресс-логов при загрузке asset'а.
+	progressInterval = 5 * time.Second
 )
 
 // APIBaseURL — базовый URL GitHub API. Перезаписывается в тестах через httptest.Server.
@@ -180,15 +185,24 @@ func (d *Downloader) downloadAsset(ctx context.Context, url, dstFile, savedETag 
 		return false, "", "", fmt.Errorf("mkdir: %w", mkErr)
 	}
 
+	// Имя tmp-файла рядом с dstFile, чтобы rename был на одной FS.
 	tmp, err := os.CreateTemp(filepath.Dir(dstFile), ".dl-*")
 	if err != nil {
 		return false, "", "", fmt.Errorf("создание temp-файла: %w", err)
 	}
 	tmpName := tmp.Name()
-	defer func() { _ = os.Remove(tmpName) }()
+	cleanup := func() { _ = os.Remove(tmpName) }
+	defer func() {
+		if tmpName != "" {
+			cleanup()
+		}
+	}()
+
+	totalSize := resp.ContentLength
+	pr := newProgressReader(resp.Body, totalSize)
 
 	h := sha256.New()
-	if _, cpErr := io.Copy(io.MultiWriter(tmp, h), resp.Body); cpErr != nil {
+	if _, cpErr := io.Copy(io.MultiWriter(tmp, h), pr); cpErr != nil {
 		_ = tmp.Close()
 		return false, "", "", fmt.Errorf("чтение тела ответа: %w", cpErr)
 	}
@@ -196,20 +210,70 @@ func (d *Downloader) downloadAsset(ctx context.Context, url, dstFile, savedETag 
 		_ = tmp.Close()
 		return false, "", "", fmt.Errorf("fsync: %w", syncErr)
 	}
-	_ = tmp.Close()
+	if closeErr := tmp.Close(); closeErr != nil {
+		return false, "", "", fmt.Errorf("закрытие tmp-файла: %w", closeErr)
+	}
 
 	checksum := hex.EncodeToString(h.Sum(nil))
-	log.L().Debug("ghrelease: загрузка завершена", "sha256", checksum)
+	log.L().Debug("ghrelease: загрузка завершена", "sha256", checksum, "bytes", pr.read)
 
-	data, err := os.ReadFile(tmpName)
-	if err != nil {
-		return false, "", "", fmt.Errorf("чтение tmp-файла: %w", err)
+	// Атомарный rename вместо ReadFile+WriteFileAtomic: tmp на той же FS,
+	// rename атомарен в POSIX. Раньше был лишний 16MB-аллок в RAM, что
+	// проблема на 128MB-роутерах.
+	if rnErr := os.Rename(tmpName, dstFile); rnErr != nil {
+		return false, "", "", fmt.Errorf("атомарный rename %s → %s: %w", tmpName, dstFile, rnErr)
 	}
-	if wErr := atomicfs.WriteFileAtomic(dstFile, data, 0o644); wErr != nil {
-		return false, "", "", fmt.Errorf("атомарная запись: %w", wErr)
-	}
+	tmpName = "" // успех — не удалять
 
 	return true, resp.Header.Get("ETag"), checksum, nil
+}
+
+// progressReader логирует прогресс загрузки каждые progressInterval.
+// Без него юзер не видит идёт ли загрузка или висит — критично на slow links
+// где загрузка 16MB занимает 30-60s даже на хорошем канале.
+type progressReader struct {
+	r        io.Reader
+	total    int64 // -1 если ContentLength неизвестен
+	read     int64
+	lastTick time.Time
+	started  time.Time
+}
+
+func newProgressReader(r io.Reader, total int64) *progressReader {
+	now := time.Now()
+	return &progressReader{r: r, total: total, lastTick: now, started: now}
+}
+
+func (p *progressReader) Read(b []byte) (int, error) {
+	n, err := p.r.Read(b)
+	p.read += int64(n)
+	if time.Since(p.lastTick) >= progressInterval {
+		p.tick()
+		p.lastTick = time.Now()
+	}
+	return n, err
+}
+
+func (p *progressReader) tick() {
+	elapsed := time.Since(p.started).Seconds()
+	if elapsed < 0.001 {
+		return
+	}
+	speed := float64(p.read) / elapsed / 1024 // KB/s
+	if p.total > 0 {
+		pct := float64(p.read) * 100 / float64(p.total)
+		log.L().Info("ghrelease: прогресс",
+			"загружено_МБ", fmt.Sprintf("%.1f", float64(p.read)/(1024*1024)),
+			"всего_МБ", fmt.Sprintf("%.1f", float64(p.total)/(1024*1024)),
+			"процент", fmt.Sprintf("%.0f", pct),
+			"скорость_КБ/с", fmt.Sprintf("%.0f", speed),
+		)
+	} else {
+		log.L().Info("ghrelease: прогресс",
+			"загружено_МБ", fmt.Sprintf("%.1f", float64(p.read)/(1024*1024)),
+			"скорость_КБ/с", fmt.Sprintf("%.0f", speed),
+		)
+	}
 }
 
 // verifySHA256 ищет в релизе asset с именем "<assetName>.sha256" и сверяет хэш.
