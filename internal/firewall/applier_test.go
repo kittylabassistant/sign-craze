@@ -120,6 +120,68 @@ func TestApplier_Apply_Policy_СоздаётСвоюЦепочку(t *testing.T)
 	}
 }
 
+// TestApplier_Apply_Policy_РазрешаетForwardНаTUN — sign-craze должна добавить
+// ACCEPT правила в filter/FORWARD для signbox-tun, иначе на Keenetic с
+// FORWARD policy=DROP пакеты с mark 0x53 после ip rule lookup → table 83 →
+// signbox-tun дропаются default policy до того как kernel запишет в TUN fd.
+func TestApplier_Apply_Policy_РазрешаетForwardНаTUN(t *testing.T) {
+	r := &autoRunner{}
+	cfg := DefaultConfig()
+	cfg.PolicyMark = 0xffffaab
+	a := NewApplier(r, cfg)
+	if err := a.Apply(context.Background(), types.ModePolicy); err != nil {
+		t.Fatalf("Apply(policy) вернул ошибку: %v", err)
+	}
+	if !r.hasCall("iptables -t filter -A FORWARD -o signbox-tun -j ACCEPT") {
+		t.Error("filter/FORWARD ACCEPT для -o signbox-tun не добавлен")
+	}
+	if !r.hasCall("iptables -t filter -A FORWARD -i signbox-tun -j ACCEPT") {
+		t.Error("filter/FORWARD ACCEPT для -i signbox-tun не добавлен")
+	}
+}
+
+// TestApplier_Remove_УдаляетForwardНаTUN — Remove должен снять filter/FORWARD
+// ACCEPT правила, иначе они остаются после --uninstall.
+func TestApplier_Remove_УдаляетForwardНаTUN(t *testing.T) {
+	r := &autoRunner{}
+	// autoRunner возвращает error на iptables -C → DeleteRule фактически skip'нет.
+	// Используем seedRunner, который имитирует наличие правил.
+	r2 := &seedRunner{
+		autoRunner: r,
+		existing: map[string]bool{
+			"iptables -t filter -C FORWARD -o signbox-tun -j ACCEPT": true,
+			"iptables -t filter -C FORWARD -i signbox-tun -j ACCEPT": true,
+		},
+	}
+	a := NewApplier(r2, DefaultConfig())
+	if err := a.Remove(context.Background()); err != nil {
+		t.Fatalf("Remove вернул ошибку: %v", err)
+	}
+	if !r.hasCall("iptables -t filter -D FORWARD -o signbox-tun -j ACCEPT") {
+		t.Error("filter/FORWARD -D для -o signbox-tun не вызван")
+	}
+	if !r.hasCall("iptables -t filter -D FORWARD -i signbox-tun -j ACCEPT") {
+		t.Error("filter/FORWARD -D для -i signbox-tun не вызван")
+	}
+}
+
+// seedRunner — autoRunner с предзаданным набором "существующих" правил.
+// Позволяет тестировать DeleteRule (idempotent -C → -D), которая делает -D только
+// если -C сообщает что правило есть.
+type seedRunner struct {
+	*autoRunner
+	existing map[string]bool
+}
+
+func (s *seedRunner) Run(ctx context.Context, name string, args ...string) (exectx.Result, error) {
+	key := strings.TrimSpace(name + " " + strings.Join(args, " "))
+	if s.existing[key] {
+		s.autoRunner.calls = append(s.autoRunner.calls, key)
+		return exectx.Result{ExitCode: 0}, nil
+	}
+	return s.autoRunner.Run(ctx, name, args...)
+}
+
 func TestApplier_Apply_Policy_НулевойMarkОшибка(t *testing.T) {
 	r := &autoRunner{}
 	cfg := DefaultConfig()

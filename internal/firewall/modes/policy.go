@@ -44,8 +44,24 @@ func PolicyRules(keenMark, loopMark uint32) []RuleSpec {
 			Table: "mangle", Chain: "PREROUTING",
 			Args: []string{"-j", PolicyChainName},
 		},
+		// Keenetic FORWARD policy = DROP, NDM ACL chains не делают ACCEPT для
+		// нерегистрированных интерфейсов. Без этих правил пакеты с mark 0x53
+		// после ip rule lookup (table 83 → dev signbox-tun) дропаются default
+		// policy DROP до того, как kernel запишет в TUN fd.
+		{
+			Table: "filter", Chain: "FORWARD",
+			Args: []string{"-o", PolicyTUNDeviceName, "-j", "ACCEPT"},
+		},
+		{
+			Table: "filter", Chain: "FORWARD",
+			Args: []string{"-i", PolicyTUNDeviceName, "-j", "ACCEPT"},
+		},
 	}
 }
+
+// PolicyTUNDeviceName — имя TUN-интерфейса в правилах filter/FORWARD.
+// Должно совпадать с firewall.TUNDeviceName / singbox.DefaultTUNInterfaceName.
+const PolicyTUNDeviceName = "signbox-tun"
 
 // PolicyDPIRules возвращает правила NFQUEUE для режима policy.
 // Применяются только когда DPIEnabled=true.

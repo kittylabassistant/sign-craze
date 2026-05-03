@@ -276,7 +276,18 @@ func (a *applierImpl) AttachTUN(ctx context.Context, dev string) error {
 func (a *applierImpl) Remove(ctx context.Context) error {
 	log.L().Info("firewall: удаление правил")
 
-	// 1. Удалить prerouting jumps на наши user-chains. На стоковой
+	// 1. Удалить filter/FORWARD ACCEPT правила (policy mode). DeleteRule
+	// идемпотентна (-C → -D), безопасна на чистом состоянии.
+	for _, args := range [][]string{
+		{"-o", TUNDeviceName, "-j", "ACCEPT"},
+		{"-i", TUNDeviceName, "-j", "ACCEPT"},
+	} {
+		if err := a.ipt.DeleteRule(ctx, "filter", "FORWARD", args...); err != nil {
+			log.L().Warn("firewall: ошибка удаления filter/FORWARD ACCEPT", "args", args, "err", err)
+		}
+	}
+
+	// 2. Удалить prerouting jumps на наши user-chains. На стоковой
 	// Keenetic-прошивке нет xt_comment → раньше использовался
 	// DeleteRulesByComment теперь не сработает (правила пишутся без
 	// --comment). Все наши правила в системной PREROUTING — это
