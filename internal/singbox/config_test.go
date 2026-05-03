@@ -177,6 +177,32 @@ func TestRender_TagWithQuoteEscaped(t *testing.T) {
 	}
 }
 
+// TestRender_TUNStackIsGvisor — TUN inbound должен использовать gvisor stack.
+// Reason: на Keenetic mipsle softfloat kernel TCP/IP не обрабатывает пакеты
+// корректно при policy-routing → TUN. gvisor читает raw bytes напрямую из TUN
+// fd, не зависит от kernel TCP stack.
+func TestRender_TUNStackIsGvisor(t *testing.T) {
+	p := DefaultConfigParams()
+	p.Outbounds = []types.Outbound{
+		{Tag: "out", Type: "socks", Server: "1.1.1.1", Port: 9000},
+	}
+
+	data, err := Render(p)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+
+	ib := parsed["inbounds"].([]any)[0].(map[string]any)
+	if ib["stack"] != "gvisor" {
+		t.Errorf("TUN stack = %v, ожидалось \"gvisor\"", ib["stack"])
+	}
+}
+
 // TestRender_HijackDNSScopedToTUN — hijack-dns rule должен ограничиваться
 // inbound: tun-in, чтобы не захватывать DNS-resolver самого роутера.
 // Без inbound-фильтра при сбое vless-proxy локальный DNS роутера зависает.

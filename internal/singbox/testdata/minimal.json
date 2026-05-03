@@ -24,7 +24,7 @@
       "auto_route": false,
       "interface_name": "signbox-tun",
       "mtu": 1500,
-      "stack": "system",
+      "stack": "gvisor",
       "tag": "tun-in",
       "type": "tun"
     }

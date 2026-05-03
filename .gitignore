@@ -5,3 +5,4 @@ docs/*
 !docs/ARCHITECTURE.md
 !docs/LICENSE.ru.md
 !docs/THIRD_PARTY_LICENSES.md
+dist/
