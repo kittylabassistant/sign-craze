@@ -1,0 +1,4 @@
+# sign-craze code-review ownership.
+# System-state ownership (chains, ipset, files, processes) — см. docs/OWNERSHIP.md.
+
+* @kittylabassistant

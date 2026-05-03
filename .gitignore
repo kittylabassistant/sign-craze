@@ -1,3 +1,7 @@
 .claude
 graphify-out
 sign-craze.wiki/
+docs/*
+!docs/ARCHITECTURE.md
+!docs/LICENSE.ru.md
+!docs/THIRD_PARTY_LICENSES.md
