@@ -176,7 +176,7 @@ type seedRunner struct {
 func (s *seedRunner) Run(ctx context.Context, name string, args ...string) (exectx.Result, error) {
 	key := strings.TrimSpace(name + " " + strings.Join(args, " "))
 	if s.existing[key] {
-		s.autoRunner.calls = append(s.autoRunner.calls, key)
+		s.calls = append(s.calls, key)
 		return exectx.Result{ExitCode: 0}, nil
 	}
 	return s.autoRunner.Run(ctx, name, args...)
