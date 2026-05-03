@@ -1,5 +1,7 @@
 # sign-craze
 
+[![GitHub Release](https://img.shields.io/github/v/release/kittylabassistant/sign-craze)](https://github.com/kittylabassistant/sign-craze/releases) [![GitHub stars](https://img.shields.io/github/stars/kittylabassistant/sign-craze)](https://github.com/kittylabassistant/sign-craze/stargazers) [![GitHub License](https://img.shields.io/github/license/kittylabassistant/sign-craze)](LICENSE) [![GitHub Wiki](https://img.shields.io/badge/wiki-docs-blue)](https://github.com/kittylabassistant/sign-craze/wiki)
+
 Go-утилита для управления межсетевым экраном на роутерах Keenetic.
 
 Использует [sing-box](https://github.com/SagerNet/sing-box) как прокси-ядро и опционально [nfqws2.](https://github.com/nfqws/nfqws2-keenetic)

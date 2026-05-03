@@ -177,6 +177,44 @@ func TestRender_TagWithQuoteEscaped(t *testing.T) {
 	}
 }
 
+// TestRender_HijackDNSScopedToTUN — hijack-dns rule должен ограничиваться
+// inbound: tun-in, чтобы не захватывать DNS-resolver самого роутера.
+// Без inbound-фильтра при сбое vless-proxy локальный DNS роутера зависает.
+func TestRender_HijackDNSScopedToTUN(t *testing.T) {
+	p := DefaultConfigParams()
+	p.Outbounds = []types.Outbound{
+		{Tag: "out", Type: "socks", Server: "1.1.1.1", Port: 9000},
+	}
+
+	data, err := Render(p)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+
+	rules := parsed["route"].(map[string]any)["rules"].([]any)
+	var found bool
+	for _, r := range rules {
+		m := r.(map[string]any)
+		if m["action"] == "hijack-dns" {
+			found = true
+			if m["inbound"] != "tun-in" {
+				t.Errorf("hijack-dns rule: inbound = %v, ожидалось \"tun-in\"", m["inbound"])
+			}
+			if m["protocol"] != "dns" {
+				t.Errorf("hijack-dns rule: protocol = %v, ожидалось \"dns\"", m["protocol"])
+			}
+		}
+	}
+	if !found {
+		t.Fatal("hijack-dns rule не найден в route.rules")
+	}
+}
+
 func TestBuildRuleSets_NoDuplicates(t *testing.T) {
 	r := types.RoutingRules{
 		GeoSiteProxy:  []string{"cat-a", "cat-b"},

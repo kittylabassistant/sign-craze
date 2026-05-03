@@ -85,6 +85,7 @@
       },
       {
         "action": "hijack-dns",
+        "inbound": "tun-in",
         "protocol": "dns"
       },
       {
