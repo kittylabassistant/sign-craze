@@ -9,15 +9,16 @@ INSTALL_DIR="/opt/sbin"
 BINARY="sign-craze"
 MIN_FREE_KB=30000  # 30 MB запас
 
-# Выбрать загрузчик: curl с -k (без проверки сертификатов) или wget-ssl с --no-check-certificate
+# Выбрать загрузчик с проверкой TLS-сертификата.
+# Если на роутере нет корневых CA — поставить: opkg install ca-certificates
 if command -v curl >/dev/null 2>&1; then
-  DL="curl -kfsSL"
-  DL_OUT="curl -kfsSL -o"
-elif wget --help 2>&1 | grep -q -- '--no-check-certificate'; then
-  DL="wget --no-check-certificate -qO-"
-  DL_OUT="wget --no-check-certificate -qO"
+  DL="curl -fsSL"
+  DL_OUT="curl -fsSL -o"
+elif wget --help 2>&1 | grep -q -- '--https-only\|HTTPS support'; then
+  DL="wget -qO-"
+  DL_OUT="wget -qO"
 else
-  echo "Нужен curl или wget с поддержкой SSL. Установите: opkg install curl" >&2
+  echo "Нужен curl или wget-ssl. Установите: opkg install curl ca-certificates" >&2
   exit 1
 fi
 

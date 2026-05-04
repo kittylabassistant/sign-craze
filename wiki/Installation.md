@@ -283,12 +283,12 @@ opkg install wget-ssl
 
 ```sh
 # По SSH, в Entware shell на роутере
-curl -kfsSL https://github.com/kittylabassistant/sign-craze/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/kittylabassistant/sign-craze/releases/latest/download/install.sh | sh
 ```
 
 Скрипт автоматически:
 
-- Выберет загрузчик: `curl -kfsSL` или `wget --no-check-certificate`.
+- Выберет загрузчик: `curl -fsSL` или `wget` (с проверкой TLS). Если корневых CA на роутере нет — `opkg install ca-certificates`.
 - Определит архитектуру (`mipsle` / `mips` / `arm7` / `arm64`); endianness MIPS — через `od -x` (BusyBox-совместимо).
 - Проверит свободное место на `/opt` (нужно ≥ 30 МБ).
 - Скачает соответствующий бинарь с GitHub Releases.

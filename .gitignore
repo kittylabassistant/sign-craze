@@ -6,3 +6,31 @@ docs/*
 !docs/LICENSE.ru.md
 !docs/THIRD_PARTY_LICENSES.md
 dist/
+
+# Личные планы и заметки
+tasks/
+
+# Секреты и креды
+*.env
+.env.*
+*.local.env
+config.local.*
+*.local.yaml
+*.local.yml
+secrets/
+
+# Ключи и сертификаты
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.crt
+*.cer
+id_rsa*
+id_ed25519*
+id_ecdsa*
+
+# Локальные креды веб-UI
+admin.creds

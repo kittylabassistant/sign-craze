@@ -57,7 +57,7 @@ Go-утилита для управления межсетевым экрано�
 
 ```sh
 # Определить архитектуру автоматически и установить последний релиз
-curl -kfsSL https://github.com/kittylabassistant/sign-craze/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/kittylabassistant/sign-craze/releases/latest/download/install.sh | sh
 
 # Запустить установку (интерактивно: запросит URL прокси / outbound)
 sign-craze --install
