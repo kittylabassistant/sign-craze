@@ -112,6 +112,13 @@ func (a *applierImpl) Apply(ctx context.Context, mode types.Mode) error {
 		return fmt.Errorf("firewall: pre-flight: %w", err)
 	}
 
+	// Отключить Keenetic FASTNAT/FASTROUTE: иначе RTCACHE кэширует первую пару
+	// пакетов flow и обходит mangle для последующих ACK/PSH, отправляя их в
+	// default WAN мимо signbox-tun. На не-Keenetic-системах no-op.
+	if err := DisableFastPath(); err != nil {
+		log.L().Warn("firewall: не удалось отключить FastPath, трафик может частично идти мимо TUN", "err", err)
+	}
+
 	if err := a.applyInternal(ctx, mode); err != nil {
 		log.L().Warn("firewall: ошибка применения, откат", "err", err)
 		if removeErr := a.Remove(ctx); removeErr != nil {
@@ -340,6 +347,11 @@ func (a *applierImpl) Remove(ctx context.Context) error {
 	}
 	if err := a.ipset.DestroySet(ctx, IPSetExcludes); err != nil {
 		log.L().Warn("firewall: ошибка удаления ipset", "name", IPSetExcludes, "err", err)
+	}
+
+	// Восстановить исходные значения Keenetic FASTNAT/FASTROUTE.
+	if err := RestoreFastPath(); err != nil {
+		log.L().Warn("firewall: восстановление FastPath", "err", err)
 	}
 
 	log.L().Info("firewall: правила удалены")
