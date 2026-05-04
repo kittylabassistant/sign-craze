@@ -62,6 +62,52 @@ func TestOutbound_MarshalJSON_FlatSettings(t *testing.T) {
 	}
 }
 
+// TestOutbound_RoundTrip_PreservesPort — критичный регресс:
+// MarshalJSON писал "server_port", default-Unmarshal искал "port" → Port=0.
+// Это ломало state.json round-trip и регенерацию config.json в --start.
+func TestOutbound_RoundTrip_PreservesPort(t *testing.T) {
+	src := Outbound{
+		Tag:    "vless-test",
+		Type:   "vless",
+		Server: "example.invalid",
+		Port:   443,
+		Settings: map[string]any{
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"tls":  map[string]any{"enabled": true},
+		},
+	}
+	data, err := json.Marshal(src)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	var got Outbound
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if got.Port != 443 {
+		t.Errorf("Port lost in round-trip: got %d, want 443. JSON=%s", got.Port, data)
+	}
+	if got.Tag != src.Tag || got.Type != src.Type || got.Server != src.Server {
+		t.Errorf("базовые поля потеряны: %+v", got)
+	}
+	if got.Settings["uuid"] != src.Settings["uuid"] {
+		t.Errorf("uuid в Settings потерян: %+v", got.Settings)
+	}
+}
+
+// TestOutbound_Unmarshal_LegacyPortKey — приём старого ключа "port"
+// для совместимости со state.json, написанными до фикса.
+func TestOutbound_Unmarshal_LegacyPortKey(t *testing.T) {
+	data := []byte(`{"tag":"x","type":"vless","server":"s","port":1234}`)
+	var o Outbound
+	if err := json.Unmarshal(data, &o); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if o.Port != 1234 {
+		t.Errorf("legacy port не прочитан: got %d", o.Port)
+	}
+}
+
 func TestMode_Validate(t *testing.T) {
 	tests := []struct {
 		mode    Mode

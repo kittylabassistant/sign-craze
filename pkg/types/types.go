@@ -181,6 +181,53 @@ func (o Outbound) MarshalJSON() ([]byte, error) {
 	return json.Marshal(out)
 }
 
+// UnmarshalJSON парсит Outbound из JSON, симметрично MarshalJSON: принимает
+// формат sing-box ("server_port") и legacy/internal-имя ("port"). Все нераспознанные
+// ключи попадают в Settings — это гарантирует round-trip state.json (Save → Load),
+// где раньше Port терялся (Save писал "server_port", default-Unmarshal искал "port").
+func (o *Outbound) UnmarshalJSON(data []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	pop := func(key string, dst any) (bool, error) {
+		v, ok := raw[key]
+		if !ok {
+			return false, nil
+		}
+		delete(raw, key)
+		return true, json.Unmarshal(v, dst)
+	}
+	if _, err := pop("tag", &o.Tag); err != nil {
+		return fmt.Errorf("outbound.tag: %w", err)
+	}
+	if _, err := pop("type", &o.Type); err != nil {
+		return fmt.Errorf("outbound.type: %w", err)
+	}
+	if _, err := pop("server", &o.Server); err != nil {
+		return fmt.Errorf("outbound.server: %w", err)
+	}
+	if found, err := pop("server_port", &o.Port); err != nil {
+		return fmt.Errorf("outbound.server_port: %w", err)
+	} else if !found {
+		if _, err := pop("port", &o.Port); err != nil {
+			return fmt.Errorf("outbound.port: %w", err)
+		}
+	}
+	if len(raw) == 0 {
+		return nil
+	}
+	o.Settings = make(map[string]any, len(raw))
+	for k, v := range raw {
+		var x any
+		if err := json.Unmarshal(v, &x); err != nil {
+			return fmt.Errorf("outbound.%s: %w", k, err)
+		}
+		o.Settings[k] = x
+	}
+	return nil
+}
+
 // Validate проверяет обязательные поля Outbound.
 //
 // Server/Port не требуются для type=direct/block/dns (служебные outbound'ы
