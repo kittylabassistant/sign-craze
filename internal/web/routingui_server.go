@@ -2,6 +2,7 @@ package web
 
 import (
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"strings"
 )
@@ -11,7 +12,9 @@ import (
 func registerRoutingUIRoutes(mux *http.ServeMux, s *Server) {
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"ok"}`))
+		if _, wErr := w.Write([]byte(`{"status":"ok"}`)); wErr != nil {
+			slog.Debug("web: запись health response", "err", wErr)
+		}
 	})
 
 	// state

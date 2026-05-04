@@ -49,8 +49,8 @@ func (s *Server) apiRulesUpdate(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &rule) {
 		return
 	}
-	if err := rule.Validate(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if vErr := rule.Validate(); vErr != nil {
+		http.Error(w, vErr.Error(), http.StatusBadRequest)
 		return
 	}
 	cfg, err := s.loadRoutingConfig()

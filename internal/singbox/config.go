@@ -126,9 +126,9 @@ func Render(p ConfigParams) ([]byte, error) {
 
 	funcMap := template.FuncMap{
 		"jsonMarshal": func(v any) (string, error) {
-			b, err := json.Marshal(v)
-			if err != nil {
-				return "", err
+			b, mErr := json.Marshal(v)
+			if mErr != nil {
+				return "", mErr
 			}
 			return string(b), nil
 		},

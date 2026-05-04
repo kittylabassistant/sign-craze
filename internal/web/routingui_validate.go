@@ -1,6 +1,7 @@
 package web
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/kittylabassistant/sign-craze/pkg/types"
@@ -68,5 +69,7 @@ func (s *Server) apiPreview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_, _ = w.Write(out)
+	if _, wErr := w.Write(out); wErr != nil {
+		slog.Debug("web: запись preview response", "err", wErr)
+	}
 }

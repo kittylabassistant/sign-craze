@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"time"
 
@@ -59,7 +60,10 @@ func startUI(ctx context.Context) error {
 
 	// RoutingUI deps — рендерер использует singbox.Render с подсунутым RoutingConfig,
 	// OnApply триггерит regenerateConfig для немедленного применения.
-	st, _ := state.Load(state.DefaultPath)
+	st, stErr := state.Load(state.DefaultPath)
+	if stErr != nil {
+		slog.Warn("--ui: ошибка загрузки state.json (используются дефолты RoutingUI)", "err", stErr)
+	}
 
 	routingDeps := &web.RoutingUIDeps{
 		RoutingPath: routing.DefaultPath,

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -22,11 +23,12 @@ func FindFreePort(bind string, port uint16, maxAttempts int) (uint16, net.Listen
 	if bind == "" {
 		bind = "0.0.0.0"
 	}
+	var cfg net.ListenConfig
 	var lastErr error
 	for i := 0; i < maxAttempts; i++ {
 		candidate := port + uint16(i)
 		addr := fmt.Sprintf("%s:%d", bind, candidate)
-		l, err := net.Listen("tcp", addr)
+		l, err := cfg.Listen(context.Background(), "tcp", addr)
 		if err == nil {
 			actual := candidate
 			if candidate == 0 {
@@ -38,5 +40,5 @@ func FindFreePort(bind string, port uint16, maxAttempts int) (uint16, net.Listen
 		}
 		lastErr = err
 	}
-	return 0, nil, fmt.Errorf("%w (от %d, попыток %d): %v", ErrNoFreePort, port, maxAttempts, lastErr)
+	return 0, nil, fmt.Errorf("%w (от %d, попыток %d): %w", ErrNoFreePort, port, maxAttempts, lastErr)
 }

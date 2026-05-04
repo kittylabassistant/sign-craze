@@ -79,8 +79,8 @@ func Default() *State {
 		Outbounds: []types.Outbound{
 			{Tag: "direct", Type: "direct"},
 		},
-		Ports:      []uint16{},
-		Excludes:   excludes,
+		Ports:            []uint16{},
+		Excludes:         excludes,
 		AdminPorts:       append([]uint16(nil), DefaultAdminPorts...),
 		AdminIPs:         []string{},
 		PolicyName:       DefaultPolicyName,

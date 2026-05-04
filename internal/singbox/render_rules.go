@@ -88,17 +88,23 @@ func buildEffectiveModel(p ConfigParams) (effectiveModel, error) {
 		// legacy путь: Routing + Outbounds
 		m.Outbounds = p.Outbounds
 		if len(p.Routing.GeoSiteDirect) > 0 {
-			s, _ := marshalRule(map[string]any{
+			s, err := marshalRule(map[string]any{
 				"rule_set": p.Routing.GeoSiteDirect,
 				"outbound": "direct",
 			})
+			if err != nil {
+				return m, fmt.Errorf("legacy GeoSiteDirect rule: %w", err)
+			}
 			m.UserRules = append(m.UserRules, s)
 		}
 		if len(p.Routing.GeoSiteProxy) > 0 {
-			s, _ := marshalRule(map[string]any{
+			s, err := marshalRule(map[string]any{
 				"rule_set": p.Routing.GeoSiteProxy,
 				"outbound": p.DefaultOutboundTag,
 			})
+			if err != nil {
+				return m, fmt.Errorf("legacy GeoSiteProxy rule: %w", err)
+			}
 			m.UserRules = append(m.UserRules, s)
 		}
 		m.RuleSets = buildRuleSets(p.Routing)
