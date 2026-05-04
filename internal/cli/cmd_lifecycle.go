@@ -37,8 +37,13 @@ func doStart(ctx context.Context) error {
 	if _, statErr := os.Stat(singbox.DefaultBinPath); statErr != nil {
 		return fmt.Errorf("--start: sing-box не установлен (запустите --install)")
 	}
-	if _, statErr := os.Stat(configPath()); statErr != nil {
-		return fmt.Errorf("--start: конфиг %s не найден", configPath())
+
+	// Гарантируем актуальность config.json: ручная подмена /opt/sbin/sign-craze
+	// в обход --update-core может оставить на диске устаревший конфиг (например,
+	// со старым TUN MTU). ensureConfigFresh — fast-path: если рендер совпадает
+	// с диском, пропускаем `sing-box check`, иначе регенерируем с валидацией.
+	if regenErr := ensureConfigFresh(ctx, st); regenErr != nil {
+		return fmt.Errorf("--start: regenerate config: %w", regenErr)
 	}
 
 	// В режиме ModePolicy: гарантировать наличие IP-policy в Keenetic RCI

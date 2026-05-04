@@ -1,13 +1,18 @@
 package cli
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
 
 	"github.com/kittylabassistant/sign-craze/internal/dpi"
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/firewall"
+	"github.com/kittylabassistant/sign-craze/internal/log"
 	"github.com/kittylabassistant/sign-craze/internal/service"
 	"github.com/kittylabassistant/sign-craze/internal/singbox"
 	"github.com/kittylabassistant/sign-craze/internal/state"
@@ -60,14 +65,50 @@ func configPath() string {
 	return filepath.Join(singbox.DefaultConfigDir, "config.json")
 }
 
-// regenerateConfig генерирует config.json sing-box из state и атомарно записывает.
-// Если бинарь sing-box установлен, выполняет валидацию (sing-box check -c) перед записью.
-func regenerateConfig(ctx context.Context, s *state.State) error {
+// configParamsFromState собирает singbox.ConfigParams на основе state.
+// Используется регенерацией и сравнением "ожидаемого" конфига с дисковым.
+func configParamsFromState(s *state.State) singbox.ConfigParams {
 	params := singbox.DefaultConfigParams()
 	params.Mode = s.Mode
 	params.Outbounds = s.Outbounds
 	if len(s.Outbounds) > 0 {
 		params.DefaultOutboundTag = s.Outbounds[0].Tag
+	}
+	return params
+}
+
+// regenerateConfig генерирует config.json sing-box из state и атомарно записывает.
+// Если бинарь sing-box установлен, выполняет валидацию (sing-box check -c) перед записью.
+func regenerateConfig(ctx context.Context, s *state.State) error {
+	params := configParamsFromState(s)
+	return singbox.WriteConfig(ctx, newRunner(), params, singbox.DefaultBinPath, configPath())
+}
+
+// ensureConfigFresh регенерирует config.json только если рендер из текущих
+// дефолтов и state расходится с дисковым содержимым. Это нужно после ручной
+// замены /opt/sbin/sign-craze в обход --update-core: дефолты в коде (например,
+// TUN MTU) могли измениться, а на диске лежит конфиг от старого бинаря.
+//
+// На fast-path (конфиг идентичен) пропускаем `sing-box check -c`, который
+// на slow MIPS softfloat занимает десятки секунд и удлинял бы каждый --start
+// и init.d boot.
+func ensureConfigFresh(ctx context.Context, s *state.State) error {
+	params := configParamsFromState(s)
+	want, err := singbox.Render(params)
+	if err != nil {
+		return fmt.Errorf("render: %w", err)
+	}
+	got, err := os.ReadFile(configPath())
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		// Файла нет — пишем напрямую.
+	case err != nil:
+		return fmt.Errorf("чтение текущего config.json: %w", err)
+	default:
+		if bytes.Equal(bytes.TrimSpace(got), bytes.TrimSpace(want)) {
+			return nil
+		}
+		log.L().Info("config.json устарел, регенерация")
 	}
 	return singbox.WriteConfig(ctx, newRunner(), params, singbox.DefaultBinPath, configPath())
 }
