@@ -13,6 +13,7 @@ import (
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/firewall"
 	"github.com/kittylabassistant/sign-craze/internal/log"
+	"github.com/kittylabassistant/sign-craze/internal/routing"
 	"github.com/kittylabassistant/sign-craze/internal/service"
 	"github.com/kittylabassistant/sign-craze/internal/singbox"
 	"github.com/kittylabassistant/sign-craze/internal/state"
@@ -67,12 +68,26 @@ func configPath() string {
 
 // configParamsFromState собирает singbox.ConfigParams на основе state.
 // Используется регенерацией и сравнением "ожидаемого" конфига с дисковым.
+//
+// Если /opt/etc/sign-craze/routing.json существует — он подгружается в
+// params.RoutingConfig и имеет приоритет над legacy outbounds/routing
+// (см. internal/singbox/render_rules.go: buildEffectiveModel).
 func configParamsFromState(s *state.State) singbox.ConfigParams {
 	params := singbox.DefaultConfigParams()
 	params.Mode = s.Mode
 	params.Outbounds = s.Outbounds
 	if len(s.Outbounds) > 0 {
 		params.DefaultOutboundTag = s.Outbounds[0].Tag
+	}
+	if rc, err := routing.Load(routing.DefaultPath); err != nil {
+		log.L().Warn("routing.json: ошибка загрузки, используется legacy",
+			"path", routing.DefaultPath, "err", err)
+	} else if rc != nil {
+		params.RoutingConfig = rc
+		// Если в RoutingConfig есть outbounds — DefaultOutboundTag берётся из первого.
+		if len(rc.Outbounds) > 0 && params.DefaultOutboundTag == "" {
+			params.DefaultOutboundTag = rc.Outbounds[0].Tag
+		}
 	}
 	return params
 }

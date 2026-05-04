@@ -14,6 +14,9 @@ import (
 // DefaultPolicyName — имя IP-policy в Keenetic RCI для режима ModePolicy.
 const DefaultPolicyName = "sign-craze"
 
+// DefaultRoutingUIPort — порт веб-интерфейса редактора routing по умолчанию.
+const DefaultRoutingUIPort uint16 = 9092
+
 // DefaultPath — стандартное расположение state.json.
 const DefaultPath = "/opt/etc/sign-craze/state.json"
 
@@ -59,6 +62,11 @@ type State struct {
 	PolicyMark   uint32 `json:"policy_mark,omitempty"`   // присвоенный Keenetic'ом fwmark (cache)
 	PolicyTable  int    `json:"policy_table,omitempty"`  // routing table policy в Keenetic (cache, IPv4)
 	WANInterface string `json:"wan_interface,omitempty"` // Keenetic-имя WAN, e.g. GigabitEthernet1
+
+	// Поля UI-редактора routing-конфигурации.
+	RoutingUIEnabled bool   `json:"routing_ui_enabled,omitempty"` // включён ли веб-редактор routing
+	RoutingUIPort    uint16 `json:"routing_ui_port,omitempty"`    // порт веб-редактора routing
+	RoutingUIBind    string `json:"routing_ui_bind,omitempty"`    // bind-адрес веб-редактора routing
 }
 
 // Default возвращает state с настройками по умолчанию: режим policy, stub direct outbound,
@@ -73,9 +81,12 @@ func Default() *State {
 		},
 		Ports:      []uint16{},
 		Excludes:   excludes,
-		AdminPorts: append([]uint16(nil), DefaultAdminPorts...),
-		AdminIPs:   []string{},
-		PolicyName: DefaultPolicyName,
+		AdminPorts:       append([]uint16(nil), DefaultAdminPorts...),
+		AdminIPs:         []string{},
+		PolicyName:       DefaultPolicyName,
+		RoutingUIEnabled: true,
+		RoutingUIPort:    DefaultRoutingUIPort,
+		RoutingUIBind:    "0.0.0.0",
 	}
 }
 
@@ -95,6 +106,7 @@ func Load(path string) (*State, error) {
 	}
 	migrateLegacyMode(&s)
 	migrateAdminPort(&s)
+	migrateRoutingUI(&s)
 	if s.Outbounds == nil {
 		s.Outbounds = []types.Outbound{}
 	}
@@ -127,6 +139,17 @@ func migrateLegacyMode(s *State) {
 			"hint", "для возврата старого поведения: sign-craze --mode full --restart",
 		)
 		s.Mode = newMode
+	}
+}
+
+// migrateRoutingUI заполняет RoutingUI-поля для старых state.json, где их не было.
+func migrateRoutingUI(s *State) {
+	if s.RoutingUIPort == 0 {
+		s.RoutingUIPort = DefaultRoutingUIPort
+		s.RoutingUIEnabled = true
+	}
+	if s.RoutingUIBind == "" {
+		s.RoutingUIBind = "0.0.0.0"
 	}
 }
 

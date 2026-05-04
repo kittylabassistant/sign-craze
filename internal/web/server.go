@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -31,12 +32,30 @@ type ServerConfig struct {
 	Config    ConfigRW
 	Ports     PortsManager
 	Excludes  ExcludesManager
+
+	// RoutingUIEnabled включает третий http.Server для UI-редактора routing.
+	RoutingUIEnabled bool
+	// RoutingUIPort — желаемый стартовый порт (default 9092). Если занят,
+	// FindFreePort пробует port+1, port+2, ..., до RoutingUIMaxAttempts раз.
+	RoutingUIPort uint16
+	// RoutingUIBind — bind-адрес. Default "0.0.0.0".
+	RoutingUIBind string
+	// RoutingUIMaxAttempts — сколько портов пробовать. Default 10.
+	RoutingUIMaxAttempts int
+	// RoutingUI — зависимости routing UI (paths, sing-box bin, регенератор).
+	// Может быть nil — handlers вернут 503 для зависимых endpoints.
+	RoutingUI *RoutingUIDeps
 }
 
-// Server — встроенный HTTP-сервер (порты 9090 и 9091).
+// Server — встроенный HTTP-сервер (порты 9090, 9091, опционально 9092 для routing UI).
 type Server struct {
 	clash *http.Server
 	admin *http.Server
+	// routingUI — третий сервер для UI-редактора routing. nil если RoutingUIEnabled=false.
+	routingUI         *http.Server
+	routingUIPort     uint16       // фактически выбранный порт (после FindFreePort)
+	routingUIListener net.Listener // зарезервированный listener; передаётся в routingUI.Serve
+
 	creds []byte
 	cfg   ServerConfig
 }
@@ -77,12 +96,50 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		MaxHeaderBytes: 8 * 1024,
 	}
 
+	if cfg.RoutingUIEnabled {
+		bind := cfg.RoutingUIBind
+		if bind == "" {
+			bind = "0.0.0.0"
+		}
+		port := cfg.RoutingUIPort
+		if port == 0 {
+			port = 9092
+		}
+		max := cfg.RoutingUIMaxAttempts
+		if max <= 0 {
+			max = 10
+		}
+		chosen, listener, err := FindFreePort(bind, port, max)
+		if err != nil {
+			return nil, fmt.Errorf("routing UI listener: %w", err)
+		}
+		s.routingUIListener = listener
+		s.routingUIPort = chosen
+
+		routingMux := http.NewServeMux()
+		registerRoutingUIRoutes(routingMux, s)
+		s.routingUI = &http.Server{
+			Handler: recoverMiddleware(securityHeaders(s.basicAuth(
+				originGuard(routingMux),
+			))),
+			ReadTimeout:    15 * time.Second,
+			WriteTimeout:   30 * time.Second,
+			IdleTimeout:    60 * time.Second,
+			MaxHeaderBytes: 8 * 1024,
+		}
+	}
+
 	return s, nil
 }
 
-// Start запускает оба листенера. Блокируется до отмены ctx или критической ошибки.
+// RoutingUIPort возвращает фактически выбранный порт routing UI (после FindFreePort).
+// 0 если RoutingUIEnabled=false.
+func (s *Server) RoutingUIPort() uint16 { return s.routingUIPort }
+
+// Start запускает все листенеры (clash + admin + опционально routing UI).
+// Блокируется до отмены ctx или критической ошибки.
 func (s *Server) Start(ctx context.Context) error {
-	errCh := make(chan error, 2)
+	errCh := make(chan error, 3)
 
 	go func() {
 		slog.Info("web: clash API запущен", "addr", s.clash.Addr)
@@ -98,6 +155,15 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 	}()
 
+	if s.routingUI != nil && s.routingUIListener != nil {
+		go func() {
+			slog.Info("web: routing UI запущен", "addr", s.routingUIListener.Addr().String())
+			if err := s.routingUI.Serve(s.routingUIListener); err != nil && err != http.ErrServerClosed {
+				errCh <- fmt.Errorf("routing UI listener: %w", err)
+			}
+		}()
+	}
+
 	select {
 	case <-ctx.Done():
 		return s.Stop(context.Background())
@@ -109,7 +175,7 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 }
 
-// Stop выполняет graceful shutdown обоих серверов (таймаут 5 с).
+// Stop выполняет graceful shutdown всех серверов (таймаут 5 с).
 func (s *Server) Stop(ctx context.Context) error {
 	shutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -120,6 +186,11 @@ func (s *Server) Stop(ctx context.Context) error {
 	}
 	if err := s.admin.Shutdown(shutCtx); err != nil {
 		errs = append(errs, fmt.Errorf("admin: %w", err))
+	}
+	if s.routingUI != nil {
+		if err := s.routingUI.Shutdown(shutCtx); err != nil {
+			errs = append(errs, fmt.Errorf("routing UI: %w", err))
+		}
 	}
 	if len(errs) != 0 {
 		return fmt.Errorf("web stop: %v", errs)

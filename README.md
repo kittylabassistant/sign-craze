@@ -31,7 +31,7 @@ Go-утилита для управления межсетевым экрано�
 - Три режима маршрутизации: `proxy` (tproxy), `dpi` (nfqws2 + NFQUEUE), `hybrid`
 - Атомарное применение правил iptables/ipset с гарантированным откатом
 - Гео-фильтрация через SRS rule-set (выборочная загрузка по SHA256)
-- Встроенный Web UI: Zashboard + admin API на портах `9090`/`9091`
+- Встроенный Web UI: Zashboard `:9090`, admin API `:9091`, Routing Editor `:9092` (vanilla Preact + htm SPA)
 - Управление портами и исключениями без перезапуска
 - Резервное копирование и восстановление конфигурации
 - Диагностический режим (`--diag`)
@@ -100,7 +100,7 @@ sign-craze --exclude-add <ip>   Добавить IP/CIDR в исключения
 sign-craze --exclude-del <ip>   Удалить из исключений
 sign-craze --exclude-list       Показать исключения
 
-sign-craze --ui on|off          Включить / выключить Web UI (порты 9090/9091)
+sign-craze --ui on|off          Включить / выключить Web UI (порты 9090/9091/9092)
 sign-craze --backup  / -b       Создать резервную копию конфигурации
 sign-craze --restore <путь>     Восстановить из резервной копии
 sign-craze --diag    / -D       Диагностика (PASS/WARN/FAIL по каждому пункту)

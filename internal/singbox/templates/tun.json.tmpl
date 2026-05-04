@@ -5,6 +5,11 @@
     "timestamp": true
   },
   "inbounds": [
+{{- if .Inbounds }}
+{{- range $i, $in := .Inbounds }}{{ if $i }},{{ end }}
+    {{ jsonMarshal $in }}
+{{- end }}
+{{- else }}
     {
       "type": "tun",
       "tag": "tun-in",
@@ -14,11 +19,12 @@
       "auto_route": false,
       "stack": "gvisor"
     }
+{{- end }}
   ],
   "outbounds": [
-{{ range $i, $o := .Outbounds }}{{ if $i }},{{ end }}
+{{- range $i, $o := .Outbounds }}{{ if $i }},{{ end }}
     {{ jsonMarshal $o }}
-{{ end }},
+{{- end }}{{ if .Outbounds }},{{ end }}
     {
       "type": "direct",
       "tag": "direct"
@@ -27,31 +33,15 @@
   "route": {
     "default_domain_resolver": "local",
     "rules": [
-      {
-        "inbound": "tun-in",
-        "action": "resolve",
-        "strategy": "prefer_ipv4"
-      },
-      {
-        "inbound": "tun-in",
-        "action": "sniff"
-      },
-      {
-        "inbound": "tun-in",
-        "protocol": "dns",
-        "action": "hijack-dns"
-      }{{ if .Routing.GeoSiteDirect }},
-      {
-        "rule_set": {{ jsonMarshal .Routing.GeoSiteDirect }},
-        "outbound": "direct"
-      }{{ end }}{{ if .Routing.GeoSiteProxy }},
-      {
-        "rule_set": {{ jsonMarshal .Routing.GeoSiteProxy }},
-        "outbound": {{ jsonMarshal .DefaultOutboundTag }}
-      }{{ end }}
+{{- range $i, $r := .BaseRules }}{{ if $i }},{{ end }}
+      {{ $r }}
+{{- end }}
+{{- range $i, $r := .UserRules }},
+      {{ $r }}
+{{- end }}
     ],
     "rule_set": {{ jsonMarshal .RuleSets }},
-    "final": {{ if .Routing.FinalOutbound }}{{ jsonMarshal .Routing.FinalOutbound }}{{ else }}{{ jsonMarshal .DefaultOutboundTag }}{{ end }},
+    "final": {{ jsonMarshal .Final }},
     "auto_detect_interface": true
   },
   "dns": {
@@ -60,19 +50,21 @@
         "type": "tls",
         "tag": "remote",
         "server": "8.8.8.8",
-        "detour": {{ jsonMarshal .DefaultOutboundTag }}
+        "detour": {{ jsonMarshal .Final }}
       },
       {
         "type": "local",
         "tag": "local"
       }
     ],
-    "rules": [{{ if .Routing.GeoSiteDirect }}
+    "rules": [
+{{- if .DNSDirectRuleSets }}
       {
-        "rule_set": {{ jsonMarshal .Routing.GeoSiteDirect }},
+        "rule_set": {{ jsonMarshal .DNSDirectRuleSets }},
         "server": "local"
       }
-    {{ end }}],
+{{- end }}
+    ],
     "final": "remote"
   }
 }

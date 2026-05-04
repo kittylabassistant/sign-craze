@@ -262,6 +262,198 @@ func TestBuildRuleSets_NoDuplicates(t *testing.T) {
 // checkGolden сравнивает результат Render с golden-файлом в testdata/.
 // Если файл отсутствует — создаёт его и засчитывает тест как пройденный.
 // При флаге -update принудительно перезаписывает golden-файл.
+func TestRender_RoutingConfig_Basic(t *testing.T) {
+	p := DefaultConfigParams()
+	p.RoutingConfig = &types.RoutingConfig{
+		Version: 1,
+		Outbounds: []types.Outbound{
+			{Tag: "vless-out", Type: "vless", Server: "1.1.1.1", Port: 443,
+				Settings: map[string]any{"uuid": "00000000-0000-0000-0000-000000000000"}},
+		},
+		Rules: []types.RouteRule{
+			{Network: "udp", Port: []uint16{443}, Outbound: "vless-out"},
+		},
+		Final: "vless-out",
+	}
+	p.DefaultOutboundTag = "vless-out"
+	out, err := Render(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(out, &parsed); err != nil {
+		t.Fatal(err)
+	}
+
+	// outbound vless-out + direct присутствуют
+	outbounds := parsed["outbounds"].([]any)
+	tags := map[string]bool{}
+	for _, ob := range outbounds {
+		tags[ob.(map[string]any)["tag"].(string)] = true
+	}
+	if !tags["vless-out"] {
+		t.Error("outbounds: отсутствует vless-out")
+	}
+	if !tags["direct"] {
+		t.Error("outbounds: отсутствует direct")
+	}
+
+	// route.rules содержит правило с port 443
+	rules := parsed["route"].(map[string]any)["rules"].([]any)
+	found443 := false
+	for _, r := range rules {
+		m := r.(map[string]any)
+		if ports, ok := m["port"].([]any); ok {
+			for _, pt := range ports {
+				if pt.(float64) == 443 {
+					found443 = true
+				}
+			}
+		}
+	}
+	if !found443 {
+		t.Error("route.rules: не найдено правило с port=443")
+	}
+
+	// route.final == "vless-out"
+	if final := parsed["route"].(map[string]any)["final"]; final != "vless-out" {
+		t.Errorf("route.final = %v, ожидалось vless-out", final)
+	}
+}
+
+func TestRender_RoutingConfig_FinalDirect(t *testing.T) {
+	p := DefaultConfigParams()
+	p.RoutingConfig = &types.RoutingConfig{
+		Version: 1,
+		Final:   "direct",
+	}
+	p.DefaultOutboundTag = "direct"
+	out, err := Render(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(out, &parsed); err != nil {
+		t.Fatal(err)
+	}
+	if final := parsed["route"].(map[string]any)["final"]; final != "direct" {
+		t.Errorf("route.final = %v, ожидалось direct", final)
+	}
+}
+
+func TestRender_RoutingConfig_CustomInbounds(t *testing.T) {
+	p := DefaultConfigParams()
+	p.RoutingConfig = &types.RoutingConfig{
+		Version: 1,
+		Inbounds: []types.Inbound{
+			{Tag: "tproxy-in", Type: "tproxy", Settings: map[string]any{"listen": "::", "listen_port": 7895}},
+		},
+		Outbounds: []types.Outbound{
+			{Tag: "out", Type: "direct"},
+		},
+		Final: "out",
+	}
+	p.DefaultOutboundTag = "out"
+	out, err := Render(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(out, &parsed); err != nil {
+		t.Fatal(err)
+	}
+
+	// inbounds содержит tproxy-in с listen_port на top-level
+	inbounds := parsed["inbounds"].([]any)
+	if len(inbounds) == 0 {
+		t.Fatal("inbounds пуст")
+	}
+	ib := inbounds[0].(map[string]any)
+	if ib["tag"] != "tproxy-in" {
+		t.Errorf("inbounds[0].tag = %v, ожидалось tproxy-in", ib["tag"])
+	}
+	if ib["type"] != "tproxy" {
+		t.Errorf("inbounds[0].type = %v, ожидалось tproxy", ib["type"])
+	}
+	if port, ok := ib["listen_port"].(float64); !ok || int(port) != 7895 {
+		t.Errorf("inbounds[0].listen_port = %v, ожидалось 7895", ib["listen_port"])
+	}
+}
+
+func TestRender_RoutingConfig_FullExample(t *testing.T) {
+	p := DefaultConfigParams()
+	p.RoutingConfig = &types.RoutingConfig{
+		Version: 1,
+		Outbounds: []types.Outbound{
+			{Tag: "vless-reality", Type: "vless", Server: "example.com", Port: 443,
+				Settings: map[string]any{"uuid": "00000000-0000-0000-0000-000000000000"}},
+		},
+		Rules: []types.RouteRule{
+			{Network: "udp", Port: []uint16{135, 137, 138, 139}, Action: "block"},
+			{RuleSet: []string{"geosite-category-ads-all"}, Action: "block"},
+			{Network: "udp", Port: []uint16{443}, RuleSet: []string{"geoip-ru"}, Invert: true, Action: "block"},
+			{Network: "udp", PortRange: []string{"50000:50030"}, Outbound: "vless-reality"},
+			{RuleSet: []string{"geosite-zkeen-domains", "geosite-zkeen-other", "geosite-zkeen-youtube"}, Outbound: "vless-reality"},
+			{IPCIDR: []string{"138.128.136.0/21", "162.158.0.0/15", "172.64.0.0/13"}, RuleSet: []string{"geoip-discord"}, Outbound: "vless-reality"},
+			{Protocol: []string{"bittorrent"}, Outbound: "direct"},
+		},
+		RuleSets: []types.RuleSetRef{
+			{Tag: "geoip-ru", Type: "remote", Format: "binary",
+				URL:            "https://github.com/SagerNet/sing-geoip/releases/latest/download/geoip-ru.srs",
+				DownloadDetour: "direct"},
+			{Tag: "geoip-discord", Type: "remote", Format: "binary",
+				URL:            "https://github.com/SagerNet/sing-geoip/releases/latest/download/geoip-discord.srs",
+				DownloadDetour: "direct"},
+			{Tag: "geosite-category-ads-all", Type: "remote", Format: "binary",
+				URL:            "https://github.com/SagerNet/sing-geosite/releases/latest/download/geosite-category-ads-all.srs",
+				DownloadDetour: "direct"},
+			{Tag: "geosite-zkeen-domains", Type: "remote", Format: "binary",
+				URL:            "https://github.com/jameszeroX/zkeen-domains/releases/latest/download/zkeen-domains.srs",
+				DownloadDetour: "direct"},
+			{Tag: "geosite-zkeen-other", Type: "remote", Format: "binary",
+				URL:            "https://github.com/jameszeroX/zkeen-domains/releases/latest/download/zkeen-other.srs",
+				DownloadDetour: "direct"},
+			{Tag: "geosite-zkeen-youtube", Type: "remote", Format: "binary",
+				URL:            "https://github.com/jameszeroX/zkeen-domains/releases/latest/download/zkeen-youtube.srs",
+				DownloadDetour: "direct"},
+		},
+		Final: "direct",
+	}
+	p.DefaultOutboundTag = "vless-reality"
+	out, err := Render(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkGoldenBytes(t, "routing_full", out)
+}
+
+// checkGolden принимает уже отрендеренные байты (не ConfigParams).
+// Перегрузка — берёт any, определяет тип.
+func checkGoldenBytes(t *testing.T, name string, data []byte) {
+	t.Helper()
+	data = prettyJSON(t, data)
+
+	goldenPath := filepath.Join("testdata", name)
+	if *update {
+		writeGolden(t, goldenPath, data)
+		t.Logf("golden-файл обновлён: %s", goldenPath)
+		return
+	}
+	expected, err := os.ReadFile(goldenPath)
+	if os.IsNotExist(err) {
+		writeGolden(t, goldenPath, data)
+		t.Logf("golden-файл создан: %s", goldenPath)
+		return
+	}
+	if err != nil {
+		t.Fatalf("чтение golden-файла: %v", err)
+	}
+	if string(data) != string(expected) {
+		t.Errorf("вывод не совпадает с golden-файлом %s\nполучено:\n%s\nожидалось:\n%s",
+			name, data, expected)
+	}
+}
+
 func checkGolden(t *testing.T, name string, p ConfigParams) {
 	t.Helper()
 

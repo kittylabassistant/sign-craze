@@ -6,9 +6,11 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/kittylabassistant/sign-craze/internal/routing"
 	"github.com/kittylabassistant/sign-craze/internal/singbox"
 	"github.com/kittylabassistant/sign-craze/internal/state"
 	"github.com/kittylabassistant/sign-craze/internal/web"
+	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
 func init() {
@@ -55,13 +57,60 @@ func startUI(ctx context.Context) error {
 	portsMgr := state.NewPortsManager(state.DefaultPath)
 	excludesMgr := state.NewExcludesManager(state.DefaultPath)
 
-	s, err := web.NewServer(web.ServerConfig{
+	// RoutingUI deps — рендерер использует singbox.Render с подсунутым RoutingConfig,
+	// OnApply триггерит regenerateConfig для немедленного применения.
+	st, _ := state.Load(state.DefaultPath)
+
+	routingDeps := &web.RoutingUIDeps{
+		RoutingPath: routing.DefaultPath,
+		DefaultOutboundTag: func() string {
+			if st != nil && len(st.Outbounds) > 0 {
+				return st.Outbounds[0].Tag
+			}
+			return "direct"
+		},
+		Renderer: func(ctx context.Context, cfg *types.RoutingConfig) ([]byte, error) {
+			params := singbox.DefaultConfigParams()
+			if st != nil {
+				params.Mode = st.Mode
+				params.Outbounds = st.Outbounds
+				if len(st.Outbounds) > 0 {
+					params.DefaultOutboundTag = st.Outbounds[0].Tag
+				}
+			}
+			params.RoutingConfig = cfg
+			if params.DefaultOutboundTag == "" && len(cfg.Outbounds) > 0 {
+				params.DefaultOutboundTag = cfg.Outbounds[0].Tag
+			}
+			return singbox.Render(params)
+		},
+		OnApply: func(ctx context.Context) error {
+			fresh, err := state.Load(state.DefaultPath)
+			if err != nil {
+				return err
+			}
+			return regenerateConfig(ctx, fresh)
+		},
+	}
+
+	cfg := web.ServerConfig{
 		CredsPath: filepath.Join(singbox.DefaultConfigDir, "admin.creds"),
 		Status:    statusReader,
 		Config:    configRW,
 		Ports:     portsMgr,
 		Excludes:  excludesMgr,
-	})
+		RoutingUI: routingDeps,
+	}
+	if st != nil {
+		cfg.RoutingUIEnabled = st.RoutingUIEnabled
+		cfg.RoutingUIPort = st.RoutingUIPort
+		cfg.RoutingUIBind = st.RoutingUIBind
+	} else {
+		cfg.RoutingUIEnabled = true
+		cfg.RoutingUIPort = state.DefaultRoutingUIPort
+	}
+
+	s, err := web.NewServer(cfg)
 	if err != nil {
 		return fmt.Errorf("--ui on: %w", err)
 	}

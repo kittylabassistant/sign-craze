@@ -64,15 +64,11 @@ type ConfigParams struct {
 	DefaultOutboundTag string // тег первого outbound, используемый как final
 	// RuleSets — список дескрипторов rule_set для секции route.rule_set.
 	// Генерируется автоматически из Routing.GeoSiteProxy + GeoSiteDirect.
-	RuleSets []ruleSetRef
-}
+	RuleSets []types.RuleSetRef
 
-type ruleSetRef struct {
-	Tag            string `json:"tag"`
-	Type           string `json:"type"`
-	Format         string `json:"format"`
-	URL            string `json:"url"`
-	DownloadDetour string `json:"download_detour"`
+	// RoutingConfig — пользовательская конфигурация маршрутизации (новый путь).
+	// Если задан — переопределяет Routing/Outbounds (legacy путь).
+	RoutingConfig *types.RoutingConfig
 }
 
 // DefaultConfigParams возвращает ConfigParams с разумными значениями по умолчанию.
@@ -89,6 +85,7 @@ func DefaultConfigParams() ConfigParams {
 // Render генерирует содержимое config.json из шаблона и параметров.
 // Возвращает валидный JSON или ошибку.
 func Render(p ConfigParams) ([]byte, error) {
+	// defaults TUN
 	if p.TUNInterfaceName == "" {
 		p.TUNInterfaceName = DefaultTUNInterfaceName
 	}
@@ -104,15 +101,28 @@ func Render(p ConfigParams) ([]byte, error) {
 	if !validLogLevels[p.LogLevel] {
 		return nil, fmt.Errorf("singbox config: некорректный LogLevel %q (допустимо: trace/debug/info/warn/error/fatal/panic)", p.LogLevel)
 	}
-	if p.DefaultOutboundTag == "" && len(p.Outbounds) > 0 {
-		p.DefaultOutboundTag = p.Outbounds[0].Tag
-	}
-	for _, o := range p.Outbounds {
-		if err := o.Validate(); err != nil {
-			return nil, fmt.Errorf("singbox config: %w", err)
+
+	if p.RoutingConfig != nil {
+		// новый путь: RoutingConfig обязан пройти Validate
+		if err := p.RoutingConfig.Validate(); err != nil {
+			return nil, fmt.Errorf("singbox config: RoutingConfig невалиден: %w", err)
+		}
+	} else {
+		// legacy: валидация Outbounds + DefaultOutboundTag fallback
+		if p.DefaultOutboundTag == "" && len(p.Outbounds) > 0 {
+			p.DefaultOutboundTag = p.Outbounds[0].Tag
+		}
+		for _, o := range p.Outbounds {
+			if err := o.Validate(); err != nil {
+				return nil, fmt.Errorf("singbox config: %w", err)
+			}
 		}
 	}
-	p.RuleSets = buildRuleSets(p.Routing)
+
+	model, err := buildEffectiveModel(p)
+	if err != nil {
+		return nil, fmt.Errorf("singbox config: построение модели: %w", err)
+	}
 
 	funcMap := template.FuncMap{
 		"jsonMarshal": func(v any) (string, error) {
@@ -130,7 +140,7 @@ func Render(p ConfigParams) ([]byte, error) {
 	}
 
 	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, p); err != nil {
+	if err := tmpl.Execute(&buf, model); err != nil {
 		return nil, fmt.Errorf("singbox config: рендеринг шаблона: %w", err)
 	}
 
@@ -164,22 +174,22 @@ func WriteConfig(ctx context.Context, runner exectx.Runner, p ConfigParams, binP
 	return nil
 }
 
-// buildRuleSets формирует список rule_set дескрипторов для секции route.
-func buildRuleSets(r types.RoutingRules) []ruleSetRef {
+// buildRuleSets формирует список rule_set дескрипторов для секции route (legacy путь).
+func buildRuleSets(r types.RoutingRules) []types.RuleSetRef {
 	const (
 		ruleSetBaseURL = "https://github.com/kittylabassistant/sign-craze-dat/releases/latest/download/"
 		detour         = "direct"
 	)
 
 	seen := map[string]bool{}
-	var refs []ruleSetRef
+	var refs []types.RuleSetRef
 
 	addCategory := func(cat string) {
 		if seen[cat] {
 			return
 		}
 		seen[cat] = true
-		refs = append(refs, ruleSetRef{
+		refs = append(refs, types.RuleSetRef{
 			Tag:            cat,
 			Type:           "remote",
 			Format:         "binary",

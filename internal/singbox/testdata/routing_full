@@ -1,0 +1,174 @@
+{
+  "dns": {
+    "final": "remote",
+    "rules": [],
+    "servers": [
+      {
+        "detour": "direct",
+        "server": "8.8.8.8",
+        "tag": "remote",
+        "type": "tls"
+      },
+      {
+        "tag": "local",
+        "type": "local"
+      }
+    ]
+  },
+  "inbounds": [
+    {
+      "address": [
+        "172.19.0.1/30",
+        "fdfe:dcba:9876::1/126"
+      ],
+      "auto_route": false,
+      "interface_name": "signbox-tun",
+      "mtu": 1280,
+      "stack": "gvisor",
+      "tag": "tun-in",
+      "type": "tun"
+    }
+  ],
+  "log": {
+    "level": "info",
+    "output": "/opt/var/log/sign-craze/sing-box.log",
+    "timestamp": true
+  },
+  "outbounds": [
+    {
+      "server": "example.com",
+      "server_port": 443,
+      "tag": "vless-reality",
+      "type": "vless",
+      "uuid": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "tag": "direct",
+      "type": "direct"
+    }
+  ],
+  "route": {
+    "auto_detect_interface": true,
+    "default_domain_resolver": "local",
+    "final": "direct",
+    "rule_set": [
+      {
+        "download_detour": "direct",
+        "format": "binary",
+        "tag": "geoip-ru",
+        "type": "remote",
+        "url": "https://github.com/SagerNet/sing-geoip/releases/latest/download/geoip-ru.srs"
+      },
+      {
+        "download_detour": "direct",
+        "format": "binary",
+        "tag": "geoip-discord",
+        "type": "remote",
+        "url": "https://github.com/SagerNet/sing-geoip/releases/latest/download/geoip-discord.srs"
+      },
+      {
+        "download_detour": "direct",
+        "format": "binary",
+        "tag": "geosite-category-ads-all",
+        "type": "remote",
+        "url": "https://github.com/SagerNet/sing-geosite/releases/latest/download/geosite-category-ads-all.srs"
+      },
+      {
+        "download_detour": "direct",
+        "format": "binary",
+        "tag": "geosite-zkeen-domains",
+        "type": "remote",
+        "url": "https://github.com/jameszeroX/zkeen-domains/releases/latest/download/zkeen-domains.srs"
+      },
+      {
+        "download_detour": "direct",
+        "format": "binary",
+        "tag": "geosite-zkeen-other",
+        "type": "remote",
+        "url": "https://github.com/jameszeroX/zkeen-domains/releases/latest/download/zkeen-other.srs"
+      },
+      {
+        "download_detour": "direct",
+        "format": "binary",
+        "tag": "geosite-zkeen-youtube",
+        "type": "remote",
+        "url": "https://github.com/jameszeroX/zkeen-domains/releases/latest/download/zkeen-youtube.srs"
+      }
+    ],
+    "rules": [
+      {
+        "action": "resolve",
+        "inbound": "tun-in",
+        "strategy": "prefer_ipv4"
+      },
+      {
+        "action": "sniff",
+        "inbound": "tun-in"
+      },
+      {
+        "action": "hijack-dns",
+        "inbound": "tun-in",
+        "protocol": "dns"
+      },
+      {
+        "action": "block",
+        "network": "udp",
+        "port": [
+          135,
+          137,
+          138,
+          139
+        ]
+      },
+      {
+        "action": "block",
+        "rule_set": [
+          "geosite-category-ads-all"
+        ]
+      },
+      {
+        "action": "block",
+        "invert": true,
+        "network": "udp",
+        "port": [
+          443
+        ],
+        "rule_set": [
+          "geoip-ru"
+        ]
+      },
+      {
+        "network": "udp",
+        "outbound": "vless-reality",
+        "port_range": [
+          "50000:50030"
+        ]
+      },
+      {
+        "outbound": "vless-reality",
+        "rule_set": [
+          "geosite-zkeen-domains",
+          "geosite-zkeen-other",
+          "geosite-zkeen-youtube"
+        ]
+      },
+      {
+        "ip_cidr": [
+          "138.128.136.0/21",
+          "162.158.0.0/15",
+          "172.64.0.0/13"
+        ],
+        "outbound": "vless-reality",
+        "rule_set": [
+          "geoip-discord"
+        ]
+      },
+      {
+        "outbound": "direct",
+        "protocol": [
+          "bittorrent"
+        ]
+      }
+    ]
+  }
+}
