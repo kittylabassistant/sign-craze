@@ -19,9 +19,16 @@ import (
 var tunTmpl string
 
 // Defaults для TUN-inbound.
+//
+// MTU 1280 (минимум IPv6) выбран чтобы избежать фрагментации на upstream-пути
+// VLESS+Reality+gRPC: outer-encapsulation добавляет ~60-100 байт TLS+gRPC+H2
+// overhead, а path MTU до homelabcloud.ru может быть меньше 1500 из-за
+// PPPoE/туннелей у провайдера. На mipsle softfloat + gvisor TCP stack крупные
+// сегменты (>1280) с PSH ломают handshake (server retransmits 544-byte
+// Finished не доставляются клиенту). 1280 даёт запас и для PMTUD-чёрных дыр.
 const (
 	DefaultTUNInterfaceName = "signbox-tun"
-	DefaultTUNMTU           = 1500
+	DefaultTUNMTU           = 1280
 )
 
 // DefaultTUNAddresses — IPv4 /30 + IPv6 /126 для transparent gateway внутри TUN.
@@ -50,7 +57,7 @@ type ConfigParams struct {
 	// firewall-слоем; sing-box auto_route отключён.
 	TUNInterfaceName string   // default "signbox-tun"
 	TUNAddresses     []string // default ["172.19.0.1/30", "fdfe:dcba:9876::1/126"]
-	TUNMTU           int      // default 1500
+	TUNMTU           int      // default 1280
 
 	Outbounds          []types.Outbound
 	Routing            types.RoutingRules
