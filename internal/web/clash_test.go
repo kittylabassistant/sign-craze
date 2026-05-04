@@ -34,6 +34,26 @@ func TestClashHello(t *testing.T) {
 	}
 }
 
+// TestClashRoot_браузер_получает_SPA — браузер с Accept: text/html на GET /
+// должен получать SPA-страницу Zashboard, а не Clash hello-JSON. Это
+// исправляет UX: ввод http://host:9090/ возвращал JSON вместо UI.
+func TestClashRoot_браузер_получает_SPA(t *testing.T) {
+	mux := newClashMux(t)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("ожидался 200, получен %d", rec.Code)
+	}
+	ct := rec.Header().Get("Content-Type")
+	// SPA отдаёт HTML; Clash hello-JSON это application/json.
+	if ct == "application/json; charset=utf-8" {
+		t.Errorf("браузер получил JSON вместо SPA: ct=%s", ct)
+	}
+}
+
 func TestClashVersion(t *testing.T) {
 	mux := newClashMux(t)
 	req := httptest.NewRequest(http.MethodGet, "/version", nil)

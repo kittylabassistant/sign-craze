@@ -2,7 +2,9 @@ package web
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -14,6 +16,7 @@ const maxRequestBody = 1 << 20 // 1 MB
 
 // registerAdminRoutes регистрирует admin REST маршруты на порту 9091.
 func registerAdminRoutes(mux *http.ServeMux, s *Server) {
+	mux.HandleFunc("GET /{$}", s.adminLanding)
 	mux.HandleFunc("GET /api/status", s.apiStatus)
 	mux.HandleFunc("GET /api/config", s.apiConfigGet)
 	mux.HandleFunc("POST /api/config", s.apiConfigPost)
@@ -23,6 +26,43 @@ func registerAdminRoutes(mux *http.ServeMux, s *Server) {
 	mux.HandleFunc("GET /api/excludes", s.apiExcludesList)
 	mux.HandleFunc("POST /api/excludes", s.apiExcludesAdd)
 	mux.HandleFunc("DELETE /api/excludes/{cidr}", s.apiExcludesDel)
+}
+
+// adminLanding отдаёт минимальную HTML-страницу на GET / порта 9091.
+// Сам admin REST не имеет UI; страница объясняет, где живут Zashboard (:9090)
+// и Routing Editor (:9092), а также показывает доступные API-эндпоинты.
+func (s *Server) adminLanding(w http.ResponseWriter, r *http.Request) {
+	host, _, splitErr := net.SplitHostPort(r.Host)
+	if splitErr != nil {
+		host = r.Host
+	}
+	port := s.routingUIPort
+	if port == 0 {
+		port = 9092
+	}
+	page := fmt.Sprintf(`<!doctype html>
+<html lang="ru"><head><meta charset="utf-8">
+<title>sign-craze · admin REST API</title>
+<style>body{font-family:system-ui,sans-serif;max-width:48rem;margin:2rem auto;padding:0 1rem;line-height:1.5}code{background:#f3f3f3;padding:.1em .3em;border-radius:3px}a{color:#0366d6}</style>
+</head><body>
+<h1>sign-craze · admin REST API</h1>
+<p>Этот порт (<code>:9091</code>) — REST API без графического UI. Для управления используйте:</p>
+<ul>
+  <li><a href="http://%[1]s:9090/ui/">Zashboard</a> (Clash-совместимый дашборд) на <code>:9090</code></li>
+  <li><a href="http://%[1]s:%[2]d/">Routing Editor</a> на <code>:%[2]d</code></li>
+</ul>
+<h2>Endpoints на :9091</h2>
+<ul>
+  <li><code>GET /api/status</code> — состояние сервиса</li>
+  <li><code>GET /api/config</code>, <code>POST /api/config</code> — конфиг sing-box (raw JSON)</li>
+  <li><code>GET /api/ports</code>, <code>POST /api/ports</code>, <code>DELETE /api/ports/{port}</code> — proxy-порты</li>
+  <li><code>GET /api/excludes</code>, <code>POST /api/excludes</code>, <code>DELETE /api/excludes/{cidr}</code> — bypass-CIDR</li>
+</ul>
+</body></html>`, host, port)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if _, wErr := w.Write([]byte(page)); wErr != nil {
+		slog.Debug("web: запись admin landing", "err", wErr)
+	}
 }
 
 func (s *Server) apiStatus(w http.ResponseWriter, r *http.Request) {

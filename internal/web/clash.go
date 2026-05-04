@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/kittylabassistant/sign-craze/internal/version"
@@ -11,7 +12,8 @@ import (
 
 // registerClashRoutes регистрирует Clash-совместимые маршруты на порту 9090.
 func registerClashRoutes(mux *http.ServeMux, s *Server) {
-	mux.HandleFunc("GET /{$}", s.clashHello)
+	spa := newSPAHandler()
+	mux.Handle("GET /{$}", s.clashRoot(spa))
 	mux.HandleFunc("GET /version", s.clashVersion)
 	mux.HandleFunc("GET /configs", s.clashConfigs)
 	mux.HandleFunc("GET /proxies", s.clashProxies)
@@ -20,7 +22,21 @@ func registerClashRoutes(mux *http.ServeMux, s *Server) {
 	mux.HandleFunc("GET /logs", s.clashLogsWS)
 
 	// SPA fallback: все незарегистрированные пути → встроенный Zashboard
-	mux.Handle("/", newSPAHandler())
+	mux.Handle("/", spa)
+}
+
+// clashRoot отдаёт SPA-страницу Zashboard, если клиент — браузер
+// (Accept содержит text/html), иначе классический Clash hello-JSON.
+// Это устраняет UX-проблему: ввод http://host:9090/ в браузере раньше
+// возвращал {"hello":"clash"} JSON вместо UI.
+func (s *Server) clashRoot(spa http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.Header.Get("Accept"), "text/html") {
+			spa.ServeHTTP(w, r)
+			return
+		}
+		s.clashHello(w, r)
+	})
 }
 
 func (s *Server) clashHello(w http.ResponseWriter, r *http.Request) {

@@ -11,7 +11,11 @@ import (
 // assets содержит встроенный Zashboard (git submodule).
 // Для инициализации submodule: git submodule update --init internal/web/assets/zashboard
 //
-//go:embed assets
+// ВАЖНО: префикс all: обязателен, иначе Go embed по умолчанию ИСКЛЮЧАЕТ файлы
+// и каталоги, начинающиеся с "_" или ".", — а Zashboard содержит каталоги
+// _nuxt/ и _fonts/ (Nuxt build), без которых страница ловит 404 на CSS/JS.
+//
+//go:embed all:assets
 var assets embed.FS
 
 // zashboardFS возвращает файловую систему с Zashboard.
