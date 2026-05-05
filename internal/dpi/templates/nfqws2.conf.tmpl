@@ -3,6 +3,7 @@
 ISP_INTERFACE={{ .ISPInterface }}
 NFQWS_QUEUE_NUM={{ .QueueNum }}
 POLICY_NAME={{ .PolicyName }}
-NFQWS_ARGS="{{ .Args }}"
-NFQWS_ARGS_QUIC="{{ .ArgsQUIC }}"
-NFQWS_ARGS_UDP="{{ .ArgsUDP }}"
+NFQWS_HOSTLIST="{{ if .HostlistPath }}{{ .HostlistPath }}{{ end }}"
+NFQWS_ARGS="{{ .Args }}{{ if .HostlistPath }} --hostlist={{ .HostlistPath }}{{ end }}"
+NFQWS_ARGS_QUIC="{{ .ArgsQUIC }}{{ if .HostlistPath }} --hostlist={{ .HostlistPath }}{{ end }}"
+NFQWS_ARGS_UDP="{{ .ArgsUDP }}{{ if .HostlistPath }} --hostlist={{ .HostlistPath }}{{ end }}"

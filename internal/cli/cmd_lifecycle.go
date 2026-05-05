@@ -109,6 +109,12 @@ func doStart(ctx context.Context) error {
 
 	// Опциональный старт nfqws2.
 	if st.DPIEnabled {
+		// Регенерация nfqws2.conf + hostlist на каждом старте: гарантирует
+		// что конфиг отражает актуальный st.DPITargets даже если юзер изменил
+		// targets без --restart, или конфиг был удалён вручную.
+		if regenErr := ensureDPIConfigFresh(ctx, st); regenErr != nil {
+			log.L().Warn("--start: регенерация nfqws2.conf не удалась", "err", regenErr)
+		}
 		dpiLC := newDPILifecycle()
 		if dpiErr := dpiLC.Start(ctx); dpiErr != nil {
 			log.L().Warn("--start: nfqws2 не стартовал, продолжаем без DPI", "err", dpiErr)

@@ -26,6 +26,10 @@ func registerAdminRoutes(mux *http.ServeMux, s *Server) {
 	mux.HandleFunc("GET /api/excludes", s.apiExcludesList)
 	mux.HandleFunc("POST /api/excludes", s.apiExcludesAdd)
 	mux.HandleFunc("DELETE /api/excludes/{cidr}", s.apiExcludesDel)
+	mux.HandleFunc("GET /api/dpi/targets", s.apiDPITargetsGet)
+	mux.HandleFunc("PUT /api/dpi/targets", s.apiDPITargetsPut)
+	mux.HandleFunc("GET /api/dpi/presets", s.apiDPIPresetsList)
+	mux.HandleFunc("POST /api/dpi/presets/{name}/apply", s.apiDPIPresetApply)
 }
 
 // adminLanding отдаёт минимальную HTML-страницу на GET / порта 9091.
@@ -57,6 +61,8 @@ func (s *Server) adminLanding(w http.ResponseWriter, r *http.Request) {
   <li><code>GET /api/config</code>, <code>POST /api/config</code> — конфиг sing-box (raw JSON)</li>
   <li><code>GET /api/ports</code>, <code>POST /api/ports</code>, <code>DELETE /api/ports/{port}</code> — proxy-порты</li>
   <li><code>GET /api/excludes</code>, <code>POST /api/excludes</code>, <code>DELETE /api/excludes/{cidr}</code> — bypass-CIDR</li>
+  <li><code>GET /api/dpi/targets</code>, <code>PUT /api/dpi/targets</code> — список доменов для selective DPI (nfqws2 --hostlist)</li>
+  <li><code>GET /api/dpi/presets</code>, <code>POST /api/dpi/presets/{name}/apply</code> — встроенные пресеты (discord, youtube, discord-youtube)</li>
 </ul>
 </body></html>`, host, port)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -205,6 +211,71 @@ func (s *Server) apiExcludesAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusCreated)
+}
+
+func (s *Server) apiDPITargetsGet(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.DPITargets == nil {
+		writeJSON(w, []string{})
+		return
+	}
+	targets, err := s.cfg.DPITargets.ListTargets(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if targets == nil {
+		targets = []string{}
+	}
+	writeJSON(w, targets)
+}
+
+func (s *Server) apiDPITargetsPut(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.DPITargets == nil {
+		http.Error(w, "не настроено", http.StatusNotImplemented)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
+	var body struct {
+		Targets []string `json:"targets"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		slog.Debug("web: decode dpi targets", "err", err)
+		http.Error(w, "неверный JSON", http.StatusBadRequest)
+		return
+	}
+	if err := s.cfg.DPITargets.SetTargets(r.Context(), body.Targets); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) apiDPIPresetsList(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, BuiltinDPIPresets)
+}
+
+func (s *Server) apiDPIPresetApply(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.DPITargets == nil {
+		http.Error(w, "не настроено", http.StatusNotImplemented)
+		return
+	}
+	name := r.PathValue("name")
+	var p *DPIPreset
+	for i := range BuiltinDPIPresets {
+		if BuiltinDPIPresets[i].Name == name {
+			p = &BuiltinDPIPresets[i]
+			break
+		}
+	}
+	if p == nil {
+		http.Error(w, "preset не найден", http.StatusNotFound)
+		return
+	}
+	if err := s.cfg.DPITargets.SetTargets(r.Context(), p.Targets); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, p)
 }
 
 func (s *Server) apiExcludesDel(w http.ResponseWriter, r *http.Request) {

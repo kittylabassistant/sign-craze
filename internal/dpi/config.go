@@ -31,6 +31,10 @@ type ConfigParams struct {
 	ArgsQUIC string
 	// ArgsUDP — дополнительные аргументы для UDP (пусто по умолчанию).
 	ArgsUDP string
+	// HostlistPath — путь к файлу со списком доменов для selective DPI.
+	// Если пуст — флаг --hostlist не добавляется (desync для всего трафика).
+	// Если задан — файл должен существовать на момент запуска nfqws2.
+	HostlistPath string
 }
 
 // DefaultConfigParams возвращает параметры по умолчанию согласно BEHAVIOR_SPEC §2.
@@ -43,6 +47,45 @@ func DefaultConfigParams() ConfigParams {
 		ArgsQUIC:     "--dpi-desync=fake --dpi-desync-ttl=5",
 		ArgsUDP:      "",
 	}
+}
+
+// WriteHostlist атомарно записывает список доменов в файл по одному на строку.
+// Используется как источник для nfqws2 --hostlist=<path>. Пустой targets
+// записывает пустой файл (валидно для nfqws2: список без записей = ничего не
+// matches, желательно вместо этого вообще не передавать --hostlist).
+func WriteHostlist(path string, targets []string) error {
+	if path == "" {
+		return fmt.Errorf("dpi hostlist: пустой path")
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("dpi hostlist: создание директории: %w", err)
+	}
+	var buf bytes.Buffer
+	for _, t := range targets {
+		t = trimSpace(t)
+		if t == "" {
+			continue
+		}
+		buf.WriteString(t)
+		buf.WriteByte('\n')
+	}
+	if err := atomicfs.WriteFileAtomic(path, buf.Bytes(), 0o644); err != nil {
+		return fmt.Errorf("dpi hostlist: запись %s: %w", path, err)
+	}
+	log.L().Info("dpi hostlist сгенерирован", "path", path, "entries", len(targets))
+	return nil
+}
+
+func trimSpace(s string) string {
+	start := 0
+	end := len(s)
+	for start < end && (s[start] == ' ' || s[start] == '\t' || s[start] == '\r' || s[start] == '\n') {
+		start++
+	}
+	for end > start && (s[end-1] == ' ' || s[end-1] == '\t' || s[end-1] == '\r' || s[end-1] == '\n') {
+		end--
+	}
+	return s[start:end]
 }
 
 // GenerateConfig генерирует nfqws2.conf из шаблона и атомарно записывает в dstPath.

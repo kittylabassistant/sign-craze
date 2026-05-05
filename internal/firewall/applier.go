@@ -28,6 +28,16 @@ type Applier interface {
 
 	// Remove удаляет все правила sign-craze (включая TUN-route). Идемпотентно.
 	Remove(ctx context.Context) error
+
+	// Reconcile повторно применяет все правила без pre-flights и без
+	// auto-rollback. Используется watchdog'ом для восстановления правил после
+	// внешнего вмешательства (Keenetic ndm reconciliation стирает наши
+	// FORWARD ACCEPT правила через несколько часов после `--start`).
+	//
+	// Все шаги используют EnsureRule/EnsureChain (idempotent), поэтому
+	// повторный вызов на корректно настроенной системе — no-op.
+	// AttachTUN не вызывается (TUN route ставится отдельно после старта sing-box).
+	Reconcile(ctx context.Context, mode types.Mode) error
 }
 
 // Config содержит параметры брандмауэра. Все значения из BEHAVIOR_SPEC §3.
@@ -257,6 +267,14 @@ func (a *applierImpl) applyFullMode(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// Reconcile вызывает applyInternal без pre-flights и без auto-rollback.
+// EnsureRule/EnsureChain делают восстановление идемпотентным. Используется
+// watchdog'ом для борьбы с ndm reconciliation, которая стирает FORWARD ACCEPT
+// для signbox-tun через несколько часов после `--start`.
+func (a *applierImpl) Reconcile(ctx context.Context, mode types.Mode) error {
+	return a.applyInternal(ctx, mode)
 }
 
 // AttachTUN ждёт появления TUN-интерфейса (созданного sing-box) и устанавливает

@@ -19,6 +19,9 @@ const (
 	DefaultConfigDir = "/opt/etc/sign-craze"
 	// DefaultConfigPath — путь к nfqws2.conf.
 	DefaultConfigPath = "/opt/etc/sign-craze/nfqws2.conf"
+	// DefaultHostlistPath — путь к файлу со списком доменов для selective DPI desync.
+	// Передаётся в nfqws2 через --hostlist=<path>. Один домен на строку.
+	DefaultHostlistPath = "/opt/etc/sign-craze/dpi-hostlist.txt"
 )
 
 // Install устанавливает бинарь nfqws2 из tarball в binDst.

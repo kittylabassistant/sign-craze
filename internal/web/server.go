@@ -27,11 +27,12 @@ var wsRoutes = map[string]struct{}{
 // ServerConfig содержит зависимости и параметры сервера.
 type ServerConfig struct {
 	// CredsPath — путь к файлу bcrypt-хэша (/opt/etc/sign-craze/admin.creds).
-	CredsPath string
-	Status    StatusReader
-	Config    ConfigRW
-	Ports     PortsManager
-	Excludes  ExcludesManager
+	CredsPath  string
+	Status     StatusReader
+	Config     ConfigRW
+	Ports      PortsManager
+	Excludes   ExcludesManager
+	DPITargets DPITargetsManager
 
 	// RoutingUIEnabled включает третий http.Server для UI-редактора routing.
 	RoutingUIEnabled bool

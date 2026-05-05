@@ -35,6 +35,7 @@ func TestSaveLoad_RoundTrip(t *testing.T) {
 		Excludes:    []string{"192.168.1.0/24"},
 		DPIEnabled:  true,
 		DPIStrategy: "preset:default",
+		DPITargets:  []string{"discord.com", "youtube.com"},
 	}
 	if err := Save(path, want); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -52,6 +53,30 @@ func TestSaveLoad_RoundTrip(t *testing.T) {
 	}
 	if !got.DPIEnabled {
 		t.Error("DPIEnabled должен быть true")
+	}
+	if len(got.DPITargets) != 2 || got.DPITargets[0] != "discord.com" || got.DPITargets[1] != "youtube.com" {
+		t.Errorf("DPITargets = %v, ожидалось [discord.com youtube.com]", got.DPITargets)
+	}
+}
+
+// TestLoad_DPITargetsEmptyDefault — при отсутствии поля DPITargets в JSON
+// Load() должен вернуть пустой slice (не nil), чтобы web API возвращал [].
+func TestLoad_DPITargetsEmptyDefault(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	// Save без DPITargets → omitempty опускает поле.
+	st := Default()
+	if err := Save(path, st); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.DPITargets == nil {
+		t.Error("DPITargets должен быть пустым slice, не nil")
+	}
+	if len(got.DPITargets) != 0 {
+		t.Errorf("DPITargets = %v, ожидался пустой slice", got.DPITargets)
 	}
 }
 

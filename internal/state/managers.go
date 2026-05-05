@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"os"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
@@ -292,6 +293,45 @@ func (m *excludesManager) DeleteExclude(ctx context.Context, cidr string) error 
 			}
 		}
 		s.Excludes = out
+		return Save(m.statePath, s)
+	})
+}
+
+// dpiTargetsManager реализует web.DPITargetsManager поверх state.json.
+// Не регенерирует nfqws2.conf — конфиг подхватится при следующем --restart.
+type dpiTargetsManager struct {
+	statePath string
+}
+
+// NewDPITargetsManager конструирует DPITargetsManager.
+func NewDPITargetsManager(statePath string) web.DPITargetsManager {
+	return &dpiTargetsManager{statePath: statePath}
+}
+
+func (m *dpiTargetsManager) ListTargets(_ context.Context) ([]string, error) {
+	s, err := Load(m.statePath)
+	if err != nil {
+		return nil, err
+	}
+	out := append([]string{}, s.DPITargets...)
+	return out, nil
+}
+
+func (m *dpiTargetsManager) SetTargets(ctx context.Context, targets []string) error {
+	clean := make([]string, 0, len(targets))
+	for _, t := range targets {
+		t = strings.TrimSpace(t)
+		if t == "" {
+			continue
+		}
+		clean = append(clean, t)
+	}
+	return withStateLock(ctx, m.statePath, func() error {
+		s, err := Load(m.statePath)
+		if err != nil {
+			return err
+		}
+		s.DPITargets = clean
 		return Save(m.statePath, s)
 	})
 }

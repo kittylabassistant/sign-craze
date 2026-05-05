@@ -48,11 +48,15 @@ type State struct {
 	// после Load() значение переносится в AdminPorts и обнуляется.
 	//
 	// Deprecated: использовать AdminPorts.
-	AdminPort      uint16   `json:"admin_port,omitempty"`
-	AdminPorts     []uint16 `json:"admin_ports,omitempty"`
-	AdminIPs       []string `json:"admin_ips,omitempty"`
-	DPIEnabled     bool     `json:"dpi_enabled"`
-	DPIStrategy    string   `json:"dpi_strategy,omitempty"`
+	AdminPort   uint16   `json:"admin_port,omitempty"`
+	AdminPorts  []uint16 `json:"admin_ports,omitempty"`
+	AdminIPs    []string `json:"admin_ips,omitempty"`
+	DPIEnabled  bool     `json:"dpi_enabled"`
+	DPIStrategy string   `json:"dpi_strategy,omitempty"`
+	// DPITargets — список доменов/паттернов для selective DPI desync.
+	// Пусто = nfqws2 пытается desync для всего трафика (текущее поведение).
+	// Заполнено = nfqws2 запускается с --hostlist, desync только для match.
+	DPITargets     []string `json:"dpi_targets,omitempty"`
 	BootTimeoutSec int      `json:"boot_timeout_sec,omitempty"` // таймаут waitDefaultRoute, 0 = default 60
 
 	// Поля режима ModePolicy: интеграция с Keenetic IP Policy через RCI.
@@ -121,6 +125,9 @@ func Load(path string) (*State, error) {
 	}
 	if s.AdminPorts == nil {
 		s.AdminPorts = []uint16{}
+	}
+	if s.DPITargets == nil {
+		s.DPITargets = []string{}
 	}
 	if s.PolicyName == "" {
 		s.PolicyName = DefaultPolicyName
