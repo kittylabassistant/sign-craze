@@ -36,7 +36,9 @@ func validateVLESS(c types.Canonical) error {
 
 	// PQ-VLESS (mlkem768x25519plus) реализован только в xray.
 	// Mihomo (Clash.Meta) не имеет стабильной поддержки PQ-VLESS на 2026-04.
-	if proto.Encryption == "mlkem768x25519plus" {
+	// URL может содержать суффиксы: mlkem768x25519plus.native.0rtt.<base64> —
+	// используем HasPrefix вместо точного сравнения.
+	if strings.HasPrefix(proto.Encryption, "mlkem768x25519plus") {
 		return fmt.Errorf(
 			"mihomo не поддерживает PQ-VLESS (encryption=%q): "+
 				"используйте --core xray для данного соединения",

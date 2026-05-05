@@ -337,9 +337,8 @@ func applyTLS(out map[string]any, tls *types.TLSConfig) {
 		if tls.Reality.ShortID != "" {
 			reality["short_id"] = tls.Reality.ShortID
 		}
-		if tls.Reality.SpiderX != "" {
-			reality["spider_x"] = tls.Reality.SpiderX
-		}
+		// spider_x — xray-only поле; sing-box reality его не поддерживает.
+		// Validate() отклоняет такой outbound раньше; здесь — defence-in-depth.
 		tlsBlock["reality"] = reality
 	}
 

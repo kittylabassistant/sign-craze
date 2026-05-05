@@ -64,10 +64,19 @@ func (coreImpl) ParseVersion(line string) (string, error) {
 
 // RenderConfig генерирует config.json sing-box из types.CoreRenderParams.
 //
+// Перед рендером проверяет каждый outbound на совместимость с sing-box через
+// Validate — xray-only возможности (XHTTP modes, spider_x, PQ-VLESS) отклоняются
+// с ошибкой до запуска sing-box check, что даёт понятную диагностику.
+//
 // Примечание: routing.json (RoutingConfig) не загружается здесь — для полного
 // пути с routing.json используется ensureConfigFresh в CLI (legacy путь sing-box).
 // TODO: подгрузить routing.Load при необходимости preview-рендера в web UI.
 func (coreImpl) RenderConfig(p types.CoreRenderParams) ([]byte, error) {
+	for _, ob := range p.Outbounds {
+		if err := Validate(ob); err != nil {
+			return nil, err
+		}
+	}
 	params := DefaultConfigParams()
 	params.Mode = p.Mode
 	params.Outbounds = p.Outbounds

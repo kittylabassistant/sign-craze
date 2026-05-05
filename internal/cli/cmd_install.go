@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
+	"github.com/kittylabassistant/sign-craze/internal/core"
 	"github.com/kittylabassistant/sign-craze/internal/log"
 	"github.com/kittylabassistant/sign-craze/internal/proxyparse"
 	"github.com/kittylabassistant/sign-craze/internal/service"
@@ -22,9 +23,9 @@ import (
 const minFreeBytes = 30 * 1024 * 1024
 
 func init() {
-	Register(Cmd{Short: "-i", Long: "--install", Help: "установка с интерактивной настройкой outbound", Handler: handleInstall})
-	Register(Cmd{Long: "--install-auto", Help: "установка без интерактива (stub direct outbound)", Handler: handleInstallAuto})
-	Register(Cmd{Long: "--install-offline", Help: "установка из локального tarball <путь>", Handler: handleInstallOffline})
+	Register(Cmd{Short: "-i", Long: "--install", Help: "установка с интерактивной настройкой outbound [--core <ядро>]", Handler: handleInstall})
+	Register(Cmd{Long: "--install-auto", Help: "установка без интерактива (stub direct outbound) [--core <ядро>]", Handler: handleInstallAuto})
+	Register(Cmd{Long: "--install-offline", Help: "установка из локального tarball <путь> [--core <ядро>]", Handler: handleInstallOffline})
 	Register(Cmd{Long: "--reinstall", Help: "переустановка поверх существующей (использует --install-auto)", Handler: handleReinstall})
 }
 
@@ -36,26 +37,57 @@ const (
 	installOffline
 )
 
-func handleInstall(ctx context.Context, _ []string) error {
-	return withLock(ctx, func() error { return doInstall(ctx, installInteractive, "", false) })
+// parseInstallCoreFlag ищет --core <name> или --core=<name> в аргументах.
+// Возвращает имя ядра (или пустую строку если флаг не задан) и остаток args.
+func parseInstallCoreFlag(args []string) (coreName string, rest []string) {
+	rest = make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--core" && i+1 < len(args) {
+			coreName = args[i+1]
+			i++ // пропустить значение
+			continue
+		}
+		if after, ok := strings.CutPrefix(args[i], "--core="); ok {
+			coreName = after
+			continue
+		}
+		rest = append(rest, args[i])
+	}
+	return
 }
 
-func handleInstallAuto(ctx context.Context, _ []string) error {
-	return withLock(ctx, func() error { return doInstall(ctx, installAuto, "", false) })
+func handleInstall(ctx context.Context, args []string) error {
+	coreName, _ := parseInstallCoreFlag(args)
+	return withLock(ctx, func() error { return doInstall(ctx, installInteractive, "", false, coreName) })
+}
+
+func handleInstallAuto(ctx context.Context, args []string) error {
+	coreName, _ := parseInstallCoreFlag(args)
+	return withLock(ctx, func() error { return doInstall(ctx, installAuto, "", false, coreName) })
 }
 
 func handleInstallOffline(ctx context.Context, args []string) error {
-	if len(args) == 0 {
+	coreName, rest := parseInstallCoreFlag(args)
+	if len(rest) == 0 {
 		return fmt.Errorf("--install-offline: требуется путь к tarball")
 	}
-	return withLock(ctx, func() error { return doInstall(ctx, installOffline, args[0], false) })
+	return withLock(ctx, func() error { return doInstall(ctx, installOffline, rest[0], false, coreName) })
 }
 
 func handleReinstall(ctx context.Context, _ []string) error {
-	return withLock(ctx, func() error { return doInstall(ctx, installAuto, "", true) })
+	return withLock(ctx, func() error { return doInstall(ctx, installAuto, "", true, "") })
 }
 
-func doInstall(ctx context.Context, mode installMode, offlineTar string, force bool) error {
+func doInstall(ctx context.Context, mode installMode, offlineTar string, force bool, coreName string) error {
+	// Определяем целевое ядро. Пустое имя → sing-box (default).
+	if coreName == "" {
+		coreName = state.DefaultCore
+	}
+	activeC, err := core.Get(coreName)
+	if err != nil {
+		return fmt.Errorf("--install: %w", err)
+	}
+
 	// 0. Idempotency check: если уже установлено и не force — отказ
 	// (safety-fixes #16). До этого --install молча перезаписывал всё.
 	//
@@ -68,16 +100,16 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string, force b
 	//      watchdog и удаляет state.json.
 	if !force {
 		_, stateErr := os.Stat(state.DefaultPath)
-		_, binErr := os.Stat(singbox.DefaultBinPath)
+		_, binErr := os.Stat(activeC.BinaryPath())
 		stateExists := stateErr == nil
 		binExists := binErr == nil
 		switch {
 		case stateExists && binExists:
 			return fmt.Errorf("--install: sign-craze уже установлен. Используйте --reinstall для переустановки или --uninstall чтобы сначала очистить")
 		case stateExists && !binExists:
-			return fmt.Errorf("--install: обнаружено degraded состояние (state.json есть, бинарь %s отсутствует). Запустите --uninstall для очистки остатков, затем повторите --install", singbox.DefaultBinPath)
+			return fmt.Errorf("--install: обнаружено degraded состояние (state.json есть, бинарь %s отсутствует). Запустите --uninstall для очистки остатков, затем повторите --install", activeC.BinaryPath())
 		case !stateExists && binExists:
-			return fmt.Errorf("--install: бинарь sing-box уже установлен (%s) без state.json. Запустите --uninstall, затем --install", singbox.DefaultBinPath)
+			return fmt.Errorf("--install: бинарь %s уже установлен (%s) без state.json. Запустите --uninstall, затем --install", coreName, activeC.BinaryPath())
 		}
 	}
 
@@ -104,7 +136,7 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string, force b
 		}
 	}
 
-	// 3. Получить tarball sing-box.
+	// 3. Получить tarball целевого ядра.
 	var tarPath string
 	switch mode {
 	case installOffline:
@@ -117,8 +149,8 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string, force b
 		if err != nil {
 			return fmt.Errorf("--install: %w", err)
 		}
-		fmt.Printf("Загрузка sing-box (arch=%s)...\n", arch)
-		res, err := singbox.Download(ctx, arch, singbox.DefaultCacheDir)
+		fmt.Printf("Загрузка %s (arch=%s)...\n", coreName, arch)
+		res, err := activeC.Download(ctx, arch, activeC.CacheDir())
 		if err != nil {
 			return fmt.Errorf("--install: %w", err)
 		}
@@ -145,38 +177,72 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string, force b
 	// AdminPort=22 — защита SSH-сессии. Для кастомизации править state.json.
 	st := state.Default()
 	st.Outbounds = outbounds
+	st.Core = coreName
 	if err := state.Save(state.DefaultPath, st); err != nil {
 		return fmt.Errorf("--install: state: %w", err)
 	}
 
-	// 6. Подготовить бинарь sing-box во временный путь и валидировать конфиг
-	// ДО установки в финальный путь — защита от состояния "бинарь установлен,
-	// конфиг битый" (safety-fixes #10).
-	params := singbox.DefaultConfigParams()
-	params.Mode = st.Mode
-	params.Outbounds = st.Outbounds
-	if len(st.Outbounds) > 0 {
-		params.DefaultOutboundTag = st.Outbounds[0].Tag
-	}
+	// 6–7. Подготовить бинарь и валидировать конфиг ДО установки в финальный
+	// путь — защита от состояния "бинарь установлен, конфиг битый" (safety-fixes #10).
+	//
+	// Для sing-box используется специализированный PrepareAndValidate (извлекает
+	// бинарь во временный путь, рендерит и проверяет конфиг через sing-box check -c,
+	// только потом атомарно переносит). Для остальных ядер используем общий путь:
+	// Install → RenderConfig → WriteFileAtomic → CheckConfig.
+	if coreName == "sing-box" {
+		params := singbox.DefaultConfigParams()
+		params.Mode = st.Mode
+		params.Outbounds = st.Outbounds
+		if len(st.Outbounds) > 0 {
+			params.DefaultOutboundTag = st.Outbounds[0].Tag
+		}
 
-	tempBin, err := singbox.PrepareAndValidate(ctx, newRunner(), singbox.DefaultCacheDir, tarPath, configPath(), params)
-	if err != nil {
-		return fmt.Errorf("--install: %w", err)
-	}
-	defer os.RemoveAll(filepath.Dir(tempBin))
+		tempBin, err := singbox.PrepareAndValidate(ctx, newRunner(), singbox.DefaultCacheDir, tarPath, configPath(), params)
+		if err != nil {
+			return fmt.Errorf("--install: %w", err)
+		}
+		defer os.RemoveAll(filepath.Dir(tempBin))
 
-	// 7. Атомарно перенести валидированный бинарь в финальный путь.
-	// Стримим через io.Reader: на 128MB-роутерах os.ReadFile(~12MB) +
-	// BackupAndReplace([]byte) даёт OOM-Kill (binary в RAM × 2 — copy
-	// в map[]byte). BackupAndReplaceFromReader держит только малый буфер.
-	binFile, err := os.Open(tempBin)
-	if err != nil {
-		return fmt.Errorf("--install: открытие валидированного бинаря: %w", err)
-	}
-	_, err = atomicfs.BackupAndReplaceFromReader(singbox.DefaultBinPath, binFile, 0o755)
-	_ = binFile.Close()
-	if err != nil {
-		return fmt.Errorf("--install: установка бинаря: %w", err)
+		// Атомарно перенести валидированный бинарь в финальный путь.
+		// Стримим через io.Reader: на 128MB-роутерах os.ReadFile(~12MB) +
+		// BackupAndReplace([]byte) даёт OOM-Kill (binary в RAM × 2 — copy
+		// в map[]byte). BackupAndReplaceFromReader держит только малый буфер.
+		binFile, err := os.Open(tempBin)
+		if err != nil {
+			return fmt.Errorf("--install: открытие валидированного бинаря: %w", err)
+		}
+		_, err = atomicfs.BackupAndReplaceFromReader(singbox.DefaultBinPath, binFile, 0o755)
+		_ = binFile.Close()
+		if err != nil {
+			return fmt.Errorf("--install: установка бинаря: %w", err)
+		}
+	} else {
+		// Общий путь: Install → RenderConfig → WriteFileAtomic → CheckConfig.
+		if err := os.MkdirAll(filepath.Dir(activeC.BinaryPath()), 0o755); err != nil {
+			return fmt.Errorf("--install: mkdir bin dir: %w", err)
+		}
+		if err := activeC.Install(ctx, newRunner(), tarPath); err != nil {
+			return fmt.Errorf("--install: установка %s: %w", coreName, err)
+		}
+
+		cfgBytes, err := activeC.RenderConfig(types.CoreRenderParams{
+			Mode:      st.Mode,
+			Outbounds: st.Outbounds,
+		})
+		if err != nil {
+			return fmt.Errorf("--install: рендер конфига %s: %w", coreName, err)
+		}
+
+		if err := os.MkdirAll(activeC.ConfigDir(), 0o755); err != nil {
+			return fmt.Errorf("--install: mkdir config dir: %w", err)
+		}
+		if err := atomicfs.WriteFileAtomic(activeC.ConfigPath(), cfgBytes, 0o640); err != nil {
+			return fmt.Errorf("--install: запись конфига %s: %w", coreName, err)
+		}
+
+		if err := activeC.CheckConfig(ctx, newRunner(), activeC.ConfigPath()); err != nil {
+			return fmt.Errorf("--install: проверка конфига %s: %w", coreName, err)
+		}
 	}
 
 	// 8. Создать init.d shim.
@@ -191,7 +257,7 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string, force b
 	// перегенерирован.
 	if err := service.WriteHook(service.DefaultNetfilterHookPath, service.HookParams{
 		BinPath: service.DefaultSignCrazeBin,
-		PIDPath: mustActiveCore().PIDPath(),
+		PIDPath: activeC.PIDPath(),
 	}); err != nil {
 		return fmt.Errorf("--install: netfilter.d hook: %w", err)
 	}
