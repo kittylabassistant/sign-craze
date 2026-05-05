@@ -27,7 +27,7 @@ Go-утилита для управления межсетевым экрано�
 - DPI bypass через `nfqws2` (opt-in, **off by default**) — включается `sign-craze --dpi on`; selective режим `--dpi-targets` ограничивает desync выбранными доменами (Discord, YouTube) через `nfqws2 --hostlist`
 - Firewall watchdog: автоматическое восстановление правил после ndm reconciliation (защита от "перестаёт проксировать через несколько часов")
 - Гео-фильтрация через SRS rule-set (выборочная загрузка по SHA256)
-- Встроенный Web UI: Zashboard + admin REST API на портах `9090`/`9091` + Routing Editor SPA на `9092`
+- Встроенный Web UI: admin REST API на порту `9091` + Routing Editor SPA на `9092`
 - Встроенные пресеты роутинга: `block-ads`, `ru-direct`, `blocked-vpn`, `discord-vpn`, `torrents-direct` и DPI-пресеты `discord`/`youtube`/`discord-youtube`
 - Управление портами и исключениями без перезапуска
 - Резервное копирование и восстановление конфигурации
@@ -54,7 +54,7 @@ Go-утилита для управления межсетевым экрано�
 | Phase 3 — firewall | ✅ | iptables/ipset, режимы tproxy/redirect/hybrid, Docker-тесты |
 | Phase 4 — DPI/nfqws2 | ✅ | download, config, NFQUEUE lifecycle |
 | Phase 5 — гео-файлы | ✅ | SRS manifest, выборочная загрузка, ipset |
-| Phase 6 — Web UI | ✅ | HTTP-сервер, REST API, Zashboard embed |
+| Phase 6 — Web UI | ✅ | HTTP-сервер, REST API, Routing Editor |
 | Phase 7 — release | ✅ | GitHub Actions pipeline, install.sh, multi-arch UPX |
 | Phase 8 — CLI команды | ✅ | install/start/stop/status/diag/update/uninstall/dpi/mode/ports/excludes/backup |
 | Phase 9 — `--mode policy` | ✅ | Keenetic IP Policy через RCI (TUN-mode), legacy режимы → `full` |

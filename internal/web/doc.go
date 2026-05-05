@@ -1,4 +1,4 @@
-// Пакет web раздаёт встроенный Zashboard и admin UI sign-craze по HTTP.
-// Порт 9090: Clash-совместимый API для Zashboard.
+// Пакет web реализует HTTP-серверы sign-craze.
 // Порт 9091: Admin REST API для управления sign-craze.
+// Порт 9092: Редактор routing (routing UI, опционально).
 package web

@@ -191,13 +191,13 @@ func (s *Server) basicAuth(next http.Handler) http.Handler {
 // Лендинг — статический HTML без JS, поэтому inline-скрипты запрещены.
 const cspAdmin = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'"
 
-// cspSPA — смягчённая CSP для портов 9090 (Zashboard/MetaCubeXD) и 9092
-// (Routing Editor). Дашборды содержат inline <script> с конфигом приложения
-// (window.__NUXT__, window.__METACUBEXD_CONFIG__). Без 'unsafe-inline' SPA
-// не инициализируется — страница белая. Риск минимален: контент целиком
-// из embed.FS (compile-time), доступ закрыт Basic Auth, источник 'self'.
-// 'unsafe-eval' нужен на случай dynamic-import-полифиллов в Nuxt-сборке.
-// connect-src с ws:/wss: разрешает Clash WebSocket /traffic, /logs.
+// cspSPA — смягчённая CSP для порта 9092 (Routing Editor).
+// SPA может содержать inline <script> с конфигом приложения.
+// Без 'unsafe-inline' SPA не инициализируется — страница белая.
+// Риск минимален: контент целиком из embed.FS (compile-time),
+// доступ закрыт Basic Auth, источник 'self'.
+// 'unsafe-eval' нужен на случай dynamic-import-полифиллов.
+// connect-src с ws:/wss: разрешает WebSocket-соединения routing UI.
 const cspSPA = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self' ws: wss:"
 
 // securityHeadersAdmin ставит защитные заголовки + строгую CSP для admin.

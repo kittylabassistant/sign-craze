@@ -31,7 +31,7 @@ Go-утилита для управления межсетевым экрано�
 - Три режима маршрутизации: `proxy` (tproxy), `dpi` (nfqws2 + NFQUEUE), `hybrid`
 - Атомарное применение правил iptables/ipset с гарантированным откатом
 - Гео-фильтрация через SRS rule-set (выборочная загрузка по SHA256)
-- Встроенный Web UI: Zashboard `:9090`, admin API `:9091`, Routing Editor `:9092` (vanilla Preact + htm SPA)
+- Встроенный Web UI: admin API `:9091`, Routing Editor `:9092` (vanilla Preact + htm SPA)
 - Selective DPI: desync только для выбранных доменов/SNI через `--dpi-targets`
 - Firewall watchdog: автовосстановление iptables-правил каждые 30 с при работающем `--ui on`
 - Управление портами и исключениями без перезапуска
@@ -105,7 +105,7 @@ sign-craze --exclude-add <ip>   Добавить IP/CIDR в исключения
 sign-craze --exclude-del <ip>   Удалить из исключений
 sign-craze --exclude-list       Показать исключения
 
-sign-craze --ui on|off          Включить / выключить Web UI (порты 9090/9091/9092)
+sign-craze --ui on|off          Включить / выключить Web UI (порты 9091/9092)
                                 Watchdog firewall активен, пока процесс `--ui on` работает
 sign-craze --backup  / -b       Создать резервную копию конфигурации
 sign-craze --restore <путь>     Восстановить из резервной копии
@@ -154,7 +154,7 @@ internal/cli  (диспетчер команд)
    ├── internal/firewall  (iptables/ipset: tproxy / redirect / hybrid)
    ├── internal/service   (init.d shim, lifecycle, PID-файлы)
    ├── internal/geo       (SRS rule-set, ipset-конвертация)
-   └── internal/web       (HTTP: Zashboard + admin API)
+   └── internal/web       (HTTP: admin API + Routing Editor)
 ```
 
 Подробная диаграмма потоков данных — в [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
@@ -169,7 +169,7 @@ internal/cli  (диспетчер команд)
 | Phase 3 — firewall | ✅ | iptables/ipset, режимы tproxy/redirect/hybrid, Docker тесты |
 | Phase 4 — DPI/nfqws2 | ✅ | download, config, NFQUEUE lifecycle |
 | Phase 5 — гео-файлы | ✅ | SRS manifest, выборочная загрузка, ipset |
-| Phase 6 — Web UI | ✅ | HTTP-сервер, REST API, Zashboard embed |
+| Phase 6 — Web UI | ✅ | HTTP-сервер, REST API, Routing Editor |
 | Phase 7 — release | 🔄 | GitHub Actions pipeline, install.sh |
 
 ## Структура файлов на роутере

@@ -38,7 +38,7 @@ singbox         dpi             firewall
 |---|---|
 | `internal/service` | генерация init.d shim; интерфейс `Lifecycle`, связывающий singbox и nfqws2 |
 | `internal/geo` | загрузка SRS из sign-craze-dats; конвертация IP-листа → ipset |
-| `internal/web` | встроенный HTTP-сервер (Zashboard + admin UI + DPI targets REST API) |
+| `internal/web` | встроенный HTTP-сервер (admin UI + Routing Editor + DPI targets REST API) |
 | `internal/locks` | эксклюзивный flock против параллельных запусков |
 | `internal/log` | глобальный `slog.Logger` с ротацией по размеру |
 | `internal/atomicfs` | атомарная запись: write → fsync → rename |

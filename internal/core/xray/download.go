@@ -30,7 +30,7 @@ const XRayMIPSVersion = "v25.12.8"
 // XRayMIPSReleaseRepo — репозиторий, в котором лежат custom MIPS-сборки xray.
 const (
 	XRayMIPSReleaseOwner = "kittylabassistant"
-	XRayMIPSReleaseRepo  = "sign-craze"
+	XRayMIPSReleaseRepo  = "sign-craze-xray"
 )
 
 // assetPattern — подстрока в имени asset на GitHub releases XTLS/Xray-core,
