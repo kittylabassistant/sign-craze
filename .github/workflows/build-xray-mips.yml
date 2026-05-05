@@ -1,9 +1,15 @@
 name: Build xray for MIPS (Keenetic)
 
-# Собирает xray из XTLS/Xray-core с принудительным toolchain Go 1.22 +
-# GOMIPS=softfloat. Цель — обойти регрессии Go 1.23+ runtime в futex/MIPS,
-# из-за которых официальные XTLS-бинари сегфолтятся на ядрах Keenetic
-# (3.4–4.x; ENOSYS на futex syscall).
+# Собирает xray из XTLS/Xray-core с принудительным toolchain Go 1.24 +
+# GOMIPS=softfloat. Цель — обойти регрессию Go 1.25 runtime в futex/MIPS,
+# из-за которой официальные XTLS-бинари (Go 1.25+) сегфолтятся на ядрах
+# Keenetic (3.4–4.x; ENOSYS на futex syscall). Go 1.24 проверен через
+# совместимый sing-box v1.13.11 (Go 1.24.7), который работает на этих
+# роутерах без падений.
+#
+# Pinned xray ref — v25.12.8: последний stable до того как gvisor у xray
+# был обновлён до версии с Go 1.25.5-min требованием. v25.12.8 содержит
+# PQ-VLESS, Vision UDP443, XHTTP modes — всё, что нужно проекту.
 #
 # Запуск ручной (workflow_dispatch). После успешной публикации релиза
 # `xray-mips-<xray_ref>` константа internal/core/xray.XRayMIPSVersion
@@ -13,13 +19,13 @@ on:
   workflow_dispatch:
     inputs:
       xray_ref:
-        description: 'XTLS/Xray-core git tag (e.g. v26.3.27)'
+        description: 'XTLS/Xray-core git tag (e.g. v25.12.8 — last before gvisor go-1.25 bump)'
         required: true
-        default: 'v26.3.27'
+        default: 'v25.12.8'
       go_version:
-        description: 'Go toolchain version (recommend 1.22.x — last stable for old MIPS kernels)'
+        description: 'Go toolchain version (1.24.x — verified working on Keenetic via sing-box v1.13.11)'
         required: true
-        default: '1.22.10'
+        default: '1.24.7'
 
 permissions:
   contents: write
@@ -48,13 +54,16 @@ jobs:
           ref: ${{ inputs.xray_ref }}
           path: xray-core
 
-      - name: pin go.mod toolchain to 1.22 (MIPS kernel compat)
+      - name: pin go.mod toolchain to 1.24 (MIPS kernel compat)
         working-directory: xray-core
-        # Если у xray go.mod указывает 1.23+ — Go toolchain автоматически
-        # подтянет 1.23 и нивелирует наш fix. Принудительно сбрасываем
-        # директиву и удаляем `toolchain ...` строку.
+        # xray v25.12.8 объявляет `go 1.25` в go.mod. Без правки toolchain
+        # автоматически подтянет 1.25 и попадём на регрессию futex/MIPS.
+        # Сбрасываем директиву на 1.24 + убираем `toolchain` строку, чтобы
+        # GOTOOLCHAIN=local гарантировал использование локально установленного
+        # Go ${{ inputs.go_version }}. gvisor в этом теге требует go 1.23.1
+        # min — c 1.24 проходит.
         run: |
-          sed -i -E 's/^go [0-9]+\.[0-9]+(\.[0-9]+)?$/go 1.22/' go.mod
+          sed -i -E 's/^go [0-9]+\.[0-9]+(\.[0-9]+)?$/go 1.24/' go.mod
           sed -i '/^toolchain /d' go.mod
           echo '--- patched go.mod ---'
           head -5 go.mod
@@ -120,12 +129,19 @@ jobs:
           body: |
             Pre-built xray binaries for Keenetic OpenWRT/Entware (MIPS, kernel 3.4–4.x).
 
-            **Why:** official XTLS releases are built with Go 1.23+, whose runtime
-            uses futex operations not available in old MIPS kernels (`futexwakeup
-            ... returned -89` ENOSYS → SIGSEGV at startup).
+            **Why:** official XTLS releases (v26.x) are built with Go 1.25+,
+            whose runtime uses futex operations not available in old MIPS kernels
+            (`futexwakeup ... returned -89` ENOSYS → SIGSEGV at startup).
+            Verified via sing-box v1.13.11 (Go 1.24.7) which runs cleanly on
+            same hardware.
+
+            **Pinned xray:** ${{ inputs.xray_ref }} — last stable before gvisor
+            bump required Go 1.25.5+. Includes PQ-VLESS (mlkem768x25519plus),
+            VLESS Vision UDP443, XHTTP packet-up/stream-up/stream-one.
 
             **Build flags:** `CGO_ENABLED=0 GOMIPS=softfloat GOTOOLCHAIN=local`,
-            Go ${{ inputs.go_version }}, `-ldflags="-s -w -buildid="`.
+            Go ${{ inputs.go_version }}, `-ldflags="-s -w -buildid="`,
+            `-trimpath`, go.mod patched `go 1.25` → `go 1.24`.
 
             Source: https://github.com/XTLS/Xray-core/tree/${{ inputs.xray_ref }}
 

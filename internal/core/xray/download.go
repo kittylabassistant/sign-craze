@@ -16,10 +16,16 @@ import (
 // MIPS-бинари непригодными.
 //
 // Workflow `.github/workflows/build-xray-mips.yml` собирает xray из
-// XTLS/Xray-core с принудительным toolchain Go 1.22 + GOMIPS=softfloat и
+// XTLS/Xray-core с принудительным toolchain Go 1.24 + GOMIPS=softfloat и
 // публикует результат в release с tag-ом ниже. Значение синхронизируется
 // вручную при выкатке нового xray.
-const XRayMIPSVersion = "v26.3.27"
+//
+// Pinned tag — v25.12.8: последний stable перед xray v26.x bump'нул
+// gvisor до версии, требующей Go 1.25.5+. v25.12.8 даёт всё ключевое:
+// PQ-VLESS (mlkem768x25519plus), VLESS Vision UDP443, XHTTP modes
+// stream-up/stream-one/packet-up — и собирается с Go 1.24.x, что
+// подтверждено совместимым sing-box (v1.13.11 → Go 1.24.7) на Keenetic.
+const XRayMIPSVersion = "v25.12.8"
 
 // XRayMIPSReleaseRepo — репозиторий, в котором лежат custom MIPS-сборки xray.
 const (
