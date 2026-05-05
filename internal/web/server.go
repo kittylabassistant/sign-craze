@@ -15,17 +15,6 @@ import (
 // adminUsername — единственный допустимый логин Basic Auth.
 const adminUsername = "admin"
 
-// nonWSWriteDeadline — таймаут записи для не-WebSocket Clash-роутов.
-// Защита от slowloris: WriteTimeout всего сервера = 0 (для WS), но обычные
-// HTTP-роуты не должны висеть бесконечно.
-const nonWSWriteDeadline = 30 * time.Second
-
-// wsRoutes — пути, исключённые из WriteDeadline (поток данных, может идти долго).
-var wsRoutes = map[string]struct{}{
-	"/traffic": {},
-	"/logs":    {},
-}
-
 // ServerConfig содержит зависимости и параметры сервера.
 type ServerConfig struct {
 	// CredsPath — путь к файлу bcrypt-хэша (/opt/etc/sign-craze/admin.creds).
@@ -58,11 +47,10 @@ type ServerConfig struct {
 	RoutingUI *RoutingUIDeps
 }
 
-// Server — встроенный HTTP-сервер (порты 9090, 9091, опционально 9092 для routing UI).
+// Server — встроенный HTTP-сервер (порт 9091 admin API, опционально 9092 для routing UI).
 type Server struct {
-	clash *http.Server
 	admin *http.Server
-	// routingUI — третий сервер для UI-редактора routing. nil если RoutingUIEnabled=false.
+	// routingUI — второй сервер для UI-редактора routing. nil если RoutingUIEnabled=false.
 	routingUI         *http.Server
 	routingUIPort     uint16       // фактически выбранный порт (после FindFreePort)
 	routingUIListener net.Listener // зарезервированный listener; передаётся в routingUI.Serve
@@ -71,36 +59,25 @@ type Server struct {
 	cfg   ServerConfig
 }
 
-// NewServer создаёт Server и загружает (или генерирует) учётные данные.
+// NewServer создаёт Server. Если cfg.CredsPath задан, загружает (или генерирует) учётные данные.
 func NewServer(cfg ServerConfig) (*Server, error) {
-	creds, err := LoadOrCreateCreds(cfg.CredsPath)
-	if err != nil {
-		return nil, err
+	var creds []byte
+	if cfg.CredsPath != "" {
+		loaded, err := LoadOrCreateCreds(cfg.CredsPath)
+		if err != nil {
+			return nil, err
+		}
+		creds = loaded
 	}
 
 	s := &Server{creds: creds, cfg: cfg}
 
-	clashMux := http.NewServeMux()
-	registerClashRoutes(clashMux, s)
-
 	adminMux := http.NewServeMux()
 	registerAdminRoutes(adminMux, s)
 
-	s.clash = &http.Server{
-		Addr: ":9090",
-		Handler: recoverMiddleware(securityHeadersSPA(s.basicAuth(
-			perRouteWriteDeadline(clashMux),
-		))),
-		ReadTimeout:    15 * time.Second,
-		WriteTimeout:   0, // 0 — для WebSocket; non-WS-роуты получают deadline через perRouteWriteDeadline
-		IdleTimeout:    60 * time.Second,
-		MaxHeaderBytes: 8 * 1024,
-	}
 	s.admin = &http.Server{
-		Addr: ":9091",
-		Handler: recoverMiddleware(securityHeadersAdmin(s.basicAuth(
-			originGuard(adminMux),
-		))),
+		Addr:           ":9091",
+		Handler:        recoverMiddleware(securityHeadersAdmin(adminMux)),
 		ReadTimeout:    15 * time.Second,
 		WriteTimeout:   30 * time.Second,
 		IdleTimeout:    60 * time.Second,
@@ -130,9 +107,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		routingMux := http.NewServeMux()
 		registerRoutingUIRoutes(routingMux, s)
 		s.routingUI = &http.Server{
-			Handler: recoverMiddleware(securityHeadersSPA(s.basicAuth(
-				originGuard(routingMux),
-			))),
+			Handler:        recoverMiddleware(securityHeadersSPA(routingMux)),
 			ReadTimeout:    15 * time.Second,
 			WriteTimeout:   30 * time.Second,
 			IdleTimeout:    60 * time.Second,
@@ -147,17 +122,10 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 // 0 если RoutingUIEnabled=false.
 func (s *Server) RoutingUIPort() uint16 { return s.routingUIPort }
 
-// Start запускает все листенеры (clash + admin + опционально routing UI).
+// Start запускает все листенеры (admin + опционально routing UI).
 // Блокируется до отмены ctx или критической ошибки.
 func (s *Server) Start(ctx context.Context) error {
-	errCh := make(chan error, 3)
-
-	go func() {
-		slog.Info("web: clash API запущен", "addr", s.clash.Addr)
-		if err := s.clash.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			errCh <- fmt.Errorf("clash listener: %w", err)
-		}
-	}()
+	errCh := make(chan error, 2)
 
 	go func() {
 		slog.Info("web: admin API запущен", "addr", s.admin.Addr)

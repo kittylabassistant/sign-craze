@@ -73,6 +73,17 @@ jobs:
           go-version: ${{ inputs.go_version }}
           cache-dependency-path: xray-core/go.sum
 
+      - name: go mod tidy (resync after toolchain downgrade)
+        working-directory: xray-core
+        env:
+          GOTOOLCHAIN: local
+        # После sed-патча go-директивы Go видит несогласованность go.mod/go.sum
+        # (некоторые тестовые/transitive deps требуют resolve под целевой
+        # toolchain). `go mod tidy` приводит manifest в самосогласованный вид
+        # БЕЗ апгрейда основных deps — gvisor/quic-go/utls остаются на тех же
+        # версиях, что и в pinned xray ref.
+        run: go mod tidy
+
       - name: build
         working-directory: xray-core
         env:
