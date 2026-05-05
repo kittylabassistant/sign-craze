@@ -160,9 +160,6 @@ func (s *Server) Stop(ctx context.Context) error {
 	defer cancel()
 
 	var errs []error
-	if err := s.clash.Shutdown(shutCtx); err != nil {
-		errs = append(errs, fmt.Errorf("clash: %w", err))
-	}
 	if err := s.admin.Shutdown(shutCtx); err != nil {
 		errs = append(errs, fmt.Errorf("admin: %w", err))
 	}
@@ -265,20 +262,6 @@ func sameHostOrigin(origin, host string) bool {
 		rest = rest[:slash]
 	}
 	return rest == host
-}
-
-// perRouteWriteDeadline ставит WriteDeadline на ответ, если path не относится к WS.
-// Защита от slowloris для Clash-сервера, у которого WriteTimeout=0 ради WebSocket.
-func perRouteWriteDeadline(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if _, isWS := wsRoutes[r.URL.Path]; !isWS {
-			rc := http.NewResponseController(w)
-			if err := rc.SetWriteDeadline(time.Now().Add(nonWSWriteDeadline)); err != nil {
-				slog.Debug("web: SetWriteDeadline", "err", err)
-			}
-		}
-		next.ServeHTTP(w, r)
-	})
 }
 
 // recoverMiddleware перехватывает паники и возвращает 500.

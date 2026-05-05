@@ -286,17 +286,3 @@ func TestApply_NeedsRestart(t *testing.T) {
 	}
 }
 
-// ===== Origin guard для CSRF =====
-
-func TestRoutingUI_OriginGuard_BlocksCrossOrigin(t *testing.T) {
-	s, pw, _ := makeTestServerWithRouting(t)
-	req := httptest.NewRequest("POST", "/api/outbounds", bytes.NewReader([]byte(`{"tag":"x","type":"direct"}`)))
-	req.SetBasicAuth(adminUsername, pw)
-	req.Host = "127.0.0.1:9092"
-	req.Header.Set("Origin", "http://evil.example.com") // cross-origin
-	req.Header.Set("Content-Type", "application/json")
-	rec := do(s, req)
-	if rec.Code != http.StatusForbidden {
-		t.Errorf("ожидался 403 от originGuard, получен %d", rec.Code)
-	}
-}

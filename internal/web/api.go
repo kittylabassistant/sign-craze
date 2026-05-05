@@ -13,6 +13,13 @@ import (
 	"github.com/kittylabassistant/sign-craze/internal/core"
 )
 
+func writeJSON(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		slog.Warn("web: JSON encode", "err", err)
+	}
+}
+
 // maxRequestBody — лимит размера тела POST-запросов admin API.
 // Защита от DoS: 50MB malformed JSON убивает 128MB роутер (safety-fixes #7).
 const maxRequestBody = 1 << 20 // 1 MB

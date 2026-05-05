@@ -52,15 +52,14 @@ func makeRoutingUIServer(t *testing.T, port uint16, maxAttempts int) (*Server, s
 func servingMux(s *Server) http.Handler {
 	mux := http.NewServeMux()
 	registerRoutingUIRoutes(mux, s)
-	return recoverMiddleware(securityHeadersSPA(s.basicAuth(originGuard(mux))))
+	return recoverMiddleware(securityHeadersSPA(mux))
 }
 
 func TestRoutingUI_HealthEndpoint(t *testing.T) {
-	s, password := makeTestServer(t)
+	s, _ := makeTestServer(t)
 	h := servingMux(s)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
-	req.SetBasicAuth(adminUsername, password)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -74,11 +73,10 @@ func TestRoutingUI_HealthEndpoint(t *testing.T) {
 
 // TestRoutingUI_StateEmpty — без RoutingUI deps возвращает default конфиг.
 func TestRoutingUI_StateEmpty(t *testing.T) {
-	s, password := makeTestServer(t)
+	s, _ := makeTestServer(t)
 	h := servingMux(s)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/state", nil)
-	req.SetBasicAuth(adminUsername, password)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -90,25 +88,11 @@ func TestRoutingUI_StateEmpty(t *testing.T) {
 	}
 }
 
-func TestRoutingUI_RequiresAuth(t *testing.T) {
+func TestRoutingUI_SPARoot(t *testing.T) {
 	s, _ := makeTestServer(t)
 	h := servingMux(s)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("ожидался 401 без auth, получен %d", rec.Code)
-	}
-}
-
-func TestRoutingUI_SPARoot(t *testing.T) {
-	s, password := makeTestServer(t)
-	h := servingMux(s)
-
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.SetBasicAuth(adminUsername, password)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 

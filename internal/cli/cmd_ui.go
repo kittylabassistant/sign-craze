@@ -53,13 +53,6 @@ func handleUI(ctx context.Context, args []string) error {
 	}
 	switch args[0] {
 	case "on":
-		// Инициализируем учётные данные до форка демона: если файл отсутствует,
-		// LoadOrCreateCreds печатает пароль на stdout родительского процесса (консоль).
-		// Когда демон запустится, файл уже будет существовать и вывода не будет.
-		credsPath := filepath.Join(singbox.DefaultConfigDir, "admin.creds")
-		if _, err := web.LoadOrCreateCreds(credsPath); err != nil {
-			return fmt.Errorf("--ui on: инициализация учётных данных: %w", err)
-		}
 		if err := lc.Start(ctx); err != nil {
 			return fmt.Errorf("--ui on: %w", err)
 		}
