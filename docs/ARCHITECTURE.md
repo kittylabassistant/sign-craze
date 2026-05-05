@@ -10,7 +10,7 @@
 ┌───────────────────────▼─────────────────────────────┐
 │  internal/cli  (диспетчер + обработчики подкоманд)  │
 │  install · update · service · ports · geo           │
-│  backup · ui · diag                                 │
+│  backup · ui · diag · dpi-targets                   │
 └──┬────────────────┬────────────────┬────────────────┘
    │                │                │
    ▼                ▼                ▼
@@ -38,7 +38,7 @@ singbox         dpi             firewall
 |---|---|
 | `internal/service` | генерация init.d shim; интерфейс `Lifecycle`, связывающий singbox и nfqws2 |
 | `internal/geo` | загрузка SRS из sign-craze-dats; конвертация IP-листа → ipset |
-| `internal/web` | встроенный HTTP-сервер (Zashboard + admin UI) |
+| `internal/web` | встроенный HTTP-сервер (Zashboard + admin UI + DPI targets REST API) |
 | `internal/locks` | эксклюзивный flock против параллельных запусков |
 | `internal/log` | глобальный `slog.Logger` с ротацией по размеру |
 | `internal/atomicfs` | атомарная запись: write → fsync → rename |
@@ -70,6 +70,17 @@ cli/service.Run
   → locks.Release
 ```
 
+## Поток данных: `--ui on` (watchdog)
+
+```plain
+cli/startUI
+  → go firewall.NewWatchdog(0, reconcileFirewall).Run(ctx)   (фон, 30 с)
+      loop:
+        → IPTables.CheckCriticalRules (iptables -C, дешёвая проверка)
+        → если правила отсутствуют → Applier.Reconcile (idempotent re-apply)
+  → web.Server.ListenAndServe (блокирует до SIGTERM/ctx.Done)
+```
+
 ## Режимы маршрутизации
 
 | Режим | sing-box | nfqws2 | iptables |
@@ -97,5 +108,6 @@ cli/service.Run
 | PID-файлы | `/opt/var/run/sign-craze-{singbox,nfqws2}.pid` |
 | init.d shim | `/opt/etc/init.d/S05signcraze` |
 | Корень конфигов | `/opt/etc/sign-craze/` |
+| DPI hostlist | `/opt/etc/sign-craze/dpi-hostlist.txt` |
 | Директория состояния | `/opt/var/lib/sign-craze/` |
 | Директория логов | `/opt/var/log/sign-craze/` |

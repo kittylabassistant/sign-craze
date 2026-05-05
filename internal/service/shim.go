@@ -27,7 +27,8 @@ var shimTemplate = template.Must(template.New("shim").Parse(`#!/bin/sh
 set -eu
 SC={{ .BinPath }}
 LOG=/opt/var/log/sign-craze/boot.log
-mkdir -p "$(dirname "$LOG")" 2>/dev/null || true
+WATCHDOG_PID=/opt/var/run/sign-craze-watchdog.pid
+mkdir -p "$(dirname "$LOG")" "$(dirname "$WATCHDOG_PID")" 2>/dev/null || true
 
 run() {
     if ! "$SC" "$1" 2>>"$LOG"; then
@@ -36,11 +37,36 @@ run() {
     fi
 }
 
+# start_watchdog запускает standalone firewall watchdog в фоне.
+# Идемпотентно: если PID-файл указывает на живой процесс — пропуск.
+# Watchdog нужен чтобы пережить ndm rebuild FORWARD chain через несколько
+# часов после boot. Без него правила теряются и трафик клиентов дропается.
+start_watchdog() {
+    if [ -f "$WATCHDOG_PID" ]; then
+        OLD_PID=$(cat "$WATCHDOG_PID" 2>/dev/null || echo "")
+        if [ -n "$OLD_PID" ] && [ -d "/proc/$OLD_PID" ]; then
+            return 0
+        fi
+    fi
+    nohup "$SC" --service-watchdog >>"$LOG" 2>&1 &
+    echo $! > "$WATCHDOG_PID"
+}
+
+stop_watchdog() {
+    if [ -f "$WATCHDOG_PID" ]; then
+        WD_PID=$(cat "$WATCHDOG_PID" 2>/dev/null || echo "")
+        if [ -n "$WD_PID" ] && [ -d "/proc/$WD_PID" ]; then
+            kill -TERM "$WD_PID" 2>/dev/null || true
+        fi
+        rm -f "$WATCHDOG_PID"
+    fi
+}
+
 case "${1:-}" in
-    start)   run --service-start ;;
-    stop)    run --service-stop ;;
-    restart) run --service-restart ;;
-    status)  exec "$SC" --service-status ;;
+    start)   run --service-start; start_watchdog ;;
+    stop)    stop_watchdog; run --stop ;;
+    restart) stop_watchdog; run --restart; start_watchdog ;;
+    status)  exec "$SC" --status ;;
     *)       echo "Использование: $0 {start|stop|restart|status}" >&2; exit 1 ;;
 esac
 `))

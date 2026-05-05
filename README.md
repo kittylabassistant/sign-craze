@@ -32,6 +32,8 @@ Go-утилита для управления межсетевым экрано�
 - Атомарное применение правил iptables/ipset с гарантированным откатом
 - Гео-фильтрация через SRS rule-set (выборочная загрузка по SHA256)
 - Встроенный Web UI: Zashboard `:9090`, admin API `:9091`, Routing Editor `:9092` (vanilla Preact + htm SPA)
+- Selective DPI: desync только для выбранных доменов/SNI через `--dpi-targets`
+- Firewall watchdog: автовосстановление iptables-правил каждые 30 с при работающем `--ui on`
 - Управление портами и исключениями без перезапуска
 - Резервное копирование и восстановление конфигурации
 - Диагностический режим (`--diag`)
@@ -91,6 +93,8 @@ sign-craze --update-core        Обновить бинарь sing-box
 sign-craze --mode proxy|dpi|hybrid   Переключить режим маршрутизации
 sign-craze --dpi on|off              Включить / выключить DPI-обход
 sign-craze --dpi-strategy <пресет>   Установить стратегию DPI
+sign-craze --dpi-targets <домены>    Selective DPI: desync только для указанных SNI (через запятую; clear — сбросить)
+sign-craze --dpi-targets-list        Показать текущий список DPI-целей
 
 sign-craze --port-add <порт>    Добавить порт в проксируемый набор
 sign-craze --port-del <порт>    Удалить порт
@@ -101,6 +105,7 @@ sign-craze --exclude-del <ip>   Удалить из исключений
 sign-craze --exclude-list       Показать исключения
 
 sign-craze --ui on|off          Включить / выключить Web UI (порты 9090/9091/9092)
+                                Watchdog firewall активен, пока процесс `--ui on` работает
 sign-craze --backup  / -b       Создать резервную копию конфигурации
 sign-craze --restore <путь>     Восстановить из резервной копии
 sign-craze --diag    / -D       Диагностика (PASS/WARN/FAIL по каждому пункту)
@@ -173,6 +178,7 @@ internal/cli  (диспетчер команд)
 /opt/sbin/sign-craze                      — этот бинарь
 /opt/etc/sign-craze/config.json           — конфигурация sing-box
 /opt/etc/sign-craze/nfqws2.conf           — конфигурация nfqws2 (если DPI включён)
+/opt/etc/sign-craze/dpi-hostlist.txt      — список SNI-целей для Selective DPI (если задан)
 /opt/etc/init.d/S05signcraze              — init.d shim (автозапуск)
 /opt/var/lib/sign-craze/                  — состояние (гео-файлы, бэкапы)
 /opt/var/log/sign-craze/                  — логи с ротацией

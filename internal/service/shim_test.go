@@ -63,6 +63,47 @@ func TestRenderShim_HasErrorHandling(t *testing.T) {
 	}
 }
 
+// TestRenderShim_NoNonExistentCommands — shim должен ссылаться только на
+// зарегистрированные CLI команды. Раньше использовались --service-stop /
+// --service-restart / --service-status, которых не существует — init.d stop
+// тихо падал.
+func TestRenderShim_NoNonExistentCommands(t *testing.T) {
+	data, err := RenderShim(ShimParams{BinPath: "/opt/sbin/sign-craze"})
+	if err != nil {
+		t.Fatalf("RenderShim: %v", err)
+	}
+	s := string(data)
+	for _, bad := range []string{"--service-stop", "--service-restart", "--service-status"} {
+		if strings.Contains(s, bad) {
+			t.Errorf("shim ссылается на несуществующую команду %q (используйте --stop/--restart/--status):\n%s", bad, s)
+		}
+	}
+}
+
+// TestRenderShim_HasWatchdogIntegration — shim должен запускать
+// --service-watchdog в фоне на start и убивать на stop, чтобы watchdog пережил
+// ребут роутера (без него watchdog существует только в --ui процессе, который
+// не входит в init.d boot path).
+func TestRenderShim_HasWatchdogIntegration(t *testing.T) {
+	data, err := RenderShim(ShimParams{BinPath: "/opt/sbin/sign-craze"})
+	if err != nil {
+		t.Fatalf("RenderShim: %v", err)
+	}
+	s := string(data)
+
+	for _, marker := range []string{
+		"--service-watchdog",
+		"start_watchdog",
+		"stop_watchdog",
+		"WATCHDOG_PID=/opt/var/run/sign-craze-watchdog.pid",
+		"nohup",
+	} {
+		if !strings.Contains(s, marker) {
+			t.Errorf("shim не содержит %q (требуется для watchdog persistence через ребут):\n%s", marker, s)
+		}
+	}
+}
+
 func TestWriteShim_CreatesFile(t *testing.T) {
 	dir := t.TempDir()
 	shimPath := filepath.Join(dir, "S05signcraze")

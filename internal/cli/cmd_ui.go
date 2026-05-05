@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/kittylabassistant/sign-craze/internal/firewall"
 	"github.com/kittylabassistant/sign-craze/internal/routing"
 	"github.com/kittylabassistant/sign-craze/internal/singbox"
 	"github.com/kittylabassistant/sign-craze/internal/state"
@@ -121,13 +120,5 @@ func startUI(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("--ui on: %w", err)
 	}
-
-	// Firewall watchdog: ndm на Keenetic периодически пересобирает FORWARD
-	// chain (типично через несколько часов после --start), стирая наши
-	// `-o signbox-tun -j ACCEPT` правила. Без них трафик клиентов попадает
-	// под FORWARD policy DROP → "sign-craze перестаёт проксировать".
-	// Watchdog раз в 30s проверяет критичные правила и реапплаит при пропаже.
-	go firewall.NewWatchdog(0, reconcileFirewall).Run(ctx)
-
 	return s.Start(ctx)
 }
