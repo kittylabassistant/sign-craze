@@ -4,15 +4,23 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/kittylabassistant/sign-craze/internal/routing"
+	"github.com/kittylabassistant/sign-craze/internal/service"
 	"github.com/kittylabassistant/sign-craze/internal/singbox"
 	"github.com/kittylabassistant/sign-craze/internal/state"
 	"github.com/kittylabassistant/sign-craze/internal/web"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
+
+// DefaultUIPIDFile — PID-файл фонового Web UI-демона.
+const DefaultUIPIDFile = "/opt/var/run/sign-craze-ui.pid"
+
+// DefaultUIStderrLog — stdout/stderr фонового Web UI-демона.
+const DefaultUIStderrLog = "/opt/var/log/sign-craze/ui.stderr.log"
 
 func init() {
 	Register(Cmd{
@@ -21,27 +29,72 @@ func init() {
 		Handler: handleUI,
 	})
 
+	Register(Cmd{
+		Long:    "--ui-daemon",
+		Help:    "(internal) блокирующий Web UI, запускается из --ui on",
+		Handler: handleUIDaemon,
+		Hidden:  true,
+	})
+
 	// Подключаем реальный get-version sing-box для StatusReader.
 	state.SingboxVersion = singbox.BinaryVersion
 }
 
+// handleUI управляет фоновым Web UI-демоном через service.Lifecycle.
+// --ui on   → форкает сам себя с --ui-daemon, пишет PID, возвращает управление.
+// --ui off  → SIGTERM по PID, ждёт graceful shutdown, удаляет PID.
 func handleUI(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("--ui: требуется аргумент on|off")
 	}
+	lc, err := uiLifecycle()
+	if err != nil {
+		return err
+	}
 	switch args[0] {
 	case "on":
-		return startUI(ctx)
+		if err := lc.Start(ctx); err != nil {
+			return fmt.Errorf("--ui on: %w", err)
+		}
+		st, _ := lc.Status(ctx)
+		fmt.Printf("Web UI запущен (pid=%d, порты 9090/9091/9092)\n", st.PID)
+		return nil
 	case "off":
-		// off используется когда UI запущен через --service-start;
-		// в режиме standalone --ui on блокируется до SIGTERM.
-		return fmt.Errorf("--ui off: сервис не запущен в этом процессе")
+		if err := lc.Stop(ctx); err != nil {
+			return fmt.Errorf("--ui off: %w", err)
+		}
+		fmt.Println("Web UI остановлен")
+		return nil
 	default:
 		return fmt.Errorf("--ui: неизвестный аргумент %q, ожидается on|off", args[0])
 	}
 }
 
-func startUI(ctx context.Context) error {
+// handleUIDaemon — блокирующая часть: реально поднимает HTTP-серверы.
+// Завершается по SIGTERM/SIGINT, прокинутым через ctx из main.
+func handleUIDaemon(ctx context.Context, _ []string) error {
+	return runUIServer(ctx)
+}
+
+// uiLifecycle строит service.Lifecycle, который форкает текущий бинарь
+// с флагом --ui-daemon. PID-файл и stderr — стандартные пути.
+func uiLifecycle() (service.Lifecycle, error) {
+	self, err := os.Executable()
+	if err != nil {
+		return nil, fmt.Errorf("--ui: путь к бинарю: %w", err)
+	}
+	return service.NewLifecycle(service.ProcessConfig{
+		Name:       "sign-craze-ui",
+		BinPath:    self,
+		Args:       []string{"--ui-daemon"},
+		PIDFile:    DefaultUIPIDFile,
+		StderrPath: DefaultUIStderrLog,
+	}), nil
+}
+
+// runUIServer собирает web.ServerConfig и блокируется на ListenAndServe
+// до отмены ctx. RoutingUI всегда включён: --ui — явная команда оператора.
+func runUIServer(ctx context.Context) error {
 	runner := newRunner()
 	singboxLC := newSingboxLifecycle()
 	dpiLC := newDPILifecycle()
@@ -59,8 +112,6 @@ func startUI(ctx context.Context) error {
 	excludesMgr := state.NewExcludesManager(state.DefaultPath)
 	dpiTargetsMgr := state.NewDPITargetsManager(state.DefaultPath)
 
-	// RoutingUI deps — рендерер использует singbox.Render с подсунутым RoutingConfig,
-	// OnApply триггерит regenerateConfig для немедленного применения.
 	st, stErr := state.Load(state.DefaultPath)
 	if stErr != nil {
 		slog.Warn("--ui: ошибка загрузки state.json (используются дефолты RoutingUI)", "err", stErr)
@@ -107,18 +158,23 @@ func startUI(ctx context.Context) error {
 		DPITargets: dpiTargetsMgr,
 		RoutingUI:  routingDeps,
 	}
+	// --ui-daemon — явный запуск UI оператором. RoutingUI на 9092 включаем
+	// всегда; флаг st.RoutingUIEnabled управляет авто-стартом при boot
+	// (--service-start), а не интерактивной командой.
+	cfg.RoutingUIEnabled = true
+	cfg.RoutingUIPort = state.DefaultRoutingUIPort
 	if st != nil {
-		cfg.RoutingUIEnabled = st.RoutingUIEnabled
-		cfg.RoutingUIPort = st.RoutingUIPort
-		cfg.RoutingUIBind = st.RoutingUIBind
-	} else {
-		cfg.RoutingUIEnabled = true
-		cfg.RoutingUIPort = state.DefaultRoutingUIPort
+		if st.RoutingUIPort != 0 {
+			cfg.RoutingUIPort = st.RoutingUIPort
+		}
+		if st.RoutingUIBind != "" {
+			cfg.RoutingUIBind = st.RoutingUIBind
+		}
 	}
 
 	s, err := web.NewServer(cfg)
 	if err != nil {
-		return fmt.Errorf("--ui on: %w", err)
+		return fmt.Errorf("--ui-daemon: %w", err)
 	}
 	return s.Start(ctx)
 }

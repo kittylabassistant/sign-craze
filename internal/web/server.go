@@ -78,7 +78,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 
 	s.clash = &http.Server{
 		Addr: ":9090",
-		Handler: recoverMiddleware(securityHeaders(s.basicAuth(
+		Handler: recoverMiddleware(securityHeadersSPA(s.basicAuth(
 			perRouteWriteDeadline(clashMux),
 		))),
 		ReadTimeout:    15 * time.Second,
@@ -88,7 +88,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	}
 	s.admin = &http.Server{
 		Addr: ":9091",
-		Handler: recoverMiddleware(securityHeaders(s.basicAuth(
+		Handler: recoverMiddleware(securityHeadersAdmin(s.basicAuth(
 			originGuard(adminMux),
 		))),
 		ReadTimeout:    15 * time.Second,
@@ -120,7 +120,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		routingMux := http.NewServeMux()
 		registerRoutingUIRoutes(routingMux, s)
 		s.routingUI = &http.Server{
-			Handler: recoverMiddleware(securityHeaders(s.basicAuth(
+			Handler: recoverMiddleware(securityHeadersSPA(s.basicAuth(
 				originGuard(routingMux),
 			))),
 			ReadTimeout:    15 * time.Second,
@@ -212,14 +212,36 @@ func (s *Server) basicAuth(next http.Handler) http.Handler {
 	})
 }
 
-// securityHeaders проставляет защитные заголовки на каждый ответ.
-func securityHeaders(next http.Handler) http.Handler {
+// cspAdmin — строгая Content-Security-Policy для admin REST (порт 9091).
+// Лендинг — статический HTML без JS, поэтому inline-скрипты запрещены.
+const cspAdmin = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'"
+
+// cspSPA — смягчённая CSP для портов 9090 (Zashboard/MetaCubeXD) и 9092
+// (Routing Editor). Дашборды содержат inline <script> с конфигом приложения
+// (window.__NUXT__, window.__METACUBEXD_CONFIG__). Без 'unsafe-inline' SPA
+// не инициализируется — страница белая. Риск минимален: контент целиком
+// из embed.FS (compile-time), доступ закрыт Basic Auth, источник 'self'.
+// 'unsafe-eval' нужен на случай dynamic-import-полифиллов в Nuxt-сборке.
+// connect-src с ws:/wss: разрешает Clash WebSocket /traffic, /logs.
+const cspSPA = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self' ws: wss:"
+
+// securityHeadersAdmin ставит защитные заголовки + строгую CSP для admin.
+func securityHeadersAdmin(next http.Handler) http.Handler {
+	return setSecurityHeaders(next, cspAdmin)
+}
+
+// securityHeadersSPA ставит защитные заголовки + CSP, разрешающую inline-скрипты.
+func securityHeadersSPA(next http.Handler) http.Handler {
+	return setSecurityHeaders(next, cspSPA)
+}
+
+func setSecurityHeaders(next http.Handler, csp string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "no-referrer")
-		h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'")
+		h.Set("Content-Security-Policy", csp)
 		next.ServeHTTP(w, r)
 	})
 }

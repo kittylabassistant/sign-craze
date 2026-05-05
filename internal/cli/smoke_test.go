@@ -8,7 +8,7 @@ import (
 
 // expectedCommands — все Long-флаги, которые должны быть зарегистрированы.
 var expectedCommands = []string{
-	"--ui",
+	"--ui", "--ui-daemon",
 	"--install", "--install-auto", "--install-offline", "--reinstall",
 	"--start", "--stop", "--restart", "--service-start",
 	"--status", "--version",
@@ -75,6 +75,14 @@ func TestReapplyIsHidden(t *testing.T) {
 	for _, c := range registry {
 		if c.Long == "--reapply" && !c.Hidden {
 			t.Error("--reapply должна быть Hidden (вызывается из netfilter.d hook)")
+		}
+	}
+}
+
+func TestUIDaemonIsHidden(t *testing.T) {
+	for _, c := range registry {
+		if c.Long == "--ui-daemon" && !c.Hidden {
+			t.Error("--ui-daemon должна быть Hidden (внутренний форк из --ui on)")
 		}
 	}
 }

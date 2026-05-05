@@ -52,7 +52,7 @@ func makeRoutingUIServer(t *testing.T, port uint16, maxAttempts int) (*Server, s
 func servingMux(s *Server) http.Handler {
 	mux := http.NewServeMux()
 	registerRoutingUIRoutes(mux, s)
-	return recoverMiddleware(securityHeaders(s.basicAuth(originGuard(mux))))
+	return recoverMiddleware(securityHeadersSPA(s.basicAuth(originGuard(mux))))
 }
 
 func TestRoutingUI_HealthEndpoint(t *testing.T) {

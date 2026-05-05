@@ -52,7 +52,7 @@ func (s *Server) adminLanding(w http.ResponseWriter, r *http.Request) {
 <h1>sign-craze · admin REST API</h1>
 <p>Этот порт (<code>:9091</code>) — REST API без графического UI. Для управления используйте:</p>
 <ul>
-  <li><a href="http://%[1]s:9090/ui/">Zashboard</a> (Clash-совместимый дашборд) на <code>:9090</code></li>
+  <li><a href="http://%[1]s:9090/">Zashboard</a> (Clash-совместимый дашборд) на <code>:9090</code></li>
   <li><a href="http://%[1]s:%[2]d/">Routing Editor</a> на <code>:%[2]d</code></li>
 </ul>
 <h2>Endpoints на :9091</h2>

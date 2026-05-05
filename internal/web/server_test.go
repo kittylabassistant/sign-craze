@@ -104,7 +104,7 @@ func TestBasicAuth_отклоняет_неверный_username(t *testing.T) {
 // TestSecurityHeaders_присутствуют — middleware должен ставить X-Content-Type-Options,
 // X-Frame-Options, CSP, Referrer-Policy на каждый ответ.
 func TestSecurityHeaders_присутствуют(t *testing.T) {
-	handler := securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	handler := securityHeadersAdmin(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
