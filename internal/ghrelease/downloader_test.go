@@ -159,6 +159,48 @@ func TestFetch_VerifySHA_Mismatch(t *testing.T) {
 	}
 }
 
+func TestFetch_ByTag(t *testing.T) {
+	content := []byte("payload")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/releases/latest"):
+			http.Error(w, "latest must not be queried when Tag set", http.StatusBadRequest)
+			return
+		case strings.HasSuffix(r.URL.Path, "/releases/tags/v9.9.9"):
+			rel := types.Release{
+				TagName: "v9.9.9",
+				Assets: []types.Asset{{
+					Name:               "tool-linux-arm64.tar.gz",
+					BrowserDownloadURL: "http://" + r.Host + "/dl/tool.tar.gz",
+				}},
+			}
+			_ = json.NewEncoder(w).Encode(rel)
+		default:
+			_, _ = w.Write(content)
+		}
+	}))
+	defer srv.Close()
+
+	old := APIBaseURL
+	APIBaseURL = srv.URL
+	defer func() { APIBaseURL = old }()
+
+	res, err := New().Fetch(context.Background(), FetchOptions{
+		Owner:      "owner",
+		Repo:       "repo",
+		Tag:        "v9.9.9",
+		AssetMatch: MatchByContains("arm64"),
+		DstDir:     t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if res.Version != "v9.9.9" {
+		t.Errorf("Version = %q, ожидалось v9.9.9", res.Version)
+	}
+}
+
 func TestMatchByContains_Helper(t *testing.T) {
 	fn := MatchByContains("arm64")
 	if !fn(types.Asset{Name: "tool-arm64.tar.gz"}) {

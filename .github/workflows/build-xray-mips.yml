@@ -1,0 +1,133 @@
+name: Build xray for MIPS (Keenetic)
+
+# Собирает xray из XTLS/Xray-core с принудительным toolchain Go 1.22 +
+# GOMIPS=softfloat. Цель — обойти регрессии Go 1.23+ runtime в futex/MIPS,
+# из-за которых официальные XTLS-бинари сегфолтятся на ядрах Keenetic
+# (3.4–4.x; ENOSYS на futex syscall).
+#
+# Запуск ручной (workflow_dispatch). После успешной публикации релиза
+# `xray-mips-<xray_ref>` константа internal/core/xray.XRayMIPSVersion
+# обновляется вручную в исходниках под новую версию.
+
+on:
+  workflow_dispatch:
+    inputs:
+      xray_ref:
+        description: 'XTLS/Xray-core git tag (e.g. v26.3.27)'
+        required: true
+        default: 'v26.3.27'
+      go_version:
+        description: 'Go toolchain version (recommend 1.22.x — last stable for old MIPS kernels)'
+        required: true
+        default: '1.22.10'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build (${{ matrix.suffix }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goarch: mipsle
+            gomips: softfloat
+            suffix: mips32le
+            zip_name: Xray-linux-mips32le.zip
+          - goarch: mips
+            gomips: softfloat
+            suffix: mips32
+            zip_name: Xray-linux-mips32.zip
+
+    steps:
+      - name: checkout xray-core
+        uses: actions/checkout@v6
+        with:
+          repository: XTLS/Xray-core
+          ref: ${{ inputs.xray_ref }}
+          path: xray-core
+
+      - name: pin go.mod toolchain to 1.22 (MIPS kernel compat)
+        working-directory: xray-core
+        # Если у xray go.mod указывает 1.23+ — Go toolchain автоматически
+        # подтянет 1.23 и нивелирует наш fix. Принудительно сбрасываем
+        # директиву и удаляем `toolchain ...` строку.
+        run: |
+          sed -i -E 's/^go [0-9]+\.[0-9]+(\.[0-9]+)?$/go 1.22/' go.mod
+          sed -i '/^toolchain /d' go.mod
+          echo '--- patched go.mod ---'
+          head -5 go.mod
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ inputs.go_version }}
+          cache-dependency-path: xray-core/go.sum
+
+      - name: build
+        working-directory: xray-core
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: ${{ matrix.goarch }}
+          GOMIPS: ${{ matrix.gomips }}
+          GOTOOLCHAIN: local
+        run: |
+          mkdir -p ../dist
+          go build -buildvcs=false \
+            -ldflags="-s -w -buildid=" \
+            -trimpath \
+            -o ../dist/xray \
+            ./main
+
+      - name: pack zip (mirror upstream layout)
+        run: |
+          cd dist
+          zip -9 ${{ matrix.zip_name }} xray
+          rm xray
+          ls -la
+
+      - name: checksum
+        run: |
+          cd dist
+          sha256sum ${{ matrix.zip_name }} > ${{ matrix.zip_name }}.sha256
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: xray-${{ matrix.suffix }}
+          path: dist/
+
+  publish:
+    name: publish xray-mips release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist/
+          merge-multiple: true
+
+      - name: list assets
+        run: ls -la dist/
+
+      - name: create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: xray-mips-${{ inputs.xray_ref }}
+          name: 'Xray ${{ inputs.xray_ref }} for Keenetic MIPS (Go ${{ inputs.go_version }})'
+          body: |
+            Pre-built xray binaries for Keenetic OpenWRT/Entware (MIPS, kernel 3.4–4.x).
+
+            **Why:** official XTLS releases are built with Go 1.23+, whose runtime
+            uses futex operations not available in old MIPS kernels (`futexwakeup
+            ... returned -89` ENOSYS → SIGSEGV at startup).
+
+            **Build flags:** `CGO_ENABLED=0 GOMIPS=softfloat GOTOOLCHAIN=local`,
+            Go ${{ inputs.go_version }}, `-ldflags="-s -w -buildid="`.
+
+            Source: https://github.com/XTLS/Xray-core/tree/${{ inputs.xray_ref }}
+
+            Consumed by `internal/core/xray.XRayMIPSVersion` in sign-craze.
+          files: dist/**

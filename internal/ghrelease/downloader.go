@@ -53,6 +53,7 @@ func New() *Downloader {
 type FetchOptions struct {
 	Owner      string                 // владелец репозитория (например "SagerNet")
 	Repo       string                 // имя репозитория (например "sing-box")
+	Tag        string                 // конкретный tag релиза; пусто — latest
 	AssetMatch func(types.Asset) bool // выбор нужного asset из релиза
 	DstDir     string                 // директория для записи
 	VerifySHA  bool                   // если true — ищет рядом asset с суффиксом .sha256 и сверяет
@@ -75,7 +76,13 @@ func (d *Downloader) Fetch(ctx context.Context, opts FetchOptions) (FetchResult,
 		return FetchResult{}, fmt.Errorf("ghrelease: AssetMatch не задан")
 	}
 
-	release, err := d.LatestRelease(ctx, opts.Owner, opts.Repo)
+	var release *types.Release
+	var err error
+	if opts.Tag != "" {
+		release, err = d.ReleaseByTag(ctx, opts.Owner, opts.Repo, opts.Tag)
+	} else {
+		release, err = d.LatestRelease(ctx, opts.Owner, opts.Repo)
+	}
 	if err != nil {
 		return FetchResult{}, fmt.Errorf("ghrelease: метаданные релиза %s/%s: %w", opts.Owner, opts.Repo, err)
 	}
@@ -130,7 +137,17 @@ func (d *Downloader) Fetch(ctx context.Context, opts FetchOptions) (FetchResult,
 
 // LatestRelease возвращает метаданные последнего релиза репозитория.
 func (d *Downloader) LatestRelease(ctx context.Context, owner, repo string) (*types.Release, error) {
-	url := fmt.Sprintf("%s/repos/%s/%s/releases/latest", APIBaseURL, owner, repo)
+	return d.fetchReleaseMeta(ctx, fmt.Sprintf("%s/repos/%s/%s/releases/latest", APIBaseURL, owner, repo))
+}
+
+// ReleaseByTag возвращает метаданные релиза по конкретному тегу.
+// Используется когда требуется pinned-версия (например, собственные сборки
+// xray для MIPS лежат под отдельным tag-ом и не являются "latest").
+func (d *Downloader) ReleaseByTag(ctx context.Context, owner, repo, tag string) (*types.Release, error) {
+	return d.fetchReleaseMeta(ctx, fmt.Sprintf("%s/repos/%s/%s/releases/tags/%s", APIBaseURL, owner, repo, tag))
+}
+
+func (d *Downloader) fetchReleaseMeta(ctx context.Context, url string) (*types.Release, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
