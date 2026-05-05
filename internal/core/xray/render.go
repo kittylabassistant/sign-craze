@@ -34,11 +34,11 @@ func DefaultConfigParams() ConfigParams {
 
 // xrayConfig — корневая структура xray config.json.
 type xrayConfig struct {
-	Log      map[string]any   `json:"log"`
-	DNS      map[string]any   `json:"dns,omitempty"`
-	Inbounds []map[string]any `json:"inbounds"`
+	Log       map[string]any   `json:"log"`
+	DNS       map[string]any   `json:"dns,omitempty"`
+	Inbounds  []map[string]any `json:"inbounds"`
 	Outbounds []map[string]any `json:"outbounds"`
-	Routing  map[string]any   `json:"routing"`
+	Routing   map[string]any   `json:"routing"`
 }
 
 // Render генерирует xray config.json как []byte (json.MarshalIndent).
@@ -141,7 +141,7 @@ func buildTProxyInbound(port uint16, fwmark uint32) map[string]any {
 			},
 		},
 		"sniffing": map[string]any{
-			"enabled":     true,
+			"enabled":      true,
 			"destOverride": []string{"http", "tls", "quic"},
 		},
 	}

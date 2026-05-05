@@ -21,13 +21,13 @@ func TestMatchAsset_перебирает_фактический_список_ass
 		"mihomo-linux-amd64-compatible-v1.19.24.gz",
 		"mihomo-linux-amd64-v1-v1.19.24.deb",
 		"mihomo-linux-amd64-v1.19.24.pkg.tar.zst",
-		"mihomo-linux-arm64-v1.19.24.gz",   // ← arm64-default
+		"mihomo-linux-arm64-v1.19.24.gz", // ← arm64-default
 		"mihomo-linux-arm64-go120-v1.19.24.gz",
 		"mihomo-linux-arm64-go124-v1.19.24.gz",
 		"mihomo-linux-armv5-v1.19.24.gz",
 		"mihomo-linux-armv6-v1.19.24.gz",
-		"mihomo-linux-armv7-v1.19.24.gz", // ← arm7
-		"mihomo-linux-mips-softfloat-v1.19.24.gz",   // ← mips
+		"mihomo-linux-armv7-v1.19.24.gz",          // ← arm7
+		"mihomo-linux-mips-softfloat-v1.19.24.gz", // ← mips
 		"mihomo-linux-mips-hardfloat-v1.19.24.gz",
 		"mihomo-linux-mipsle-softfloat-v1.19.24.gz", // ← mipsle
 		"mihomo-linux-mipsle-hardfloat-v1.19.24.gz",

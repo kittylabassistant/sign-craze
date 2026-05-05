@@ -111,10 +111,10 @@ func TestValidateDAT_RejectsTooLarge(t *testing.T) {
 	t.Cleanup(func() { os.Remove(path) })
 
 	// Записываем 1 байт, затем truncate до MaxDATSize+1.
-	if _, err := f.Write([]byte{0x0A}); err != nil {
+	if _, err = f.Write([]byte{0x0A}); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
-	if err := f.Truncate(MaxDATSize + 1); err != nil {
+	if err = f.Truncate(MaxDATSize + 1); err != nil {
 		t.Fatalf("Truncate: %v", err)
 	}
 	f.Close()
@@ -142,8 +142,8 @@ func TestValidateDAT_RejectsMalformedVarint(t *testing.T) {
 func TestValidateDAT_RejectsTruncated(t *testing.T) {
 	// tag=0x0A (field1, wire2), length=100, только 50 байт body → обрыв.
 	var buf bytes.Buffer
-	writeVarint(&buf, 0x0A)  // top-level tag
-	writeVarint(&buf, 100)   // length = 100 байт
+	writeVarint(&buf, 0x0A)     // top-level tag
+	writeVarint(&buf, 100)      // length = 100 байт
 	buf.Write(make([]byte, 50)) // только 50 байт body
 	path := writeTempFile(t, buf.Bytes())
 

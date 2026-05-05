@@ -159,11 +159,9 @@ func buildTLS(q url.Values) (*types.TLSConfig, error) {
 			reality.MLDSA65Verify = v
 		}
 		tls.Reality = reality
-	} else {
+	} else if q.Get("pbk") != "" || q.Get("sid") != "" {
 		// security=tls, но pbk/sid заданы — ошибка
-		if q.Get("pbk") != "" || q.Get("sid") != "" {
-			return nil, fmt.Errorf("proxyparse: pbk/sid заданы, но security=tls (ожидалось reality)")
-		}
+		return nil, fmt.Errorf("proxyparse: pbk/sid заданы, но security=tls (ожидалось reality)")
 	}
 
 	return tls, nil
@@ -356,7 +354,12 @@ func canonicalShadowsocks(s string) (types.Outbound, types.Canonical, error) {
 	// Извлекаем тег из fragment
 	fragment := ""
 	if hash := strings.Index(hostPart, "#"); hash >= 0 {
-		fragment, _ = url.QueryUnescape(hostPart[hash+1:])
+		raw := hostPart[hash+1:]
+		if dec, err := url.QueryUnescape(raw); err == nil {
+			fragment = dec
+		} else {
+			fragment = raw
+		}
 		hostPart = hostPart[:hash]
 	}
 

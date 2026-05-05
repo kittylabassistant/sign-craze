@@ -20,10 +20,8 @@ func makeMRS(t *testing.T, magic []byte, version, behavior uint32, count uint64)
 
 	// Заголовок: 8 байт magic + 4 version + 4 behavior + 8 count = 24 байта.
 	var header [mrsMinSize]byte
-	n := copy(header[0:8], magic)
-	if n < 8 {
-		// Дополняем нулями если magic короче 8 байт.
-	}
+	// copy дополняет нулями если magic короче 8 байт (array инициализирован нулями).
+	copy(header[0:8], magic)
 	binary.LittleEndian.PutUint32(header[8:12], version)
 	binary.LittleEndian.PutUint32(header[12:16], behavior)
 	binary.LittleEndian.PutUint64(header[16:24], count)
@@ -112,7 +110,7 @@ func TestValidateMRS_RejectsTooLarge(t *testing.T) {
 
 	// Расширяем файл до MaxMRSSize+1 через Truncate (sparse, без реальной записи).
 	bigSize := MaxMRSSize + 1
-	if err := f.Truncate(bigSize); err != nil {
+	if err = f.Truncate(bigSize); err != nil {
 		t.Fatalf("Truncate: %v", err)
 	}
 	f.Close()

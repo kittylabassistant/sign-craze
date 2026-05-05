@@ -1,6 +1,7 @@
 package geo
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -64,7 +65,7 @@ func parseDAT(path string, extractCodes bool) ([]string, error) {
 	for {
 		// Читаем tag top-level поля.
 		tag, n, err := readVarint(f)
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			// Конец файла — корректное завершение (если хоть одна запись была).
 			break
 		}

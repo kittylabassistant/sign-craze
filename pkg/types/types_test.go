@@ -16,7 +16,7 @@ func TestOutbound_Marshal_CanonicalFields(t *testing.T) {
 		Port:     443,
 		Protocol: ProtocolVLESS,
 		Transport: &Transport{
-			Kind: TransportGRPC,
+			Kind:        TransportGRPC,
 			ServiceName: "grpc-service",
 		},
 		TLS: &TLSConfig{

@@ -107,10 +107,10 @@ func handleCoreInstall(ctx context.Context, args []string) error {
 		return fmt.Errorf("--core-install: %w", err)
 	}
 
-	if err := os.MkdirAll(c.CacheDir(), 0o755); err != nil {
+	if err = os.MkdirAll(c.CacheDir(), 0o755); err != nil {
 		return fmt.Errorf("--core-install: создание cache dir: %w", err)
 	}
-	if err := os.MkdirAll(filepath.Dir(c.BinaryPath()), 0o755); err != nil {
+	if err = os.MkdirAll(filepath.Dir(c.BinaryPath()), 0o755); err != nil {
 		return fmt.Errorf("--core-install: создание bin dir: %w", err)
 	}
 
@@ -137,9 +137,9 @@ func handleCoreInstall(ctx context.Context, args []string) error {
 		fmt.Printf("Установлено %s v%s в %s\n", c.Name(), ver, c.BinaryPath())
 	}
 
-	st, _ := loadState()
+	st, stErr := loadState()
 	active := state.DefaultCore
-	if st != nil && st.Core != "" {
+	if stErr == nil && st != nil && st.Core != "" {
 		active = st.Core
 	}
 	if name != active {
@@ -149,9 +149,9 @@ func handleCoreInstall(ctx context.Context, args []string) error {
 }
 
 func handleCoreList(ctx context.Context, _ []string) error {
-	st, _ := loadState()
+	st, stErr := loadState()
 	active := ""
-	if st != nil {
+	if stErr == nil && st != nil {
 		active = st.Core
 	}
 	if active == "" {

@@ -98,6 +98,8 @@ func stopWatchdog(_ context.Context) bool {
 	}
 
 	log.L().Warn("watchdog не ответил на SIGTERM, посылаем SIGKILL", "pid", pid)
-	_ = proc.Signal(syscall.SIGKILL)
+	if err := proc.Signal(syscall.SIGKILL); err != nil {
+		log.L().Debug("stopWatchdog: SIGKILL failed", "pid", pid, "err", err)
+	}
 	return true
 }

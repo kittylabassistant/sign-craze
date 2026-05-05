@@ -356,7 +356,7 @@ func TestLoad_LegacyOutboundCanonicals_RoundTrip(t *testing.T) {
 	}
 
 	// Сохраняем в новом формате
-	if err := Save(newPath, loaded); err != nil {
+	if err = Save(newPath, loaded); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 

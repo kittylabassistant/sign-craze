@@ -14,8 +14,7 @@ func Validate(c types.Canonical) error {
 	if c.Proto == nil {
 		return nil
 	}
-	switch c.Protocol {
-	case types.ProtocolVLESS:
+	if c.Protocol == types.ProtocolVLESS {
 		return validateVLESS(c)
 	}
 	return nil

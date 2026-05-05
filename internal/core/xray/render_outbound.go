@@ -85,8 +85,8 @@ func renderVLESSSettings(ob types.Outbound, c types.Canonical) map[string]any {
 // renderVMessSettings строит блок settings для VMess outbound.
 func renderVMessSettings(ob types.Outbound, c types.Canonical) map[string]any {
 	user := map[string]any{
-		"id":      "",
-		"alterId": 0,
+		"id":       "",
+		"alterId":  0,
 		"security": "auto",
 	}
 	if c.Proto != nil {

@@ -104,11 +104,11 @@ type UTLSConfig struct {
 
 // TLSConfig — параметры TLS-обёртки.
 type TLSConfig struct {
-	Enabled    bool          `json:"enabled,omitempty"`
-	ServerName string        `json:"server_name,omitempty"` // SNI
-	ALPN       []string      `json:"alpn,omitempty"`        // ALPN список (h2, http/1.1)
-	Insecure   bool          `json:"insecure,omitempty"`    // пропускать verify chain (debug)
-	UTLS       *UTLSConfig   `json:"utls,omitempty"`
+	Enabled    bool           `json:"enabled,omitempty"`
+	ServerName string         `json:"server_name,omitempty"` // SNI
+	ALPN       []string       `json:"alpn,omitempty"`        // ALPN список (h2, http/1.1)
+	Insecure   bool           `json:"insecure,omitempty"`    // пропускать verify chain (debug)
+	UTLS       *UTLSConfig    `json:"utls,omitempty"`
 	Reality    *RealityConfig `json:"reality,omitempty"`
 	// ECH — Encrypted Client Hello config; пока stub-поле для будущей
 	// настройки (обе ядра — sing-box и xray — добавляют ECH в 2026).
@@ -128,9 +128,9 @@ type ECHConfig struct {
 type ProtoOpts struct {
 	// VLESS / VMess.
 	UUID       string `json:"uuid,omitempty"`
-	Flow       string `json:"flow,omitempty"`        // VLESS Vision: xtls-rprx-vision[-udp443]
-	Encryption string `json:"encryption,omitempty"`  // VLESS PQ: mlkem768x25519plus / none
-	AlterID    int    `json:"alter_id,omitempty"`    // VMess legacy
+	Flow       string `json:"flow,omitempty"`       // VLESS Vision: xtls-rprx-vision[-udp443]
+	Encryption string `json:"encryption,omitempty"` // VLESS PQ: mlkem768x25519plus / none
+	AlterID    int    `json:"alter_id,omitempty"`   // VMess legacy
 	PacketEnc  string `json:"packet_encoding,omitempty"`
 
 	// Shadowsocks / Trojan.
@@ -138,7 +138,7 @@ type ProtoOpts struct {
 	Method   string `json:"method,omitempty"` // SS-cipher: aes-256-gcm, 2022-blake3-aes-256-gcm, ...
 
 	// Hysteria 2.
-	Hysteria2Obfs         string `json:"hy2_obfs,omitempty"`           // salamander | none
+	Hysteria2Obfs         string `json:"hy2_obfs,omitempty"` // salamander | none
 	Hysteria2ObfsPassword string `json:"hy2_obfs_password,omitempty"`
 	Hysteria2UpMbps       int    `json:"hy2_up_mbps,omitempty"`
 	Hysteria2DownMbps     int    `json:"hy2_down_mbps,omitempty"`

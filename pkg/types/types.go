@@ -154,11 +154,11 @@ const (
 // Для рендера sing-box config.json используется renderOutboundJSON в
 // internal/singbox/render.go — она знает про flatten Settings и canonical-путь.
 type Outbound struct {
-	Tag      string         `json:"tag"`                // уникальный тег (обязателен)
-	Type     string         `json:"type"`               // "socks", "vmess", "vless", "shadowsocks" и т.д.
-	Server   string         `json:"server,omitempty"`   // не требуется для type=direct
+	Tag      string         `json:"tag"`                   // уникальный тег (обязателен)
+	Type     string         `json:"type"`                  // "socks", "vmess", "vless", "shadowsocks" и т.д.
+	Server   string         `json:"server,omitempty"`      // не требуется для type=direct
 	Port     Port           `json:"server_port,omitempty"` // sing-box/state.json имя (legacy "port" мигрируется при Load)
-	Settings map[string]any `json:"settings,omitempty"` // legacy: параметры до Phase D
+	Settings map[string]any `json:"settings,omitempty"`    // legacy: параметры до Phase D
 
 	// Canonical-поля (Phase D.4): заполняются parserом из URL, используются
 	// всеми ядрами как primary источник (fallback — Settings, если Protocol=="").

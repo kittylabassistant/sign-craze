@@ -100,9 +100,7 @@ func Render(p ConfigParams) ([]byte, error) {
 	// Регистрируем функцию yamlInline для шаблона.
 	// Сериализует map[string]any в однострочный YAML-mapping (inline).
 	funcMap := template.FuncMap{
-		"yamlInline": func(m map[string]any) string {
-			return marshalYAMLInline(m)
-		},
+		"yamlInline": marshalYAMLInline,
 	}
 
 	tmpl, err := template.New("config").Funcs(funcMap).Parse(configTmpl)
