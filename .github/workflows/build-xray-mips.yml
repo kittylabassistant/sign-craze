@@ -73,6 +73,28 @@ jobs:
           go-version: ${{ inputs.go_version }}
           cache-dependency-path: xray-core/go.sum
 
+      - name: stub Go 1.25-only API in tls ping subcommand
+        working-directory: xray-core
+        # `xray tls ping` использует tls.ConnectionState.CurveID и
+        # tls.X25519MLKEM768 — оба добавлены в Go 1.25. На Go 1.24 не
+        # компилируется. Это диагностический subcommand (не runtime), так что
+        # стабим блок печати post-quantum информации. Основная функциональность
+        # (PQ-VLESS, Reality, Vision) живёт в proxy/vless/ и не затронута.
+        run: |
+          python3 - <<'EOF'
+          import re
+          p = "main/commands/all/tls/ping.go"
+          s = open(p).read()
+          new = re.sub(
+              r"\tcurveID := connectionState\.CurveID\n\tif curveID != 0 \{[^}]+\} else \{[^}]+\}",
+              '\tfmt.Println("TLS Post-Quantum key exchange: stub (build с Go 1.24, требуется 1.25 для CurveID)")',
+              s, count=1)
+          if new == s:
+              raise SystemExit("ping.go patch не сработал — паттерн не найден")
+          open(p, "w").write(new)
+          EOF
+          grep -A1 "Post-Quantum" main/commands/all/tls/ping.go | head -5
+
       - name: go mod tidy (resync after toolchain downgrade)
         working-directory: xray-core
         env:
