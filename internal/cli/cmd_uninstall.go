@@ -79,6 +79,7 @@ func doUninstall(ctx context.Context, label string) []string {
 		"/opt/var/run/sign-craze-singbox.pid": "PID-файл sing-box",
 		"/opt/var/run/sign-craze-nfqws2.pid":  "PID-файл nfqws2",
 		"/opt/var/run/sign-craze-ui.pid":      "PID-файл Web UI",
+		service.DefaultWatchdogPIDPath:        "PID-файл watchdog",
 	}
 	for path, lbl := range files {
 		if removeIfExists(path) {

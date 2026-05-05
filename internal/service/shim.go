@@ -16,6 +16,12 @@ const (
 	DefaultShimPath = "/opt/etc/init.d/S05signcraze"
 	// DefaultBinPath — путь к бинарю sign-craze на роутере.
 	DefaultSignCrazeBin = "/opt/sbin/sign-craze"
+	// DefaultWatchdogPIDPath — PID-файл standalone firewall watchdog daemon.
+	// Запись делает init.d shim (start_watchdog), читают --stop / --uninstall
+	// чтобы корректно остановить демон. Без этого watchdog продолжает крутить
+	// reconcileFirewall после удаления sing-box и пересоздаёт state.json через
+	// ensureKeeneticPolicy → saveState (см. issue v0.4.2 install/uninstall).
+	DefaultWatchdogPIDPath = "/opt/var/run/sign-craze-watchdog.pid"
 )
 
 // shimTemplate — шаблон init.d shim (~30 строк, генерируется sign-craze).

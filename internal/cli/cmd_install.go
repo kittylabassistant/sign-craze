@@ -58,12 +58,25 @@ func handleReinstall(ctx context.Context, _ []string) error {
 func doInstall(ctx context.Context, mode installMode, offlineTar string, force bool) error {
 	// 0. Idempotency check: если уже установлено и не force — отказ
 	// (safety-fixes #16). До этого --install молча перезаписывал всё.
+	//
+	// Различаем три состояния:
+	//   а) full install: state.json + sing-box бинарь оба существуют → требуем --reinstall;
+	//   б) degraded: state.json есть, бинарь нет (типичный артефакт частичного
+	//      uninstall — например, watchdog daemon воскресил state.json через
+	//      reconcile/saveState после удаления). Подсказываем --uninstall ещё раз;
+	//   в) orphan-bin: бинарь есть, state.json нет — необычная ручная подкладка.
 	if !force {
-		if _, err := os.Stat(state.DefaultPath); err == nil {
-			return fmt.Errorf("--install: sign-craze уже установлен (state.json существует). Используйте --reinstall для переустановки или --uninstall сначала")
-		}
-		if _, err := os.Stat(singbox.DefaultBinPath); err == nil {
-			return fmt.Errorf("--install: sing-box уже установлен (%s). Используйте --reinstall для переустановки", singbox.DefaultBinPath)
+		_, stateErr := os.Stat(state.DefaultPath)
+		_, binErr := os.Stat(singbox.DefaultBinPath)
+		stateExists := stateErr == nil
+		binExists := binErr == nil
+		switch {
+		case stateExists && binExists:
+			return fmt.Errorf("--install: sign-craze уже установлен. Используйте --reinstall для переустановки или --uninstall чтобы сначала очистить")
+		case stateExists && !binExists:
+			return fmt.Errorf("--install: обнаружено degraded состояние (state.json есть, бинарь %s отсутствует). Запустите --uninstall для очистки остатков, затем повторите --install", singbox.DefaultBinPath)
+		case !stateExists && binExists:
+			return fmt.Errorf("--install: бинарь sing-box уже установлен (%s) без state.json. Запустите --uninstall, затем --install", singbox.DefaultBinPath)
 		}
 	}
 

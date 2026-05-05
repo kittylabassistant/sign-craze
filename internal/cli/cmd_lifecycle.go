@@ -134,6 +134,11 @@ func handleStop(ctx context.Context, _ []string) error {
 }
 
 func doStop(ctx context.Context) error {
+	// Watchdog daemon — отдельный процесс из init.d shim. Если его не убить
+	// первым, он перезапишет state.json и переапплит firewall между нашим
+	// Remove'ом и вернёт правила в живое состояние через 30s.
+	stopWatchdog(ctx)
+
 	dpiLC := newDPILifecycle()
 	if err := dpiLC.Stop(ctx); err != nil {
 		log.L().Debug("--stop: nfqws2 stop", "err", err)
