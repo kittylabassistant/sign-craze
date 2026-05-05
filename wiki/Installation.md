@@ -371,6 +371,8 @@ sign-craze --start
 
 Применит iptables/ipset правила и запустит sing-box (и nfqws2 в режимах `dpi`/`hybrid`).
 
+> **DPI отключён по умолчанию.** После `--install` режим — `proxy`, `nfqws2` не скачан и не запускается, NFQUEUE-правила не добавляются. Для активации DPI: `sign-craze --dpi on && sign-craze --restart` (см. раздел [9a](#9a-selective-dpi-bypass-опционально) и [FAQ](FAQ#работает-ли-dpinfqws2-из-коробки)).
+
 Проверка статуса:
 
 ```sh

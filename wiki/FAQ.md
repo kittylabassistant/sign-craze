@@ -29,6 +29,28 @@ grep watchdog /opt/var/log/sign-craze/sign-craze.log | tail -10
 
 ## DPI bypass
 
+### Работает ли DPI/nfqws2 из коробки?
+
+Нет. После `--install` / `--install-auto` запущен только `sing-box` (режим `proxy`), `nfqws2` **не скачан**, NFQUEUE-правила в iptables не добавлены, `state.json` хранит `dpi_enabled=false`. DPI-обход — opt-in.
+
+Минимум для активации:
+
+```sh
+sign-craze --dpi on        # качает nfqws2 в /opt/sbin/, генерит /opt/etc/sign-craze/nfqws2.conf, ставит DPIEnabled=true
+sign-craze --restart       # applier добавляет NFQUEUE-правила, lifecycle поднимает nfqws2
+```
+
+После `--dpi on` состояние сохраняется в `state.json` и переживает ребуты — init.d shim `/opt/etc/init.d/S05signcraze` поднимет `nfqws2` автоматически.
+
+Для экономии CPU на MIPS-роутерах рекомендуется selective режим (см. следующий вопрос):
+
+```sh
+sign-craze --dpi-targets discord.com,youtube.com,googlevideo.com
+sign-craze --restart
+```
+
+Иначе `nfqws2` обрабатывает весь TCP/UDP — packet-copy overhead до ~30% CPU при 40 Mbps (см. таблицу ниже).
+
 ### Можно ли пускать через nfqws2 только Discord/YouTube, а не весь трафик?
 
 Да, через `--dpi-targets`. nfqws2 поддерживает флаг `--hostlist=<file>` — desync применяется только к соединениям где SNI/hostname matches файл. Все остальные пакеты идут passthrough.

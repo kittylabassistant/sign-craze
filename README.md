@@ -72,7 +72,8 @@ sign-craze --start
 ```
 
 > [!NOTE]
-> sing-box и nfqws2 загружаются во время установки с GitHub Releases и **не входят** в sign-craze.
+> `sing-box` загружается с GitHub Releases во время `--install` и **не входит** в sign-craze.
+> `nfqws2` загружается **только при первом `sign-craze --dpi on`** — DPI-обход отключён по умолчанию (opt-in). См. [wiki/FAQ → «Работает ли DPI/nfqws2 из коробки»](https://github.com/kittylabassistant/sign-craze/wiki/FAQ#работает-ли-dpinfqws2-из-коробки).
 
 ## Команды
 
@@ -91,7 +92,7 @@ sign-craze --update-geo / -g    Обновить гео-файлы (SRS rule-set
 sign-craze --update-core        Обновить бинарь sing-box
 
 sign-craze --mode proxy|dpi|hybrid   Переключить режим маршрутизации
-sign-craze --dpi on|off              Включить / выключить DPI-обход
+sign-craze --dpi on|off              Включить / выключить DPI-обход (по умолчанию off; первый `on` качает nfqws2)
 sign-craze --dpi-strategy <пресет>   Установить стратегию DPI
 sign-craze --dpi-targets <домены>    Selective DPI: desync только для указанных SNI (через запятую; clear — сбросить)
 sign-craze --dpi-targets-list        Показать текущий список DPI-целей

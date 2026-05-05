@@ -24,7 +24,7 @@ Go-утилита для управления межсетевым экрано�
 - Управление sing-box: установка, запуск, остановка, обновление, откат
 - Два режима маршрутизации: `policy` (Keenetic IP Policy через RCI, default) и `full` (legacy с собственным fwmark/ipset)
 - Атомарное применение правил iptables/ipset с гарантированным откатом
-- Selective DPI bypass через `nfqws2 --hostlist` — desync только для выбранных доменов (Discord, YouTube), флаг `--dpi-targets`
+- DPI bypass через `nfqws2` (opt-in, **off by default**) — включается `sign-craze --dpi on`; selective режим `--dpi-targets` ограничивает desync выбранными доменами (Discord, YouTube) через `nfqws2 --hostlist`
 - Firewall watchdog: автоматическое восстановление правил после ndm reconciliation (защита от "перестаёт проксировать через несколько часов")
 - Гео-фильтрация через SRS rule-set (выборочная загрузка по SHA256)
 - Встроенный Web UI: Zashboard + admin REST API на портах `9090`/`9091` + Routing Editor SPA на `9092`
