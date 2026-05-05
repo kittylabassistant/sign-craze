@@ -7,7 +7,6 @@
 **Документация**
 
 - [README](https://github.com/kittylabassistant/sign-craze/blob/main/README.md)
-- [BEHAVIOR_SPEC](https://github.com/kittylabassistant/sign-craze/blob/main/BEHAVIOR_SPEC.md)
 - [ARCHITECTURE](https://github.com/kittylabassistant/sign-craze/blob/main/docs/ARCHITECTURE.md)
 
 **Ссылки**

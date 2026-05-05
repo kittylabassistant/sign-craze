@@ -22,10 +22,13 @@ Go-утилита для управления межсетевым экрано�
 ## Возможности
 
 - Управление sing-box: установка, запуск, остановка, обновление, откат
-- Три режима маршрутизации: `proxy` (TPROXY), `dpi` (NFQUEUE + nfqws2), `hybrid`
+- Два режима маршрутизации: `policy` (Keenetic IP Policy через RCI, default) и `full` (legacy с собственным fwmark/ipset)
 - Атомарное применение правил iptables/ipset с гарантированным откатом
+- Selective DPI bypass через `nfqws2 --hostlist` — desync только для выбранных доменов (Discord, YouTube), флаг `--dpi-targets`
+- Firewall watchdog: автоматическое восстановление правил после ndm reconciliation (защита от "перестаёт проксировать через несколько часов")
 - Гео-фильтрация через SRS rule-set (выборочная загрузка по SHA256)
-- Встроенный Web UI: Zashboard + admin REST API на портах `9090`/`9091`
+- Встроенный Web UI: Zashboard + admin REST API на портах `9090`/`9091` + Routing Editor SPA на `9092`
+- Встроенные пресеты роутинга: `block-ads`, `ru-direct`, `blocked-vpn`, `discord-vpn`, `torrents-direct` и DPI-пресеты `discord`/`youtube`/`discord-youtube`
 - Управление портами и исключениями без перезапуска
 - Резервное копирование и восстановление конфигурации
 - Диагностический режим (`--diag`) с PASS/WARN/FAIL по каждому пункту
@@ -53,23 +56,34 @@ Go-утилита для управления межсетевым экрано�
 | Phase 5 — гео-файлы | ✅ | SRS manifest, выборочная загрузка, ipset |
 | Phase 6 — Web UI | ✅ | HTTP-сервер, REST API, Zashboard embed |
 | Phase 7 — release | ✅ | GitHub Actions pipeline, install.sh, multi-arch UPX |
-| Phase 8 — on-device | 🔄 | Тестирование на реальном Keenetic |
+| Phase 8 — CLI команды | ✅ | install/start/stop/status/diag/update/uninstall/dpi/mode/ports/excludes/backup |
+| Phase 9 — `--mode policy` | ✅ | Keenetic IP Policy через RCI (TUN-mode), legacy режимы → `full` |
+| Phase 10 — Selective DPI | ✅ | `nfqws2 --hostlist`, `--dpi-targets`, web-пресеты Discord/YouTube |
+| Phase 11 — Firewall watchdog | ✅ | Standalone `--service-watchdog` daemon, переживает ребут через init.d shim |
 
 ## Структура файлов на роутере
 
 ```plain
-/opt/sbin/sign-craze                  — основной бинарь
-/opt/sbin/sing-box                    — прокси-ядро
-/opt/etc/sign-craze/config.json       — конфиг sing-box (TPROXY, fwmark 0x53)
-/opt/etc/sign-craze/nfqws2.conf       — конфиг nfqws2 (если DPI включён)
-/opt/etc/sign-craze/admin.creds       — bcrypt-хэш для Web UI
-/opt/etc/init.d/S05signcraze          — init.d shim (автозапуск)
-/opt/var/lib/sign-craze/geo/          — гео-файлы (*.srs)
-/opt/var/lib/sign-craze/backups/      — снимки tar.gz
-/opt/var/log/sign-craze/              — логи с ротацией
-/opt/var/run/sign-craze-singbox.pid   — PID sing-box
-/opt/var/run/sign-craze-nfqws2.pid    — PID nfqws2
-/opt/var/lock/sign-craze.lock         — эксклюзивная блокировка операций
+/opt/sbin/sign-craze                       — основной бинарь
+/opt/sbin/sing-box                         — прокси-ядро
+/opt/sbin/nfqws2                           — DPI desync (если включён)
+/opt/etc/sign-craze/config.json            — конфиг sing-box (TUN, fwmark 0x53)
+/opt/etc/sign-craze/state.json             — состояние sign-craze (mode, outbounds, ports, dpi_targets, ...)
+/opt/etc/sign-craze/routing.json           — пользовательские routing-правила (Web UI)
+/opt/etc/sign-craze/nfqws2.conf            — конфиг nfqws2 (если DPI включён)
+/opt/etc/sign-craze/dpi-hostlist.txt       — список доменов для selective DPI desync
+/opt/etc/sign-craze/admin.creds            — bcrypt-хэш для Web UI
+/opt/etc/init.d/S05signcraze               — init.d shim (автозапуск sing-box + watchdog)
+/opt/etc/ndm/netfilter.d/50-sign-craze     — NDM hook: реапплай правил после rebuild
+/opt/var/lib/sign-craze/geo/               — гео-файлы (*.srs)
+/opt/var/lib/sign-craze/backups/           — снимки tar.gz
+/opt/var/log/sign-craze/sign-craze.log     — структурированные логи (slog JSON, ротация)
+/opt/var/log/sign-craze/sing-box.log       — лог sing-box
+/opt/var/log/sign-craze/boot.log           — stderr init.d shim
+/opt/var/run/sign-craze-singbox.pid        — PID sing-box
+/opt/var/run/sign-craze-nfqws2.pid         — PID nfqws2
+/opt/var/run/sign-craze-watchdog.pid       — PID firewall watchdog
+/opt/var/lock/sign-craze.lock              — эксклюзивная блокировка операций
 ```
 
 ## Полезные ссылки

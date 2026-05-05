@@ -333,16 +333,17 @@ sign-craze --install
 
 1. **URL прокси / outbound** — вставьте ваш `vless://...` / `vmess://...` / `ss://...` / `trojan://...` / `http://...` / `socks5://...`.
 2. **Режим маршрутизации:**
-   - `proxy` — TPROXY через sing-box (по умолчанию)
-   - `dpi` — только nfqws2 + NFQUEUE (DPI-обход без proxy)
-   - `hybrid` — TPROXY + nfqws2 одновременно
+   - `policy` — интеграция с Keenetic IP Policy через RCI (по умолчанию). Выбор устройств — через штатный web-UI Keenetic «Приоритеты подключений».
+   - `full` — legacy: собственный fwmark 0x53 + ipset, маршрутизирует **весь** транзитный трафик через TUN.
 
 После завершения:
 
 - Скачается `sing-box` с GitHub Releases SagerNet → `/opt/sbin/sing-box`
-- Сгенерируется `/opt/etc/sign-craze/config.json` (TPROXY inbound на порту 7895, fwmark `0x53`)
-- При выборе `dpi`/`hybrid` — скачается `nfqws2` и сгенерируется `/opt/etc/sign-craze/nfqws2.conf`
-- Создастся init.d shim `/opt/etc/init.d/S05signcraze` для автозапуска
+- Сгенерируется `/opt/etc/sign-craze/config.json` (TUN inbound `signbox-tun`, fwmark `0x53` для loop-prevention)
+- В режиме `policy` — будет создана IP Policy `sign-craze` через RCI Keenetic
+- При включении DPI (`--dpi on`) — скачается `nfqws2` и сгенерируется `/opt/etc/sign-craze/nfqws2.conf`
+- Создастся init.d shim `/opt/etc/init.d/S05signcraze` (автозапуск sing-box + firewall watchdog)
+- Создастся NDM netfilter.d hook `/opt/etc/ndm/netfilter.d/50-sign-craze` (реапплай правил после rebuild)
 
 > **Защита от SSH-lockout и LAN-трафик**: SSH-порты роутера (`22` Entware/dropbear, `222` Keenetic admin) и локальные сети (RFC1918 + loopback + multicast + link-local) автоматически исключены из проксирования через ipset `signcraze_excludes` и RETURN-правила в mangle. Дополнительной настройки не требуется. Для кастомизации (другие порты, bypass публичных IP) править поля `admin_ports` и `admin_ips` в `/opt/etc/sign-craze/state.json` и перезапустить sign-craze.
 
@@ -433,6 +434,39 @@ sign-craze --restart
 
 ---
 
+## 9a. Selective DPI bypass (опционально)
+
+По умолчанию `--dpi on` запускает nfqws2 на **весь** TCP/UDP трафик (через NFQUEUE). На MIPS-роутерах это даёт packet-copy overhead до ~30% CPU при 40 Mbps. Selective режим ограничивает desync только выбранными доменами через `nfqws2 --hostlist`.
+
+```sh
+# Включить DPI
+sign-craze --dpi on
+
+# Установить список целевых доменов (Discord + YouTube)
+sign-craze --dpi-targets discord.com,discordapp.com,youtube.com,googlevideo.com,ytimg.com
+
+# Применить
+sign-craze --restart
+
+# Проверить активный список
+sign-craze --dpi-targets-list
+
+# Сбросить (вернуться к "desync для всего")
+sign-craze --dpi-targets clear
+```
+
+Через Web UI: `PUT /api/dpi/targets` (порт 9091) или встроенные пресеты:
+
+```sh
+curl -u admin:<пароль> -X POST http://<router>:9091/api/dpi/presets/discord-youtube/apply
+```
+
+Доступные пресеты: `discord`, `youtube`, `discord-youtube`. Список — `GET /api/dpi/presets`.
+
+При непустом `dpi_targets` файл `/opt/etc/sign-craze/dpi-hostlist.txt` пишется автоматически (один домен на строку).
+
+---
+
 ## 10. Проверка прокси с клиента
 
 С устройства, подключённого к роутеру (телефон/ноутбук):
@@ -458,7 +492,10 @@ ping -c 5 1.1.1.1
 
 ## 11. Автозапуск после ребута
 
-Уже настроен через `/opt/etc/init.d/S05signcraze` (создан в [шаге 6](#6-конфигурация-sign-craze)).
+Уже настроен через `/opt/etc/init.d/S05signcraze` (создан в [шаге 6](#6-конфигурация-sign-craze)). Init.d shim делает на boot:
+
+1. `sign-craze --service-start` — поднимает sing-box + nfqws2 + применяет firewall.
+2. `sign-craze --service-watchdog &` — standalone watchdog процесс в фоне (PID в `/opt/var/run/sign-craze-watchdog.pid`). Каждые 30 сек проверяет критичные правила (`-i/o signbox-tun -j ACCEPT` и PREROUTING jump на `signcraze_policy`/`signcraze`). Если ndm их стёр — реапплаит за ~100ms. Это закрывает сценарий «через несколько часов sign-craze перестаёт проксировать».
 
 Проверка:
 
@@ -469,9 +506,13 @@ reboot
 ssh admin@192.168.1.1
 exec sh
 sign-craze --status
+
+# Watchdog должен быть запущен
+ps | grep service-watchdog
+cat /opt/var/run/sign-craze-watchdog.pid
 ```
 
-Если status показывает `running` — автозапуск работает.
+Если status показывает `running` и в `ps` есть `sign-craze --service-watchdog` — автозапуск работает.
 
 ---
 
