@@ -20,6 +20,10 @@ const DefaultRoutingUIPort uint16 = 9092
 // DefaultPath — стандартное расположение state.json.
 const DefaultPath = "/opt/etc/sign-craze/state.json"
 
+// DefaultCore — ядро по умолчанию для новых установок.
+// Старые state.json без поля core мигрируются в это значение.
+const DefaultCore = "sing-box"
+
 // DefaultExcludes — безопасные CIDR-исключения, добавляемые в Default().
 // Покрывают: loopback, link-local, multicast, зарезервированные, RFC1918.
 // Защищают от потери LAN-доступа и SSH-lockout при первом запуске,
@@ -71,6 +75,10 @@ type State struct {
 	RoutingUIEnabled bool   `json:"routing_ui_enabled,omitempty"` // включён ли веб-редактор routing
 	RoutingUIPort    uint16 `json:"routing_ui_port,omitempty"`    // порт веб-редактора routing
 	RoutingUIBind    string `json:"routing_ui_bind,omitempty"`    // bind-адрес веб-редактора routing
+
+	// Core — выбранное прокси-ядро. Допустимо: "sing-box", "xray", "mihomo".
+	// Пустое значение (старые state.json) мигрируется в DefaultCore при Load().
+	Core string `json:"core,omitempty"`
 }
 
 // Default возвращает state с настройками по умолчанию: режим policy, stub direct outbound,
@@ -91,7 +99,16 @@ func Default() *State {
 		RoutingUIEnabled: true,
 		RoutingUIPort:    DefaultRoutingUIPort,
 		RoutingUIBind:    "0.0.0.0",
+		Core:             DefaultCore,
 	}
+}
+
+// stateLegacy используется при десериализации state.json для захвата
+// устаревшего поля outbound_canonicals (Phase D.0a). После миграции поле
+// переносится в Outbound.Protocol/Transport/TLS/Proto и не сохраняется.
+type stateLegacy struct {
+	State
+	OutboundCanonicals map[string]types.Canonical `json:"outbound_canonicals,omitempty"`
 }
 
 // Load читает state.json. Если файл отсутствует — возвращает Default().
@@ -104,13 +121,15 @@ func Load(path string) (*State, error) {
 		return nil, fmt.Errorf("state: чтение %s: %w", path, err)
 	}
 
-	var s State
-	if err := json.Unmarshal(data, &s); err != nil {
+	var legacy stateLegacy
+	if err := json.Unmarshal(data, &legacy); err != nil {
 		return nil, fmt.Errorf("state: парсинг %s: %w", path, err)
 	}
-	migrateLegacyMode(&s)
-	migrateAdminPort(&s)
-	migrateRoutingUI(&s)
+	s := &legacy.State
+	migrateOutboundCanonicals(s, legacy.OutboundCanonicals)
+	migrateLegacyMode(s)
+	migrateAdminPort(s)
+	migrateRoutingUI(s)
 	if s.Outbounds == nil {
 		s.Outbounds = []types.Outbound{}
 	}
@@ -132,7 +151,37 @@ func Load(path string) (*State, error) {
 	if s.PolicyName == "" {
 		s.PolicyName = DefaultPolicyName
 	}
-	return &s, nil
+	if s.Core == "" {
+		s.Core = DefaultCore
+	}
+	return s, nil
+}
+
+// migrateOutboundCanonicals переносит данные из устаревшего поля
+// OutboundCanonicals в inline-поля каждого Outbound.
+// Вызывается однократно при Load() для state.json, созданных до Phase D.4.
+func migrateOutboundCanonicals(s *State, canonicals map[string]types.Canonical) {
+	if len(canonicals) == 0 {
+		return
+	}
+	for i := range s.Outbounds {
+		o := &s.Outbounds[i]
+		if o.Protocol != "" {
+			continue // canonical уже внутри Outbound
+		}
+		c, ok := canonicals[o.Tag]
+		if !ok || !c.IsSet() {
+			continue
+		}
+		o.Protocol = c.Protocol
+		o.Transport = c.Transport
+		o.TLS = c.TLS
+		o.Proto = c.Proto
+		log.L().Info("state: мигрирован canonical из outbound_canonicals",
+			"tag", o.Tag,
+			"protocol", string(o.Protocol),
+		)
+	}
 }
 
 // migrateLegacyMode конвертирует legacy-режимы (proxy/dpi/hybrid) в ModePolicy
@@ -190,6 +239,13 @@ func (s *State) Validate() error {
 	for _, p := range s.AdminPorts {
 		if p == 0 {
 			return fmt.Errorf("state: admin_ports содержит 0 (некорректный порт)")
+		}
+	}
+	if s.Core != "" {
+		switch s.Core {
+		case "sing-box", "xray", "mihomo":
+		default:
+			return fmt.Errorf("state: неизвестное ядро %q (допустимо: sing-box, xray, mihomo)", s.Core)
 		}
 	}
 	return nil

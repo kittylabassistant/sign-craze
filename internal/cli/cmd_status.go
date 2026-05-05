@@ -5,13 +5,12 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/kittylabassistant/sign-craze/internal/singbox"
 	"github.com/kittylabassistant/sign-craze/internal/version"
 )
 
 func init() {
 	Register(Cmd{Short: "-s", Long: "--status", Help: "состояние сервисов и режим", Handler: handleStatus})
-	Register(Cmd{Short: "-v", Long: "--version", Help: "версия sign-craze и sing-box", Handler: handleVersion})
+	Register(Cmd{Short: "-v", Long: "--version", Help: "версия sign-craze и активного ядра", Handler: handleVersion})
 }
 
 func handleStatus(ctx context.Context, _ []string) error {
@@ -20,31 +19,33 @@ func handleStatus(ctx context.Context, _ []string) error {
 		return fmt.Errorf("--status: %w", err)
 	}
 
+	c := mustActiveCore()
+
 	sb, sbErr := newSingboxLifecycle().Status(ctx)
 	if sbErr != nil {
-		fmt.Fprintf(os.Stderr, "warn: статус sing-box: %v\n", sbErr)
+		fmt.Fprintf(os.Stderr, "warn: статус %s: %v\n", c.Name(), sbErr)
 	}
-	dpi, dpiErr := newDPILifecycle().Status(ctx)
+	dpiSt, dpiErr := newDPILifecycle().Status(ctx)
 	if dpiErr != nil {
 		fmt.Fprintf(os.Stderr, "warn: статус nfqws2: %v\n", dpiErr)
 	}
 
-	sbVer := ""
-	if _, errStat := os.Stat(singbox.DefaultBinPath); errStat == nil {
-		v, vErr := singbox.BinaryVersion(ctx, newRunner(), singbox.DefaultBinPath)
+	coreVer := ""
+	if _, errStat := os.Stat(c.BinaryPath()); errStat == nil {
+		v, vErr := c.BinaryVersion(ctx, newRunner())
 		if vErr != nil {
-			fmt.Fprintf(os.Stderr, "warn: версия sing-box: %v\n", vErr)
+			fmt.Fprintf(os.Stderr, "warn: версия %s: %v\n", c.Name(), vErr)
 		}
-		sbVer = v
+		coreVer = v
 	}
 
-	fmt.Printf("sing-box:  %s\n", formatService(sb.Running, sb.PID))
-	fmt.Printf("nfqws2:    %s\n", formatService(dpi.Running, dpi.PID))
+	fmt.Printf("%s:  %s\n", c.Name(), formatService(sb.Running, sb.PID))
+	fmt.Printf("nfqws2:    %s\n", formatService(dpiSt.Running, dpiSt.PID))
 	fmt.Printf("режим:     %s\n", string(st.Mode))
-	if sbVer != "" {
-		fmt.Printf("версия:    sign-craze %s / sing-box v%s\n", version.Short(), sbVer)
+	if coreVer != "" {
+		fmt.Printf("версия:    sign-craze %s / %s v%s\n", version.Short(), c.Name(), coreVer)
 	} else {
-		fmt.Printf("версия:    sign-craze %s / sing-box не установлен\n", version.Short())
+		fmt.Printf("версия:    sign-craze %s / %s не установлен\n", version.Short(), c.Name())
 	}
 	return nil
 }
@@ -59,15 +60,16 @@ func formatService(running bool, pid int) string {
 func handleVersion(ctx context.Context, _ []string) error {
 	fmt.Printf("sign-craze %s\n", version.String())
 
-	if _, err := os.Stat(singbox.DefaultBinPath); err == nil {
-		ver, vErr := singbox.BinaryVersion(ctx, newRunner(), singbox.DefaultBinPath)
+	c := mustActiveCore()
+	if _, err := os.Stat(c.BinaryPath()); err == nil {
+		ver, vErr := c.BinaryVersion(ctx, newRunner())
 		if vErr == nil {
-			fmt.Printf("sing-box   v%s  (установлен в %s)\n", ver, singbox.DefaultBinPath)
+			fmt.Printf("%s   v%s  (установлен в %s)\n", c.Name(), ver, c.BinaryPath())
 		} else {
-			fmt.Printf("sing-box   ошибка чтения версии: %v\n", vErr)
+			fmt.Printf("%s   ошибка чтения версии: %v\n", c.Name(), vErr)
 		}
 	} else {
-		fmt.Println("sing-box   не установлен")
+		fmt.Printf("%s   не установлен\n", c.Name())
 	}
 	return nil
 }

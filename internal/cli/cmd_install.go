@@ -59,12 +59,13 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string, force b
 	// 0. Idempotency check: если уже установлено и не force — отказ
 	// (safety-fixes #16). До этого --install молча перезаписывал всё.
 	//
-	// Различаем три состояния:
-	//   а) full install: state.json + sing-box бинарь оба существуют → требуем --reinstall;
-	//   б) degraded: state.json есть, бинарь нет (типичный артефакт частичного
+	// Различаем два случая:
+	//   а) full install: state.json + core binary оба существуют → требуем --reinstall;
+	//   б) degraded: state.json есть, core binary нет (типичный артефакт частичного
 	//      uninstall — например, watchdog daemon воскресил state.json через
-	//      reconcile/saveState после удаления). Подсказываем --uninstall ещё раз;
-	//   в) orphan-bin: бинарь есть, state.json нет — необычная ручная подкладка.
+	//      reconcile/saveState после удаления). В этом случае подсказываем
+	//      --uninstall ещё раз: уже исправленный --uninstall корректно убивает
+	//      watchdog и удаляет state.json.
 	if !force {
 		_, stateErr := os.Stat(state.DefaultPath)
 		_, binErr := os.Stat(singbox.DefaultBinPath)
@@ -185,8 +186,13 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string, force b
 
 	// 9. Создать NDM netfilter.d hook. Без него правила mangle теряются при
 	// первом же rebuild iptables со стороны Keenetic (привязка устройства к
-	// policy через UI, save startup-config, reconnect WAN).
-	if err := service.WriteHook(service.DefaultNetfilterHookPath, service.HookParams{BinPath: service.DefaultSignCrazeBin}); err != nil {
+	// policy через UI, save startup-config, reconnect WAN). Hook содержит
+	// путь к PID-файлу активного ядра — при смене ядра должен быть
+	// перегенерирован.
+	if err := service.WriteHook(service.DefaultNetfilterHookPath, service.HookParams{
+		BinPath: service.DefaultSignCrazeBin,
+		PIDPath: mustActiveCore().PIDPath(),
+	}); err != nil {
 		return fmt.Errorf("--install: netfilter.d hook: %w", err)
 	}
 
@@ -254,10 +260,26 @@ func wizardURL(r *bufio.Reader, out io.Writer) ([]types.Outbound, error) {
 	if url == "" {
 		return nil, nil
 	}
-	o, err := proxyparse.Parse(url)
+
+	// Пробуем ParseCanonical — возвращает Outbound с базовыми полями
+	// и отдельный Canonical aggregator с Protocol/Transport/TLS/Proto.
+	o, canon, err := proxyparse.ParseCanonical(url)
 	if err != nil {
-		return nil, fmt.Errorf("парсинг URL: %w", err)
+		// Fallback на legacy Parse для схем, которые ParseCanonical не охватывает.
+		var legacyErr error
+		o, legacyErr = proxyparse.Parse(url)
+		if legacyErr != nil {
+			// Возвращаем оригинальную ошибку ParseCanonical — она точнее.
+			return nil, fmt.Errorf("парсинг URL: %w", err)
+		}
+	} else {
+		// Переносим canonical-поля в Outbound.
+		o.Protocol = canon.Protocol
+		o.Transport = canon.Transport
+		o.TLS = canon.TLS
+		o.Proto = canon.Proto
 	}
+
 	if err := o.Validate(); err != nil {
 		return nil, fmt.Errorf("валидация: %w", err)
 	}

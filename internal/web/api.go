@@ -6,8 +6,11 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
+
+	"github.com/kittylabassistant/sign-craze/internal/core"
 )
 
 // maxRequestBody — лимит размера тела POST-запросов admin API.
@@ -30,6 +33,7 @@ func registerAdminRoutes(mux *http.ServeMux, s *Server) {
 	mux.HandleFunc("PUT /api/dpi/targets", s.apiDPITargetsPut)
 	mux.HandleFunc("GET /api/dpi/presets", s.apiDPIPresetsList)
 	mux.HandleFunc("POST /api/dpi/presets/{name}/apply", s.apiDPIPresetApply)
+	mux.HandleFunc("GET /api/cores", s.apiCoresList)
 }
 
 // adminLanding отдаёт минимальную HTML-страницу на GET / порта 9091.
@@ -82,6 +86,62 @@ func (s *Server) apiStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, info)
+}
+
+// CoresResponse — ответ GET /api/cores.
+type CoresResponse struct {
+	Active    string     `json:"active"`              // имя активного ядра (state.core)
+	Available []CoreInfo `json:"available"`           // зарегистрированные ядра
+	Installed []string   `json:"installed,omitempty"` // имена ядер, чей бинарь существует
+}
+
+// CoreInfo — описание одного ядра в ответе /api/cores.
+type CoreInfo struct {
+	Name       string `json:"name"`
+	Binary     string `json:"binary"`
+	ConfigPath string `json:"config_path"`
+	Installed  bool   `json:"installed"`
+	Version    string `json:"version,omitempty"`
+}
+
+// apiCoresList — GET /api/cores. Перечисляет зарегистрированные ядра,
+// помечает активное и установленные.
+//
+// Активное ядро определяется через CoresProvider, если задан в Server.cfg;
+// иначе пустая строка (caller может прочитать state.json напрямую).
+func (s *Server) apiCoresList(w http.ResponseWriter, r *http.Request) {
+	resp := CoresResponse{Active: s.activeCoreName()}
+	for _, name := range core.Names() {
+		c, err := core.Get(name)
+		if err != nil {
+			continue
+		}
+		info := CoreInfo{
+			Name:       c.Name(),
+			Binary:     c.BinaryPath(),
+			ConfigPath: c.ConfigPath(),
+		}
+		if _, statErr := os.Stat(c.BinaryPath()); statErr == nil {
+			info.Installed = true
+			resp.Installed = append(resp.Installed, c.Name())
+			if s.cfg.Runner != nil {
+				if v, vErr := c.BinaryVersion(r.Context(), s.cfg.Runner); vErr == nil {
+					info.Version = v
+				}
+			}
+		}
+		resp.Available = append(resp.Available, info)
+	}
+	writeJSON(w, resp)
+}
+
+// activeCoreName возвращает имя активного ядра. Если CoresProvider не задан
+// или вернул ошибку — пустая строка (UI должен трактовать как "неизвестно").
+func (s *Server) activeCoreName() string {
+	if s.cfg.Cores == nil {
+		return ""
+	}
+	return s.cfg.Cores.ActiveCoreName()
 }
 
 func (s *Server) apiConfigGet(w http.ResponseWriter, r *http.Request) {

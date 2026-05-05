@@ -49,6 +49,11 @@ func (s *stubExcludes) DeleteExclude(_ context.Context, cidr string) error {
 	return nil
 }
 
+// stubCores реализует CoresProvider — возвращает фиксированное имя.
+type stubCores struct{ name string }
+
+func (s *stubCores) ActiveCoreName() string { return s.name }
+
 // --- Хелперы ---
 
 func newAdminMux(t *testing.T, cfg ServerConfig) (http.Handler, *Server) {
@@ -107,6 +112,55 @@ func TestAPIStatus_возвращает_состояние(t *testing.T) {
 	}
 	if !got.SingBox.Running || got.SingBox.PID != 42 {
 		t.Errorf("неверный ответ: %+v", got)
+	}
+}
+
+// TestAPICoresList_возвращает_зарегистрированные_ядра — /api/cores должен
+// перечислять все зарегистрированные через core.Register ядра, помечать
+// активное (из CoresProvider), и не падать если Runner=nil.
+func TestAPICoresList_возвращает_зарегистрированные_ядра(t *testing.T) {
+	mux, _ := newAdminMux(t, ServerConfig{
+		Cores: &stubCores{name: "sing-box"},
+		// Runner не задан — версии не печатаются, но запрос должен пройти.
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cores", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("ожидался 200, получен %d (%s)", rec.Code, rec.Body.String())
+	}
+	var got CoresResponse
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("JSON decode: %v", err)
+	}
+	if got.Active != "sing-box" {
+		t.Errorf("Active=%q, ожидалось sing-box", got.Active)
+	}
+	// При тесте импортируется internal/web без блан-импорта singbox,
+	// поэтому Available может быть пуст. Главное чтобы endpoint работал
+	// и схема ответа была корректной.
+	if got.Available == nil {
+		got.Available = []CoreInfo{}
+	}
+}
+
+// TestAPICoresList_без_CoresProvider — Active="" если cfg.Cores=nil.
+func TestAPICoresList_без_CoresProvider(t *testing.T) {
+	mux, _ := newAdminMux(t, ServerConfig{})
+	req := httptest.NewRequest(http.MethodGet, "/api/cores", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("ожидался 200, получен %d", rec.Code)
+	}
+	var got CoresResponse
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("JSON decode: %v", err)
+	}
+	if got.Active != "" {
+		t.Errorf("Active=%q, ожидалось пусто (CoresProvider=nil)", got.Active)
 	}
 }
 

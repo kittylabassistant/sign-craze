@@ -8,7 +8,6 @@ import (
 	"github.com/kittylabassistant/sign-craze/internal/log"
 	"github.com/kittylabassistant/sign-craze/internal/ndm"
 	"github.com/kittylabassistant/sign-craze/internal/service"
-	"github.com/kittylabassistant/sign-craze/internal/singbox"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
@@ -72,14 +71,15 @@ func doUninstall(ctx context.Context, label string) []string {
 		}
 	}
 
+	c := mustActiveCore()
 	files := map[string]string{
-		service.DefaultShimPath:               "init.d shim",
-		service.DefaultNetfilterHookPath:      "NDM netfilter hook",
-		singbox.DefaultBinPath:                "бинарь sing-box",
-		"/opt/var/run/sign-craze-singbox.pid": "PID-файл sing-box",
-		"/opt/var/run/sign-craze-nfqws2.pid":  "PID-файл nfqws2",
-		"/opt/var/run/sign-craze-ui.pid":      "PID-файл Web UI",
-		service.DefaultWatchdogPIDPath:        "PID-файл watchdog",
+		service.DefaultShimPath:              "init.d shim",
+		service.DefaultNetfilterHookPath:     "NDM netfilter hook",
+		c.BinaryPath():                       "бинарь " + c.Name(),
+		c.PIDPath():                          "PID-файл " + c.Name(),
+		"/opt/var/run/sign-craze-nfqws2.pid": "PID-файл nfqws2",
+		"/opt/var/run/sign-craze-ui.pid":     "PID-файл Web UI",
+		service.DefaultWatchdogPIDPath:       "PID-файл watchdog",
 	}
 	for path, lbl := range files {
 		if removeIfExists(path) {
@@ -88,7 +88,7 @@ func doUninstall(ctx context.Context, label string) []string {
 	}
 
 	dirs := map[string]string{
-		singbox.DefaultConfigDir:  "конфиги sing-box",
+		c.ConfigDir():             "конфиги " + c.Name(),
 		"/opt/var/lib/sign-craze": "state, cache, geo, backups",
 	}
 	for path, lbl := range dirs {

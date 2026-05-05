@@ -126,6 +126,19 @@ func Render(p ConfigParams) ([]byte, error) {
 
 	funcMap := template.FuncMap{
 		"jsonMarshal": func(v any) (string, error) {
+			// Для types.Outbound используем renderOutboundJSON чтобы получить
+			// sing-box-специфичный flatten (canonical или legacy Settings).
+			if ob, ok := v.(types.Outbound); ok {
+				m, rErr := renderOutboundJSON(ob)
+				if rErr != nil {
+					return "", rErr
+				}
+				b, mErr := json.Marshal(m)
+				if mErr != nil {
+					return "", mErr
+				}
+				return string(b), nil
+			}
 			b, mErr := json.Marshal(v)
 			if mErr != nil {
 				return "", mErr

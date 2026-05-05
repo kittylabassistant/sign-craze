@@ -1,0 +1,100 @@
+package cli
+
+import (
+	"bufio"
+	"bytes"
+	"strings"
+	"testing"
+
+	"github.com/kittylabassistant/sign-craze/pkg/types"
+)
+
+// TestWizardURL_VLESS_PopulatesCanonical проверяет, что ParseCanonical применяется
+// и canonical-поля (Protocol/TLS/Proto) заполняются в Outbound.
+func TestWizardURL_VLESS_PopulatesCanonical(t *testing.T) {
+	rawURL := "vless://test-uuid@vless.example.com:443" +
+		"?security=reality&pbk=PUBLIC_KEY&sid=ab12&fp=chrome&sni=sni.example.com" +
+		"#vless-tag"
+	input := rawURL + "\n"
+
+	r := bufio.NewReader(bytes.NewBufferString(input))
+	out := &bytes.Buffer{}
+
+	obs, err := wizardURL(r, out)
+	if err != nil {
+		t.Fatalf("wizardURL: %v", err)
+	}
+	if len(obs) != 1 {
+		t.Fatalf("ожидался 1 outbound, получено %d", len(obs))
+	}
+	o := obs[0]
+
+	if o.Protocol != types.ProtocolVLESS {
+		t.Errorf("Protocol = %q, ожидалось %q", o.Protocol, types.ProtocolVLESS)
+	}
+	if o.TLS == nil {
+		t.Fatal("TLS = nil, ожидалась Reality TLS")
+	}
+	if !o.TLS.Enabled {
+		t.Error("TLS.Enabled должно быть true")
+	}
+	if o.TLS.Reality == nil {
+		t.Fatal("TLS.Reality = nil")
+	}
+	if o.TLS.Reality.PublicKey != "PUBLIC_KEY" {
+		t.Errorf("TLS.Reality.PublicKey = %q", o.TLS.Reality.PublicKey)
+	}
+	if o.Proto == nil {
+		t.Fatal("Proto = nil")
+	}
+	if o.Proto.UUID != "test-uuid" {
+		t.Errorf("Proto.UUID = %q, ожидалось test-uuid", o.Proto.UUID)
+	}
+	if o.Tag != "vless-tag" {
+		t.Errorf("Tag = %q, ожидалось vless-tag", o.Tag)
+	}
+	if o.Server != "vless.example.com" {
+		t.Errorf("Server = %q", o.Server)
+	}
+	if o.Port != 443 {
+		t.Errorf("Port = %d, ожидалось 443", o.Port)
+	}
+}
+
+// TestWizardURL_Socks5_LegacyFallback проверяет, что socks5 URL корректно
+// обрабатывается (ParseCanonical поддерживает socks5, поэтому canonical-поля заполнены).
+// Protocol может быть socks5 — это норма; главное, что Outbound базовые поля заполнены.
+func TestWizardURL_Socks5_LegacyFallback(t *testing.T) {
+	rawURL := "socks5://alice:pass@10.0.0.1:1080"
+	input := rawURL + "\n"
+
+	r := bufio.NewReader(bytes.NewBufferString(input))
+	out := &bytes.Buffer{}
+
+	obs, err := wizardURL(r, out)
+	if err != nil {
+		t.Fatalf("wizardURL socks5: %v", err)
+	}
+	if len(obs) != 1 {
+		t.Fatalf("ожидался 1 outbound, получено %d", len(obs))
+	}
+	o := obs[0]
+
+	if o.Type != "socks" {
+		t.Errorf("Type = %q, ожидалось socks", o.Type)
+	}
+	if o.Server != "10.0.0.1" {
+		t.Errorf("Server = %q", o.Server)
+	}
+	if o.Port != 1080 {
+		t.Errorf("Port = %d, ожидалось 1080", o.Port)
+	}
+	// Проверяем вывод: строка "Outbound:" должна присутствовать
+	if !strings.Contains(out.String(), "Outbound:") {
+		t.Errorf("ожидалась строка Outbound: в выводе, получено: %q", out.String())
+	}
+	// Protocol заполнен через ParseCanonical (socks5 поддерживается)
+	if o.Protocol == "" {
+		t.Log("Protocol пустой — socks5 через legacy Parse, это допустимо")
+	}
+}

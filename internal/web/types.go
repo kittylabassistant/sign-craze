@@ -56,6 +56,12 @@ type DPITargetsManager interface {
 	SetTargets(ctx context.Context, targets []string) error
 }
 
+// CoresProvider возвращает имя активного прокси-ядра (state.Core).
+// Используется GET /api/cores чтобы пометить активное среди зарегистрированных.
+type CoresProvider interface {
+	ActiveCoreName() string
+}
+
 // DPIPreset — именованный набор готовых доменов (Discord, YouTube и т.п.).
 type DPIPreset struct {
 	Name        string   `json:"name"`

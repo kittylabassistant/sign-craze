@@ -163,6 +163,8 @@ func runUIServer(ctx context.Context) error {
 		Ports:      portsMgr,
 		Excludes:   excludesMgr,
 		DPITargets: dpiTargetsMgr,
+		Cores:      activeCoreProvider{},
+		Runner:     runner,
 		RoutingUI:  routingDeps,
 	}
 	// --ui-daemon — явный запуск UI оператором. RoutingUI на 9092 включаем

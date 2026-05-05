@@ -46,16 +46,35 @@ func TestRenderHook_FiltersByTypeTable(t *testing.T) {
 	}
 }
 
-// TestRenderHook_EarlyExitOnNoService — hook должен выходить рано если sing-box
-// не запущен, иначе reapply пытался бы применить правила без TUN-интерфейса.
+// TestRenderHook_EarlyExitOnNoService — hook должен выходить рано если ядро
+// не запущено, иначе reapply пытался бы применить правила без TUN-интерфейса.
+// PID-файл по умолчанию (sing-box) проверяется при пустом HookParams.PIDPath.
 func TestRenderHook_EarlyExitOnNoService(t *testing.T) {
 	data, err := RenderHook(HookParams{BinPath: "/opt/sbin/sign-craze"})
 	if err != nil {
 		t.Fatalf("RenderHook: %v", err)
 	}
 	s := string(data)
-	if !strings.Contains(s, "/opt/var/run/sign-craze-singbox.pid") {
-		t.Errorf("hook должен проверять PID-файл sing-box:\n%s", s)
+	if !strings.Contains(s, DefaultCorePIDPath) {
+		t.Errorf("hook должен проверять дефолтный PID-файл %q:\n%s", DefaultCorePIDPath, s)
+	}
+}
+
+// TestRenderHook_CustomPIDPath — для xray/mihomo PID-путь подменяется.
+func TestRenderHook_CustomPIDPath(t *testing.T) {
+	data, err := RenderHook(HookParams{
+		BinPath: "/opt/sbin/sign-craze",
+		PIDPath: "/opt/var/run/sign-craze-xray.pid",
+	})
+	if err != nil {
+		t.Fatalf("RenderHook: %v", err)
+	}
+	s := string(data)
+	if !strings.Contains(s, "/opt/var/run/sign-craze-xray.pid") {
+		t.Errorf("hook должен проверять переданный PID-файл:\n%s", s)
+	}
+	if strings.Contains(s, "sign-craze-singbox.pid") {
+		t.Errorf("hook не должен содержать singbox PID при переданном xray:\n%s", s)
 	}
 }
 

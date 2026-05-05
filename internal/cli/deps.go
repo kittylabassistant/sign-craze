@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/kittylabassistant/sign-craze/internal/core"
 	"github.com/kittylabassistant/sign-craze/internal/dpi"
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/firewall"
@@ -54,6 +55,48 @@ func newFirewallApplier(s *state.State) (firewall.Applier, error) {
 // loadState читает state.json из стандартного пути.
 func loadState() (*state.State, error) {
 	return state.Load(state.DefaultPath)
+}
+
+// activeCore возвращает Core, соответствующее state.Core активного state.json.
+// При отсутствии state файла возвращает Default sing-box.
+//
+// Для unit-тестов и read-only диагностики, где state.json может отсутствовать,
+// используйте mustActiveCore — оно гарантирует ненулевой Core.
+func activeCore() (core.Core, error) {
+	s, err := loadState()
+	if err != nil {
+		return nil, fmt.Errorf("activeCore: %w", err)
+	}
+	c, err := core.Active(s.Core)
+	if err != nil {
+		return nil, fmt.Errorf("activeCore: %w", err)
+	}
+	return c, nil
+}
+
+// mustActiveCore — activeCore с fallback на DefaultCore при ошибках.
+// Гарантирует ненулевой Core; используется в путях read-only (status, version),
+// где краш из-за повреждённого state.json неприемлем.
+func mustActiveCore() core.Core {
+	if c, err := activeCore(); err == nil {
+		return c
+	}
+	return core.MustGet(state.DefaultCore)
+}
+
+// activeCoreProvider реализует web.CoresProvider на базе текущего state.json.
+// Используется web-сервером для GET /api/cores, чтобы пометить активное ядро.
+type activeCoreProvider struct{}
+
+func (activeCoreProvider) ActiveCoreName() string {
+	st, err := loadState()
+	if err != nil || st == nil {
+		return state.DefaultCore
+	}
+	if st.Core == "" {
+		return state.DefaultCore
+	}
+	return st.Core
 }
 
 // saveState атомарно записывает state.json по стандартному пути.

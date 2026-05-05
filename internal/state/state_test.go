@@ -1,6 +1,7 @@
 package state
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -190,6 +191,232 @@ func TestLoad_NormalisesNilSlices(t *testing.T) {
 	}
 	if s.Outbounds == nil || s.Ports == nil || s.Excludes == nil {
 		t.Errorf("ожидались инициализированные пустые слайсы, получено %+v", s)
+	}
+}
+
+// TestLoad_MigratesEmptyCoreToDefault — старые state.json без поля core
+// при загрузке должны получить DefaultCore = "sing-box".
+func TestLoad_MigratesEmptyCoreToDefault(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	if err := os.WriteFile(path, []byte(`{"mode":"policy"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if s.Core != DefaultCore {
+		t.Errorf("Core после миграции = %q, ожидалось %q", s.Core, DefaultCore)
+	}
+}
+
+// TestSaveLoad_PreservesCanonicalFields — canonical-поля (Protocol/Transport/TLS/Proto)
+// внутри Outbound сохраняются в state.json и читаются обратно (Phase D.4.2).
+func TestSaveLoad_PreservesCanonicalFields(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	st := Default()
+	st.Outbounds = []types.Outbound{
+		{
+			Tag:      "proxy",
+			Type:     "vless",
+			Server:   "example.com",
+			Port:     443,
+			Protocol: types.ProtocolVLESS,
+			Transport: &types.Transport{
+				Kind: types.TransportXHTTP,
+				Mode: types.XHTTPPacketUp,
+				Path: "/v2",
+			},
+			TLS: &types.TLSConfig{
+				Enabled:    true,
+				ServerName: "example.com",
+				Reality: &types.RealityConfig{
+					Enabled:   true,
+					PublicKey: "pk",
+					ShortID:   "deadbeef",
+				},
+			},
+			Proto: &types.ProtoOpts{
+				UUID:       "uuid-x",
+				Flow:       "xtls-rprx-vision-udp443",
+				Encryption: "mlkem768x25519plus",
+			},
+		},
+	}
+	if err := Save(path, st); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(got.Outbounds) == 0 {
+		t.Fatal("Outbounds пусты после Load")
+	}
+	ob := got.Outbounds[0]
+	if ob.Protocol != types.ProtocolVLESS {
+		t.Errorf("Protocol = %q, ожидалось %q", ob.Protocol, types.ProtocolVLESS)
+	}
+	if ob.Transport == nil || ob.Transport.Mode != types.XHTTPPacketUp {
+		t.Errorf("Transport.Mode потерян: %+v", ob.Transport)
+	}
+	if ob.TLS == nil || ob.TLS.Reality == nil || ob.TLS.Reality.PublicKey != "pk" {
+		t.Errorf("TLS.Reality потерян: %+v", ob.TLS)
+	}
+	if ob.Proto == nil || ob.Proto.Flow != "xtls-rprx-vision-udp443" {
+		t.Errorf("Proto.Flow потерян: %+v", ob.Proto)
+	}
+}
+
+// TestLoad_MigratesLegacyOutboundCanonicals — старые state.json с полем
+// outbound_canonicals при Load() переносят canonical-данные в inline-поля
+// каждого Outbound (однократная миграция Phase D.4.2).
+func TestLoad_MigratesLegacyOutboundCanonicals(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	legacy := `{
+		"mode": "policy",
+		"outbounds": [
+			{"tag": "proxy", "type": "vless", "server": "example.com", "server_port": 443}
+		],
+		"outbound_canonicals": {
+			"proxy": {
+				"protocol": "vless",
+				"transport": {"kind": "grpc", "service_name": "grpc-svc"},
+				"tls": {"enabled": true, "server_name": "example.com",
+					"reality": {"enabled": true, "public_key": "migrated-pk", "short_id": "ff00"}},
+				"proto": {"uuid": "migrated-uuid", "flow": "xtls-rprx-vision-udp443"}
+			}
+		}
+	}`
+	if err := os.WriteFile(path, []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(got.Outbounds) == 0 {
+		t.Fatal("Outbounds пусты после Load legacy")
+	}
+	ob := got.Outbounds[0]
+	if ob.Protocol != types.ProtocolVLESS {
+		t.Errorf("Protocol не мигрирован: %q", ob.Protocol)
+	}
+	if ob.Transport == nil || ob.Transport.ServiceName != "grpc-svc" {
+		t.Errorf("Transport не мигрирован: %+v", ob.Transport)
+	}
+	if ob.TLS == nil || ob.TLS.Reality == nil || ob.TLS.Reality.PublicKey != "migrated-pk" {
+		t.Errorf("TLS.Reality не мигрирована: %+v", ob.TLS)
+	}
+	if ob.Proto == nil || ob.Proto.UUID != "migrated-uuid" {
+		t.Errorf("Proto.UUID не мигрирован: %+v", ob.Proto)
+	}
+}
+
+// TestLoad_LegacyOutboundCanonicals_RoundTrip — round-trip тест:
+// legacy state.json (с outbound_canonicals + port) → Load → Save → re-Load →
+// Outbound содержит Protocol/TLS/Proto; сохранённый state не содержит outbound_canonicals.
+func TestLoad_LegacyOutboundCanonicals_RoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	legacyPath := filepath.Join(dir, "legacy.json")
+	newPath := filepath.Join(dir, "new.json")
+
+	// state.json с legacy-форматом: port вместо server_port + outbound_canonicals
+	legacy := `{
+		"mode": "full",
+		"outbounds": [
+			{"tag": "proxy", "type": "vless", "server": "1.2.3.4", "port": 443}
+		],
+		"outbound_canonicals": {
+			"proxy": {
+				"protocol": "vless",
+				"tls": {"enabled": true, "server_name": "rt-test.example.com"},
+				"proto": {"uuid": "rt-uuid"}
+			}
+		}
+	}`
+	if err := os.WriteFile(legacyPath, []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Load мигрирует
+	loaded, err := Load(legacyPath)
+	if err != nil {
+		t.Fatalf("Load legacy: %v", err)
+	}
+
+	// Port должен был мигрировать из "port" → Port
+	if len(loaded.Outbounds) == 0 || loaded.Outbounds[0].Port != 443 {
+		t.Errorf("Port не мигрирован из legacy 'port': %+v", loaded.Outbounds)
+	}
+
+	// Protocol мигрирован из outbound_canonicals
+	if loaded.Outbounds[0].Protocol != types.ProtocolVLESS {
+		t.Errorf("Protocol не мигрирован: %q", loaded.Outbounds[0].Protocol)
+	}
+
+	// Сохраняем в новом формате
+	if err := Save(newPath, loaded); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	// Re-load и проверяем отсутствие outbound_canonicals в JSON
+	rawJSON, err := os.ReadFile(newPath)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if string(rawJSON) != "" {
+		if bytes.Contains(rawJSON, []byte("outbound_canonicals")) {
+			t.Error("новый state.json не должен содержать outbound_canonicals")
+		}
+	}
+
+	// Re-load
+	reloaded, err := Load(newPath)
+	if err != nil {
+		t.Fatalf("Load new: %v", err)
+	}
+	ob := reloaded.Outbounds[0]
+	if ob.Protocol != types.ProtocolVLESS {
+		t.Errorf("Protocol потерян после re-load: %q", ob.Protocol)
+	}
+	if ob.TLS == nil || ob.TLS.ServerName != "rt-test.example.com" {
+		t.Errorf("TLS.ServerName потерян после re-load: %+v", ob.TLS)
+	}
+	if ob.Proto == nil || ob.Proto.UUID != "rt-uuid" {
+		t.Errorf("Proto.UUID потерян после re-load: %+v", ob.Proto)
+	}
+}
+
+// TestSaveLoad_PreservesCore — выбранное ядро сохраняется и читается обратно.
+func TestSaveLoad_PreservesCore(t *testing.T) {
+	cases := []string{"sing-box", "xray", "mihomo"}
+	for _, core := range cases {
+		t.Run(core, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "state.json")
+			st := Default()
+			st.Core = core
+			if err := Save(path, st); err != nil {
+				t.Fatalf("Save: %v", err)
+			}
+			got, err := Load(path)
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if got.Core != core {
+				t.Errorf("Core = %q, ожидалось %q", got.Core, core)
+			}
+		})
+	}
+}
+
+// TestState_Validate_RejectsUnknownCore — неизвестное имя ядра отвергается.
+func TestState_Validate_RejectsUnknownCore(t *testing.T) {
+	s := Default()
+	s.Core = "v2ray-evil"
+	err := Save(filepath.Join(t.TempDir(), "s.json"), s)
+	if err == nil {
+		t.Fatal("ожидалась ошибка валидации для неизвестного ядра")
 	}
 }
 

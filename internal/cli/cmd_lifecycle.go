@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -8,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
+	"github.com/kittylabassistant/sign-craze/internal/core"
 	"github.com/kittylabassistant/sign-craze/internal/firewall"
 	"github.com/kittylabassistant/sign-craze/internal/log"
 	"github.com/kittylabassistant/sign-craze/internal/ndm"
@@ -38,12 +41,24 @@ func doStart(ctx context.Context) error {
 		return fmt.Errorf("--start: sing-box не установлен (запустите --install)")
 	}
 
-	// Гарантируем актуальность config.json: ручная подмена /opt/sbin/sign-craze
-	// в обход --update-core может оставить на диске устаревший конфиг (например,
-	// со старым TUN MTU). ensureConfigFresh — fast-path: если рендер совпадает
-	// с диском, пропускаем `sing-box check`, иначе регенерируем с валидацией.
-	if regenErr := ensureConfigFresh(ctx, st); regenErr != nil {
-		return fmt.Errorf("--start: regenerate config: %w", regenErr)
+	// Рендеринг и запись конфига активного ядра.
+	//
+	// Для sing-box сохраняем legacy-путь с fast-path оптимизацией:
+	// ensureConfigFresh пропускает `sing-box check -c` если конфиг
+	// на диске идентичен рендеру — это важно на slow MIPS softfloat,
+	// где `sing-box check` занимает десятки секунд.
+	//
+	// Для xray и mihomo используем новый путь: Core.RenderConfig(st) →
+	// fast-path bytes.Equal → atomicfs.WriteFileAtomic → CheckConfig.
+	c := mustActiveCore()
+	if c.Name() == "sing-box" {
+		if regenErr := ensureConfigFresh(ctx, st); regenErr != nil {
+			return fmt.Errorf("--start: regenerate config: %w", regenErr)
+		}
+	} else {
+		if regenErr := renderAndWriteConfig(ctx, c, st); regenErr != nil {
+			return fmt.Errorf("--start: render config (%s): %w", c.Name(), regenErr)
+		}
 	}
 
 	// В режиме ModePolicy: гарантировать наличие IP-policy в Keenetic RCI
@@ -281,6 +296,41 @@ func lastSingboxLogLines(n int) string {
 		lines = lines[len(lines)-n:]
 	}
 	return strings.Join(lines, " | ")
+}
+
+// renderAndWriteConfig рендерит конфиг через Core.RenderConfig и атомарно
+// записывает его на диск. Реализует fast-path: если рендер байт-в-байт совпадает
+// с текущим содержимым файла — запись и CheckConfig пропускаются.
+//
+// Используется для ядер кроме sing-box (у которого свой optimised flow через
+// ensureConfigFresh + WriteConfig).
+func renderAndWriteConfig(ctx context.Context, c core.Core, st *state.State) error {
+	want, err := c.RenderConfig(types.CoreRenderParams{
+		Mode:      st.Mode,
+		Outbounds: st.Outbounds,
+	})
+	if err != nil {
+		return fmt.Errorf("render: %w", err)
+	}
+
+	// Fast-path: если файл идентичен рендеру — пропускаем запись и check.
+	if got, readErr := os.ReadFile(c.ConfigPath()); readErr == nil {
+		if bytes.Equal(bytes.TrimSpace(got), bytes.TrimSpace(want)) {
+			return nil
+		}
+		log.L().Info("конфиг устарел, регенерация", "core", c.Name())
+	}
+
+	if writeErr := atomicfs.WriteFileAtomic(c.ConfigPath(), want, 0o640); writeErr != nil {
+		return fmt.Errorf("запись конфига: %w", writeErr)
+	}
+
+	if checkErr := c.CheckConfig(ctx, newRunner(), c.ConfigPath()); checkErr != nil {
+		return fmt.Errorf("проверка конфига: %w", checkErr)
+	}
+
+	log.L().Info("конфиг записан", "core", c.Name(), "path", c.ConfigPath())
+	return nil
 }
 
 func waitDefaultRoute(ctx context.Context, timeout time.Duration) error {

@@ -143,87 +143,52 @@ const (
 	IPSetIPv6 IPSetName = "signcraze_ipv6"
 )
 
-// Outbound описывает исходящее соединение sing-box.
+// Outbound описывает исходящее соединение.
+//
+// Поля Protocol/Transport/TLS/Proto — canonical-представление, общее между
+// всеми ядрами (sing-box, xray, mihomo). Заполняются парсером URL (proxyparse).
+// Settings — legacy: используется как fallback, когда Protocol пустой
+// (старые state.json, импортированные до Phase D).
+//
+// При маршалинге в state.json используются стандартные struct-теги Go.
+// Для рендера sing-box config.json используется renderOutboundJSON в
+// internal/singbox/render.go — она знает про flatten Settings и canonical-путь.
 type Outbound struct {
 	Tag      string         `json:"tag"`                // уникальный тег (обязателен)
 	Type     string         `json:"type"`               // "socks", "vmess", "vless", "shadowsocks" и т.д.
 	Server   string         `json:"server,omitempty"`   // не требуется для type=direct
-	Port     Port           `json:"port,omitempty"`     // не требуется для type=direct
-	Settings map[string]any `json:"settings,omitempty"` // тип-специфичные параметры
+	Port     Port           `json:"server_port,omitempty"` // sing-box/state.json имя (legacy "port" мигрируется при Load)
+	Settings map[string]any `json:"settings,omitempty"` // legacy: параметры до Phase D
+
+	// Canonical-поля (Phase D.4): заполняются parserом из URL, используются
+	// всеми ядрами как primary источник (fallback — Settings, если Protocol=="").
+	Protocol  Protocol   `json:"protocol,omitempty"`
+	Transport *Transport `json:"transport,omitempty"`
+	TLS       *TLSConfig `json:"tls,omitempty"`
+	Proto     *ProtoOpts `json:"proto,omitempty"`
 }
 
-// MarshalJSON эмитит Outbound в формате sing-box: tag/type/server/server_port
-// + Settings мерджатся как top-level поля (uuid, flow, tls, transport и т.п.).
-// Это отличает sing-box от XRay-формата, где все спец-поля живут в "settings".
-//
-// Для служебных типов (direct/block/dns) поля server/server_port не эмитятся —
-// sing-box ≥ 1.12 не принимает эти поля для direct (override_address/port были
-// removed), block и dns как outbound-типы тоже удалены (заменены route actions).
-func (o Outbound) MarshalJSON() ([]byte, error) {
-	out := map[string]any{
-		"tag":  o.Tag,
-		"type": o.Type,
-	}
-	switch o.Type {
-	case "direct", "block", "dns":
-		// служебный outbound — без server/server_port
-	default:
-		if o.Server != "" {
-			out["server"] = o.Server
-		}
-		if o.Port != 0 {
-			out["server_port"] = uint16(o.Port)
-		}
-	}
-	for k, v := range o.Settings {
-		out[k] = v
-	}
-	return json.Marshal(out)
-}
-
-// UnmarshalJSON парсит Outbound из JSON, симметрично MarshalJSON: принимает
-// формат sing-box ("server_port") и legacy/internal-имя ("port"). Все нераспознанные
-// ключи попадают в Settings — это гарантирует round-trip state.json (Save → Load),
-// где раньше Port терялся (Save писал "server_port", default-Unmarshal искал "port").
+// UnmarshalJSON обеспечивает совместимость при чтении legacy state.json:
+// поле "port" (старое имя) распознаётся наравне с "server_port" (новое имя).
+// После Phase D.4 state.json пишет только "server_port"; "port" встречается
+// только в файлах, созданных до рефактора.
 func (o *Outbound) UnmarshalJSON(data []byte) error {
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
+	// outboundAlias — alias без UnmarshalJSON, чтобы избежать рекурсии.
+	type outboundAlias Outbound
+	var a outboundAlias
+	if err := json.Unmarshal(data, &a); err != nil {
 		return err
 	}
-	pop := func(key string, dst any) (bool, error) {
-		v, ok := raw[key]
-		if !ok {
-			return false, nil
+	*o = Outbound(a)
+
+	// legacy compat: если "server_port" пустой — пробуем "port".
+	if o.Port == 0 {
+		var raw struct {
+			Port Port `json:"port"`
 		}
-		delete(raw, key)
-		return true, json.Unmarshal(v, dst)
-	}
-	if _, err := pop("tag", &o.Tag); err != nil {
-		return fmt.Errorf("outbound.tag: %w", err)
-	}
-	if _, err := pop("type", &o.Type); err != nil {
-		return fmt.Errorf("outbound.type: %w", err)
-	}
-	if _, err := pop("server", &o.Server); err != nil {
-		return fmt.Errorf("outbound.server: %w", err)
-	}
-	if found, err := pop("server_port", &o.Port); err != nil {
-		return fmt.Errorf("outbound.server_port: %w", err)
-	} else if !found {
-		if _, err := pop("port", &o.Port); err != nil {
-			return fmt.Errorf("outbound.port: %w", err)
+		if err := json.Unmarshal(data, &raw); err == nil && raw.Port != 0 {
+			o.Port = raw.Port
 		}
-	}
-	if len(raw) == 0 {
-		return nil
-	}
-	o.Settings = make(map[string]any, len(raw))
-	for k, v := range raw {
-		var x any
-		if err := json.Unmarshal(v, &x); err != nil {
-			return fmt.Errorf("outbound.%s: %w", k, err)
-		}
-		o.Settings[k] = x
 	}
 	return nil
 }
@@ -277,4 +242,18 @@ type Asset struct {
 	Name               string `json:"name"`
 	BrowserDownloadURL string `json:"browser_download_url"`
 	Size               int64  `json:"size"`
+}
+
+// CoreRenderParams — параметры для Core.RenderConfig.
+//
+// Содержит только поля из pkg/types, чтобы не создавать circular import
+// (internal/core → internal/state → internal/web → internal/core).
+// CLI заполняет эту структуру из state.State перед вызовом RenderConfig.
+//
+// Начиная с Phase D.4.2 canonical-данные хранятся непосредственно в каждом
+// Outbound (поля Protocol/Transport/TLS/Proto), поэтому OutboundCanonicals
+// параллельная карта упразднена.
+type CoreRenderParams struct {
+	Mode      Mode
+	Outbounds []Outbound
 }

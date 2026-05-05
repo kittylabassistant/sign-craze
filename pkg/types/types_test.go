@@ -5,26 +5,27 @@ import (
 	"testing"
 )
 
-// TestOutbound_MarshalJSON_FlatSettings — Settings мерджатся как top-level
-// поля (sing-box формат), не заворачиваются в "settings" (XRay формат).
-func TestOutbound_MarshalJSON_FlatSettings(t *testing.T) {
+// TestOutbound_Marshal_CanonicalFields — canonical-поля (Protocol/Transport/TLS/Proto)
+// сериализуются в state.json как обычные struct-поля.
+// Flatten Settings → sing-box делает renderOutboundJSON в internal/singbox/render.go.
+func TestOutbound_Marshal_CanonicalFields(t *testing.T) {
 	o := Outbound{
-		Tag:    "vless-proxy",
-		Type:   "vless",
-		Server: "srv",
-		Port:   443,
-		Settings: map[string]any{
-			"uuid":       "abc",
-			"flow":       "xtls-rprx-vision",
-			"encryption": "mlkem768x25519plus",
-			"tls": map[string]any{
-				"enabled": true,
-				"reality": map[string]any{
-					"enabled":        true,
-					"public_key":     "PK",
-					"mldsa65_verify": "VK",
-				},
-			},
+		Tag:      "vless-proxy",
+		Type:     "vless",
+		Server:   "srv",
+		Port:     443,
+		Protocol: ProtocolVLESS,
+		Transport: &Transport{
+			Kind: TransportGRPC,
+			ServiceName: "grpc-service",
+		},
+		TLS: &TLSConfig{
+			Enabled:    true,
+			ServerName: "example.com",
+		},
+		Proto: &ProtoOpts{
+			UUID: "abc-uuid",
+			Flow: "xtls-rprx-vision",
 		},
 	}
 	data, err := json.Marshal(o)
@@ -40,41 +41,43 @@ func TestOutbound_MarshalJSON_FlatSettings(t *testing.T) {
 	if got["tag"] != "vless-proxy" || got["type"] != "vless" || got["server"] != "srv" {
 		t.Errorf("базовые поля: %+v", got)
 	}
-
-	// Settings должны быть распакованы НА ВЕРХНЕМ УРОВНЕ, не в "settings"
-	if _, has := got["settings"]; has {
-		t.Errorf("'settings' wrapper не должен присутствовать в sing-box формате: %s", data)
+	// server_port — struct tag
+	if got["server_port"] == nil {
+		t.Errorf("server_port отсутствует: %+v", got)
 	}
-	if got["uuid"] != "abc" || got["flow"] != "xtls-rprx-vision" {
-		t.Errorf("uuid/flow не на верхнем уровне: %s", data)
+	// protocol должен присутствовать (canonical)
+	if got["protocol"] != "vless" {
+		t.Errorf("protocol = %v, ожидалось vless", got["protocol"])
 	}
-	if got["encryption"] != "mlkem768x25519plus" {
-		t.Errorf("encryption (PQ) не на верхнем уровне: %s", data)
+	// transport, tls, proto — canonical поля (не flatten!)
+	if got["transport"] == nil {
+		t.Errorf("transport отсутствует в state.json: %+v", got)
 	}
-
-	tls, ok := got["tls"].(map[string]any)
-	if !ok {
-		t.Fatalf("tls не объект: %s", data)
+	if got["tls"] == nil {
+		t.Errorf("tls отсутствует в state.json: %+v", got)
 	}
-	reality, _ := tls["reality"].(map[string]any)
-	if reality["mldsa65_verify"] != "VK" {
-		t.Errorf("mldsa65_verify не сохранён: %+v", reality)
+	if got["proto"] == nil {
+		t.Errorf("proto отсутствует в state.json: %+v", got)
+	}
+	// Settings НЕ flatten-ятся в state.json (нет поля "uuid" на top-level)
+	if got["uuid"] != nil {
+		t.Errorf("uuid не должен быть на top-level в state.json: %+v", got)
 	}
 }
 
-// TestOutbound_RoundTrip_PreservesPort — критичный регресс:
-// MarshalJSON писал "server_port", default-Unmarshal искал "port" → Port=0.
-// Это ломало state.json round-trip и регенерацию config.json в --start.
+// TestOutbound_RoundTrip_PreservesPort — критичный регресс: "server_port" tag
+// должен корректно round-trip'ать через state.json.
 func TestOutbound_RoundTrip_PreservesPort(t *testing.T) {
 	src := Outbound{
-		Tag:    "vless-test",
-		Type:   "vless",
-		Server: "example.invalid",
-		Port:   443,
-		Settings: map[string]any{
-			"uuid": "00000000-0000-0000-0000-000000000000",
-			"tls":  map[string]any{"enabled": true},
+		Tag:      "vless-test",
+		Type:     "vless",
+		Server:   "example.invalid",
+		Port:     443,
+		Protocol: ProtocolVLESS,
+		Proto: &ProtoOpts{
+			UUID: "00000000-0000-0000-0000-000000000000",
 		},
+		TLS: &TLSConfig{Enabled: true},
 	}
 	data, err := json.Marshal(src)
 	if err != nil {
@@ -90,8 +93,11 @@ func TestOutbound_RoundTrip_PreservesPort(t *testing.T) {
 	if got.Tag != src.Tag || got.Type != src.Type || got.Server != src.Server {
 		t.Errorf("базовые поля потеряны: %+v", got)
 	}
-	if got.Settings["uuid"] != src.Settings["uuid"] {
-		t.Errorf("uuid в Settings потерян: %+v", got.Settings)
+	if got.Protocol != ProtocolVLESS {
+		t.Errorf("Protocol потерян: %+v", got.Protocol)
+	}
+	if got.Proto == nil || got.Proto.UUID != "00000000-0000-0000-0000-000000000000" {
+		t.Errorf("Proto.UUID потерян: %+v", got.Proto)
 	}
 }
 

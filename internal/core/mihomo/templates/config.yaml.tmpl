@@ -1,0 +1,28 @@
+log-level: {{ .LogLevel }}
+mode: rule
+
+tproxy-port: {{ .TProxyPort }}
+routing-mark: {{ .FWMark }}
+
+dns:
+  enable: true
+  listen: 0.0.0.0:5353
+  enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.1/16
+  default-nameserver:
+    - 114.114.114.114
+  nameserver:
+    - https://dns.google/dns-query
+
+proxies:
+{{ range .Proxies }}- {{ yamlInline . }}
+{{ end }}
+proxy-groups:
+  - name: PROXY
+    type: select
+    proxies:
+{{ range .ProxyNames }}      - {{ . }}
+{{ end }}      - DIRECT
+
+rules:
+  - MATCH,PROXY

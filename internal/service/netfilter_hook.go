@@ -17,6 +17,11 @@ const (
 	// iptables/ip6tables/ipset (привязка устройства к policy, save startup-config,
 	// reconnect WAN). Без hook сторонние chain'ы (signcraze_policy) теряются.
 	DefaultNetfilterHookPath = "/opt/etc/ndm/netfilter.d/50-sign-craze"
+
+	// DefaultCorePIDPath — fallback путь к PID-файлу прокси-ядра при
+	// HookParams.PIDPath не задан. Совпадает с singbox.DefaultPIDFile.
+	// Используется в тестах и для legacy install-флоу до миграции на multi-core.
+	DefaultCorePIDPath = "/opt/var/run/sign-craze-singbox.pid"
 )
 
 // hookTemplate — шаблон NDM netfilter.d hook (POSIX sh).
@@ -34,7 +39,7 @@ var hookTemplate = template.Must(template.New("hook").Parse(`#!/bin/sh
 # NDM env: type=iptables|ip6tables|ipset, table=mangle|nat|filter
 SC={{ .BinPath }}
 [ -x "$SC" ] || exit 0
-[ -f /opt/var/run/sign-craze-singbox.pid ] || exit 0
+[ -f {{ .PIDPath }} ] || exit 0
 case "${type:-iptables}/${table:-mangle}" in
     iptables/mangle|ip6tables/mangle|ipset/*) ;;
     *) exit 0 ;;
@@ -45,14 +50,17 @@ esac
 // HookParams задаёт параметры для генерации netfilter.d hook.
 type HookParams struct {
 	BinPath string // путь к бинарю sign-craze; по умолчанию DefaultSignCrazeBin
+	// PIDPath — путь к PID-файлу активного прокси-ядра (sing-box/xray/mihomo).
+	// Hook делает раннее exit 0 если файл отсутствует — чтобы reapply не выполнялся
+	// при остановленном сервисе. По умолчанию DefaultCorePIDPath (sing-box-совместимо).
+	// При смене core через --core <name> hook регенерируется с новым PIDPath.
+	PIDPath string
 }
 
 // WriteHook генерирует netfilter.d hook и атомарно записывает его в hookPath.
 // Идемпотентно: если файл существует и содержимое совпадает (SHA256) — пропускает.
 func WriteHook(hookPath string, p HookParams) error {
-	if p.BinPath == "" {
-		p.BinPath = DefaultSignCrazeBin
-	}
+	applyHookDefaults(&p)
 
 	var buf bytes.Buffer
 	if err := hookTemplate.Execute(&buf, p); err != nil {
@@ -77,12 +85,19 @@ func WriteHook(hookPath string, p HookParams) error {
 
 // RenderHook возвращает содержимое hook без записи на диск (для тестов).
 func RenderHook(p HookParams) ([]byte, error) {
-	if p.BinPath == "" {
-		p.BinPath = DefaultSignCrazeBin
-	}
+	applyHookDefaults(&p)
 	var buf bytes.Buffer
 	if err := hookTemplate.Execute(&buf, p); err != nil {
 		return nil, fmt.Errorf("netfilter hook: рендеринг: %w", err)
 	}
 	return buf.Bytes(), nil
+}
+
+func applyHookDefaults(p *HookParams) {
+	if p.BinPath == "" {
+		p.BinPath = DefaultSignCrazeBin
+	}
+	if p.PIDPath == "" {
+		p.PIDPath = DefaultCorePIDPath
+	}
 }

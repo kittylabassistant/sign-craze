@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/kittylabassistant/sign-craze/internal/exectx"
 )
 
 // adminUsername — единственный допустимый логин Basic Auth.
@@ -33,6 +35,14 @@ type ServerConfig struct {
 	Ports      PortsManager
 	Excludes   ExcludesManager
 	DPITargets DPITargetsManager
+
+	// Cores опционально предоставляет имя активного ядра для GET /api/cores.
+	// Если nil, /api/cores отдаёт active="" — UI должен трактовать как unknown.
+	Cores CoresProvider
+
+	// Runner используется для exec'а core BinaryVersion и других read-only
+	// диагностических вызовов. Если nil — версии в /api/cores не показываются.
+	Runner exectx.Runner
 
 	// RoutingUIEnabled включает третий http.Server для UI-редактора routing.
 	RoutingUIEnabled bool
