@@ -87,11 +87,10 @@ Discord voice использует UDP/QUIC без TLS SNI в открытом �
 
 ### Какие порты открывает sign-craze?
 
-- `9090` — Zashboard SPA (Clash-совместимый дашборд)
 - `9091` — admin REST API (статус, конфиг, порты, исключения, DPI targets)
 - `9092` — Routing Editor SPA (правила маршрутизации, geosite/geoip пресеты)
 
-Все три требуют Basic Auth: логин `admin`, пароль из `/opt/etc/sign-craze/admin.creds` (генерируется при первом `--ui on`).
+Оба порта работают без аутентификации.
 
 Запуск: `sign-craze --ui on`. Standalone процесс, держится до SIGTERM. Watchdog работает независимо в `--service-watchdog`.
 

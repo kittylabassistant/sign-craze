@@ -402,23 +402,10 @@ sign-craze --ui on
 
 Откроются два HTTP-сервиса:
 
-- `http://<router-ip>:9090` — **Zashboard SPA** (Clash-совместимая панель с трафиком, прокси, логами).
-- `http://<router-ip>:9091/api/status` — **admin REST API** (статус, конфиг, порты, исключения).
+- `http://<router-ip>:9091/api/status` — **admin REST API** (статус, конфиг, порты, исключения, DPI targets).
+- `http://<router-ip>:9092` — **Routing Editor SPA** (визуальный редактор inbounds/outbounds/rules, пресеты).
 
-### Авторизация
-
-Логин: `admin`. Пароль генерируется автоматически при первом включении UI и хранится в:
-
-```sh
-cat /opt/etc/sign-craze/admin.creds
-# admin:$2a$12$...   ← bcrypt-хэш, сам пароль выводится один раз при --ui on
-```
-
-Сменить пароль:
-
-```sh
-sign-craze --ui-passwd
-```
+Оба порта работают без аутентификации.
 
 ---
 
