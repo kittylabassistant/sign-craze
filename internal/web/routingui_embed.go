@@ -7,8 +7,8 @@ import (
 
 // routingUIRaw — встроенные файлы SPA-редактора routing (Preact + htm, offline).
 //
-// Префикс all: для симметрии с zashboard-embed: на случай добавления каталогов
-// вида _vendor/ или .well-known/ в будущем — embed не молча выкидывает их.
+// Префикс all: на случай добавления каталогов вида _vendor/ или .well-known/
+// в будущем — embed не молча выкидывает файлы с _ или . в начале имени.
 //
 //go:embed all:assets/routingui
 var routingUIRaw embed.FS

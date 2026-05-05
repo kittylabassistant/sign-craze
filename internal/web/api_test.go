@@ -70,7 +70,7 @@ func newAdminMux(t *testing.T, cfg ServerConfig) (http.Handler, *Server) {
 
 // TestAdminLanding_GET_root_возвращает_HTML — порт 9091 это REST API,
 // но GET / должен отдавать минимальную HTML-страницу с навигацией к
-// :9090 (Zashboard) и :9092 (Routing Editor), а не 404.
+// :9092 (Routing Editor), а не 404.
 func TestAdminLanding_GET_root_возвращает_HTML(t *testing.T) {
 	mux, _ := newAdminMux(t, ServerConfig{})
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -85,8 +85,8 @@ func TestAdminLanding_GET_root_возвращает_HTML(t *testing.T) {
 		t.Errorf("Content-Type=%q, ожидался text/html", ct)
 	}
 	body := rec.Body.String()
-	if !bytes.Contains([]byte(body), []byte(":9090")) || !bytes.Contains([]byte(body), []byte(":9092")) {
-		t.Errorf("landing должна ссылаться на :9090 и :9092, получено: %s", body)
+	if !bytes.Contains([]byte(body), []byte(":9092")) {
+		t.Errorf("landing должна ссылаться на :9092, получено: %s", body)
 	}
 }
 
