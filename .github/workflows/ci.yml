@@ -45,8 +45,6 @@ jobs:
         run: go mod tidy
 
       - uses: golangci/golangci-lint-action@v9
-        env:
-          NODE_OPTIONS: "--no-deprecation"
         with:
           version: latest
 
