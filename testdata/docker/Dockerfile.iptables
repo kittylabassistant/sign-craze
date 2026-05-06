@@ -1,20 +1,7 @@
-FROM golang:1.25
+FROM golang:1.25-alpine
 
-# Устанавливаем iptables, ipset и iproute2 для интеграционных тестов
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    iptables \
-    ipset \
-    iproute2 \
-    kmod \
-    && rm -rf /var/lib/apt/lists/*
+# Устанавливаем iptables, ipset и iproute2 для интеграционных тестов.
+# Проект монтируется через docker run -v — COPY не используется.
+RUN apk add --no-cache iptables ip6tables ipset iproute2 bash
 
-WORKDIR /workspace
-
-COPY go.mod go.sum ./
-RUN go mod download
-
-COPY . .
-
-# Запускаем интеграционные тесты с тегом integration.
-# Контейнер должен быть запущен с --privileged для доступа к iptables/ipset/ip.
-CMD ["go", "test", "-tags", "integration", "-v", "-timeout", "60s", "./internal/firewall/..."]
+WORKDIR /src

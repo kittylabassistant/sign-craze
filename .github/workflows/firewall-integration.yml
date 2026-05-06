@@ -1,0 +1,19 @@
+name: firewall integration
+
+on: [push, pull_request]
+
+jobs:
+  firewall-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Сборка образа для интеграционных тестов
+        run: docker build -t signcraze-fw-test -f testdata/docker/Dockerfile.iptables testdata/docker/
+
+      - name: Запуск интеграционных тестов firewall
+        run: |
+          docker run --rm --privileged \
+            -v "$PWD:/src" -w /src \
+            signcraze-fw-test \
+            go test -tags integration -timeout 5m ./internal/firewall/...
