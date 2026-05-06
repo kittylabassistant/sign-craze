@@ -15,10 +15,13 @@
     ]
   },
   "experimental": {
+    "cache_file": {
+      "enabled": true,
+      "store_mode": true
+    },
     "clash_api": {
       "default_mode": "rule",
-      "external_controller": "127.0.0.1:9094",
-      "store_mode": true
+      "external_controller": "127.0.0.1:9094"
     }
   },
   "inbounds": [
