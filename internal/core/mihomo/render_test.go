@@ -130,8 +130,8 @@ func TestRender_GoldenWriteback(t *testing.T) {
 			goldenPath := filepath.Join("testdata", "canonical", tc.name+".yaml")
 
 			if update {
-				if err := os.WriteFile(goldenPath, got, 0o644); err != nil {
-					t.Fatalf("запись golden-файла %s: %v", goldenPath, err)
+				if writeErr := os.WriteFile(goldenPath, got, 0o644); writeErr != nil {
+					t.Fatalf("запись golden-файла %s: %v", goldenPath, writeErr)
 				}
 				t.Logf("обновлён golden: %s", goldenPath)
 				return

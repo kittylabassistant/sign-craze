@@ -129,16 +129,16 @@ func TestRender_GoldenWriteback(t *testing.T) {
 
 			// Нормализуем через промежуточный any: гарантируем устойчивый JSON-diff
 			var gotObj any
-			if err := json.Unmarshal(data, &gotObj); err != nil {
-				t.Fatalf("json.Unmarshal вывода Render: %v", err)
+			if unmarshalErr := json.Unmarshal(data, &gotObj); unmarshalErr != nil {
+				t.Fatalf("json.Unmarshal вывода Render: %v", unmarshalErr)
 			}
 			gotNorm, _ := json.MarshalIndent(gotObj, "", "  ")
 
 			goldenPath := filepath.Join("testdata", "canonical", tc.name+".json")
 
 			if update {
-				if err := os.WriteFile(goldenPath, append(gotNorm, '\n'), 0o644); err != nil {
-					t.Fatalf("запись golden-файла %s: %v", goldenPath, err)
+				if writeErr := os.WriteFile(goldenPath, append(gotNorm, '\n'), 0o644); writeErr != nil {
+					t.Fatalf("запись golden-файла %s: %v", goldenPath, writeErr)
 				}
 				t.Logf("обновлён golden: %s", goldenPath)
 				return

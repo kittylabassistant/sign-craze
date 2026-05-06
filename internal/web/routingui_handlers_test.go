@@ -285,4 +285,3 @@ func TestApply_NeedsRestart(t *testing.T) {
 		t.Errorf("routing.json не создан: %v", err)
 	}
 }
-

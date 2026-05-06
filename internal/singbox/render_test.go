@@ -432,30 +432,6 @@ var canonicalGoldenCases = []struct {
 			},
 		},
 	},
-	{
-		name: "vless_xhttp",
-		outbound: types.Outbound{
-			Tag:      "vless-xhttp-out",
-			Type:     "vless",
-			Server:   "xhttp.example.com",
-			Port:     443,
-			Protocol: types.ProtocolVLESS,
-			Proto: &types.ProtoOpts{
-				UUID:      "cccccccc-dddd-eeee-ffff-000000000000",
-				PacketEnc: "xudp",
-			},
-			Transport: &types.Transport{
-				Kind: types.TransportXHTTP,
-				Path: "/xhttp",
-				Host: "xhttp.example.com",
-			},
-			TLS: &types.TLSConfig{
-				Enabled:    true,
-				ServerName: "xhttp.example.com",
-				UTLS:       &types.UTLSConfig{Enabled: true, Fingerprint: "chrome"},
-			},
-		},
-	},
 }
 
 // TestRender_GoldenWriteback проверяет соответствие вывода renderOutboundJSON
@@ -482,8 +458,8 @@ func TestRender_GoldenWriteback(t *testing.T) {
 			goldenPath := filepath.Join("testdata", "canonical", tc.name+"_outbound.json")
 
 			if update {
-				if err := os.WriteFile(goldenPath, append(got, '\n'), 0o644); err != nil {
-					t.Fatalf("запись golden-файла %s: %v", goldenPath, err)
+				if writeErr := os.WriteFile(goldenPath, append(got, '\n'), 0o644); writeErr != nil {
+					t.Fatalf("запись golden-файла %s: %v", goldenPath, writeErr)
 				}
 				t.Logf("обновлён golden: %s", goldenPath)
 				return

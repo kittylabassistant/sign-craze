@@ -61,7 +61,10 @@ func registerClashRoutes(mux *http.ServeMux, s *Server) {
 // Поддерживает HTTP и WebSocket (httputil.ReverseProxy с Go 1.20+ работает
 // прозрачно для Upgrade: websocket).
 func newClashAPIProxy() http.Handler {
-	target, _ := url.Parse(singboxClashAPIAddr)
+	target, err := url.Parse(singboxClashAPIAddr)
+	if err != nil {
+		panic(err)
+	}
 	rp := httputil.NewSingleHostReverseProxy(target)
 	// Sing-box clash_api может отвечать 502/503 если sing-box ещё не запущен —
 	// возвращаем понятный JSON, чтобы SPA показал "backend offline" а не
@@ -69,7 +72,7 @@ func newClashAPIProxy() http.Handler {
 	rp.ErrorHandler = func(w http.ResponseWriter, _ *http.Request, _ error) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadGateway)
-		_, _ = w.Write([]byte(`{"message":"sing-box clash_api недоступен (port 9094)"}`))
+		_, _ = w.Write([]byte(`{"message":"sing-box clash_api недоступен (port 9094)"}`)) //nolint:errcheck
 	}
 	return rp
 }
@@ -81,7 +84,7 @@ func (s *Server) clashSPAConfig(w http.ResponseWriter, r *http.Request) {
 	host := r.Host // "192.168.1.1:9090"
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write([]byte("window.__METACUBEXD_CONFIG__ = { defaultBackendURL: 'http://" + host + "', defaultSecret: '' };\n"))
+	_, _ = w.Write([]byte("window.__METACUBEXD_CONFIG__ = { defaultBackendURL: 'http://" + host + "', defaultSecret: '' };\n")) //nolint:errcheck
 }
 
 // clashRoot отдаёт SPA-страницу Zashboard, если клиент — браузер
@@ -111,5 +114,3 @@ func (s *Server) clashVersion(w http.ResponseWriter, r *http.Request) {
 		"premium": false,
 	})
 }
-
-

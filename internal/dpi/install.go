@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -134,9 +135,10 @@ func openNfqwsBinaryStreamIPK(ipkPath string) (*binaryStream, error) {
 	// Ищем data.tar.gz в outer tar.
 	outerTar := tar.NewReader(outerGZ)
 	var dataTarBytes []byte
+	var hdr *tar.Header
 	for {
-		hdr, err := outerTar.Next()
-		if err == io.EOF {
+		hdr, err = outerTar.Next()
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
@@ -162,9 +164,10 @@ func openNfqwsBinaryStreamIPK(ipkPath string) (*binaryStream, error) {
 	defer innerGZ.Close()
 
 	innerTar := tar.NewReader(innerGZ)
+	var binBytes []byte
 	for {
-		hdr, err := innerTar.Next()
-		if err == io.EOF {
+		hdr, err = innerTar.Next()
+		if errors.Is(err, io.EOF) {
 			return nil, fmt.Errorf("бинарь 'nfqws2' не найден в data.tar.gz (%s)", ipkPath)
 		}
 		if err != nil {
@@ -177,7 +180,7 @@ func openNfqwsBinaryStreamIPK(ipkPath string) (*binaryStream, error) {
 			continue
 		}
 		// Читаем бинарь в буфер — innerTar ссылается на dataTarBytes, уже в RAM.
-		binBytes, err := io.ReadAll(innerTar)
+		binBytes, err = io.ReadAll(innerTar)
 		if err != nil {
 			return nil, fmt.Errorf(".ipk чтение бинаря: %w", err)
 		}
