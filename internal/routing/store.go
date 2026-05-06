@@ -40,6 +40,11 @@ func Load(path string) (*types.RoutingConfig, error) {
 	if err := json.Unmarshal(data, &c); err != nil {
 		return nil, fmt.Errorf("routing: парсинг %s: %w", path, err)
 	}
+	// Миграция legacy-файлов: если version отсутствует или равен 0 (записано
+	// предыдущей версией sign-craze без поля version), проставляем текущую схему.
+	if c.Version == 0 {
+		c.Version = SchemaVersion
+	}
 	if err := c.Validate(); err != nil {
 		return nil, fmt.Errorf("routing: валидация %s: %w", path, err)
 	}

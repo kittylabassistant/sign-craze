@@ -138,6 +138,9 @@ func configParamsFromState(s *state.State) singbox.ConfigParams {
 // regenerateConfig генерирует config.json sing-box из state и атомарно записывает.
 // Если бинарь sing-box установлен, выполняет валидацию (sing-box check -c) перед записью.
 func regenerateConfig(ctx context.Context, s *state.State) error {
+	if s == nil {
+		return fmt.Errorf("regenerateConfig: state is nil")
+	}
 	params := configParamsFromState(s)
 	return singbox.WriteConfig(ctx, newRunner(), params, singbox.DefaultBinPath, configPath())
 }

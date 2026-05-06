@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/kittylabassistant/sign-craze/internal/routing"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
@@ -22,6 +23,13 @@ func (s *Server) apiValidate(w http.ResponseWriter, r *http.Request) {
 		var rc types.RoutingConfig
 		if !decodeJSON(w, r, &rc) {
 			return
+		}
+		// Авто-патч: клиент мог прислать конфиг без поля version (legacy или новый).
+		// Тот же паттерн используется в saveRoutingConfig.
+		if rc.Version == 0 {
+			slog.Debug("web: validate: version=0, подставляем SchemaVersion",
+				"schema_version", routing.SchemaVersion)
+			rc.Version = routing.SchemaVersion
 		}
 		cfg = &rc
 	} else {

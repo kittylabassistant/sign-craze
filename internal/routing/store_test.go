@@ -208,11 +208,34 @@ func TestBootstrapFromState_EmptyOutbounds(t *testing.T) {
 	}
 }
 
-// TestLoad_InvalidConfig проверяет ошибку при невалидном (но корректном JSON) конфиге.
-func TestLoad_InvalidConfig(t *testing.T) {
+// TestLoad_LegacyVersionZero проверяет, что файл с version=0 (legacy, без поля version)
+// успешно загружается после миграции до SchemaVersion, а не возвращает ошибку.
+func TestLoad_LegacyVersionZero(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "routing.json")
-	// version=0 — невалидно согласно Validate()
+	// version=0 — legacy-файл, записанный до введения поля version.
 	data := []byte(`{"version": 0}`)
+	if err := os.WriteFile(path, data, 0o640); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	c, err := Load(path)
+	if err != nil {
+		t.Fatalf("ожидалась успешная загрузка legacy-файла, получено: %v", err)
+	}
+	if c == nil {
+		t.Fatal("Load вернул nil, ожидался конфиг")
+	}
+	if c.Version != SchemaVersion {
+		t.Errorf("Version после миграции: got %d, want %d", c.Version, SchemaVersion)
+	}
+}
+
+// TestLoad_InvalidField проверяет ошибку при невалидном (но корректном JSON) конфиге,
+// где ошибка не связана с version.
+func TestLoad_InvalidField(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "routing.json")
+	// rule с некорректным action — валидационная ошибка не в version.
+	data := []byte(`{"version": 1, "rules": [{"action": "invalid-action"}]}`)
 	if err := os.WriteFile(path, data, 0o640); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}

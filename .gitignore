@@ -7,6 +7,7 @@ docs/*
 !docs/THIRD_PARTY_LICENSES.md
 dist/
 .git-staging/
+contexts
 
 # Личные планы и заметки
 tasks/

@@ -159,7 +159,10 @@ func runUIServer(ctx context.Context) error {
 		OnApply: func(ctx context.Context) error {
 			fresh, err := state.Load(state.DefaultPath)
 			if err != nil {
-				return err
+				return fmt.Errorf("OnApply: state.Load: %w", err)
+			}
+			if fresh == nil {
+				fresh = state.Default()
 			}
 			return regenerateConfig(ctx, fresh)
 		},

@@ -247,8 +247,11 @@ func TestValidate_OK(t *testing.T) {
 
 func TestValidate_Invalid(t *testing.T) {
 	s, pw, _ := makeTestServerWithRouting(t)
+	// Конфиг с некорректным action в правиле — ошибка валидации не в version,
+	// поэтому авто-патч version не скрывает проблему.
 	cfg := types.RoutingConfig{
-		Version: 0, // невалидно: version должен быть > 0
+		Version: 1,
+		Rules:   []types.RouteRule{{Action: "invalid-action"}},
 	}
 	rec := do(s, authReq("POST", "/api/validate", pw, cfg))
 	if rec.Code != http.StatusOK {
@@ -261,6 +264,24 @@ func TestValidate_Invalid(t *testing.T) {
 	}
 	if len(resp.Errors) == 0 {
 		t.Errorf("ожидались errors")
+	}
+}
+
+// TestValidate_VersionZeroAutoPatch проверяет, что version=0 в теле запроса
+// автоматически патчится до SchemaVersion и валидация проходит успешно.
+func TestValidate_VersionZeroAutoPatch(t *testing.T) {
+	s, pw, _ := makeTestServerWithRouting(t)
+	cfg := types.RoutingConfig{
+		Version: 0, // должен быть автоматически поднят до SchemaVersion
+	}
+	rec := do(s, authReq("POST", "/api/validate", pw, cfg))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("validate: %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp validateResponse
+	_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+	if !resp.OK {
+		t.Errorf("ожидался ok=true после авто-патча version, errors=%v", resp.Errors)
 	}
 }
 

@@ -286,6 +286,12 @@ opkg install wget-ssl
 curl -fsSL https://github.com/kittylabassistant/sign-craze/releases/latest/download/install.sh | sh
 ```
 
+Если GitHub недоступен напрямую, передайте прокси через переменную окружения установщику:
+
+```sh
+https_proxy=http://<host>:<port> curl -fsSL https://github.com/kittylabassistant/sign-craze/releases/latest/download/install.sh | sh
+```
+
 Скрипт автоматически:
 
 - Выберет загрузчик: `curl -fsSL` или `wget` (с проверкой TLS). Если корневых CA на роутере нет — `opkg install ca-certificates`.
@@ -335,6 +341,17 @@ sign-craze --install
 2. **Режим маршрутизации:**
    - `policy` — интеграция с Keenetic IP Policy через RCI (по умолчанию). Выбор устройств — через штатный web-UI Keenetic «Приоритеты подключений».
    - `full` — legacy: собственный fwmark 0x53 + ipset, маршрутизирует **весь** транзитный трафик через TUN.
+
+Можно передать outbound сразу через флаг `--proxy`, минуя интерактивный режим:
+
+```sh
+sign-craze --install --proxy 'vless://...'
+# или при переустановке:
+sign-craze --reinstall --proxy 'vless://...'
+sign-craze --restart
+```
+
+Флаг `--proxy` принимает тот же URL-формат, что и при интерактивной установке. При `--reinstall --proxy` завершение подсказывает `--restart` (не `--start`), так как sing-box продолжает работать.
 
 После завершения:
 
@@ -402,9 +419,9 @@ sign-craze --ui on
 
 Откроются три HTTP-сервиса (только из LAN):
 
-- `http://<router-ip>:9090/` — **Zashboard** (Clash-совместимый dashboard: управление прокси, мониторинг трафика). Откройте в браузере: `http://<ROUTER_LAN_IP>:9090/`.
+- `http://<router-ip>:9090/` — **MetaCubeXD** (Clash-совместимый dashboard). Показывает реальное дерево прокси, живые счётчики трафика, активные соединения и логи в реальном времени — стриминговые эндпоинты (`/traffic`, `/logs`, `/connections`) передаются без буферизации. Данные приходят через Clash API реверс-прокси на sing-box (порт `9094`, внутренний). Выбор активного прокси сохраняется после рестарта sing-box.
 - `http://<router-ip>:9091/api/status` — **admin REST API** (статус, конфиг, порты, исключения, DPI targets).
-- `http://<router-ip>:9092` — **Routing Editor SPA** (визуальный редактор inbounds/outbounds/rules, пресеты).
+- `http://<router-ip>:9092` — **Routing Editor SPA** (визуальный редактор inbounds/outbounds/rules, пресеты). При первом запуске автоматически инициализируется из текущих `state.outbounds` — сконфигурированный прокси появляется сразу. Outbound в таблице отображается с адресом сервера и портом.
 
 Все порты работают без аутентификации. Доступ извне LAN заблокирован iptables-правилами.
 

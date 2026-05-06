@@ -1,6 +1,7 @@
 package web
 
 import (
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -66,6 +67,11 @@ func newClashAPIProxy() http.Handler {
 		panic(err)
 	}
 	rp := httputil.NewSingleHostReverseProxy(target)
+	// -1 = немедленный flush после каждого Write (Go 1.20+).
+	// Обязательно для стриминговых эндпоинтов /traffic, /logs, /connections:
+	// без этого httputil буферизует ответ целиком до закрытия соединения,
+	// и браузер не получает данные в реальном времени.
+	rp.FlushInterval = -1
 	// Sing-box clash_api может отвечать 502/503 если sing-box ещё не запущен —
 	// возвращаем понятный JSON, чтобы SPA показал "backend offline" а не
 	// «Network Error».
@@ -81,7 +87,13 @@ func newClashAPIProxy() http.Handler {
 // MetaCubeXD/Zashboard подключаются автоматически без формы ввода.
 // Secret пустой: внешний доступ к 9090 закрыт правилом INPUT DROP на WAN_IF.
 func (s *Server) clashSPAConfig(w http.ResponseWriter, r *http.Request) {
-	host := r.Host // "192.168.1.1:9090"
+	host := r.Host // обычно "192.168.1.1:9090"
+	// За nginx без proxy_set_header Host $host:$server_port r.Host может не
+	// содержать порт. SPA в таком случае подключится на :80 и потеряет данные.
+	if _, _, err := net.SplitHostPort(host); err != nil {
+		// Host без порта — явно добавляем порт zashboard-сервера
+		host = net.JoinHostPort(host, "9090")
+	}
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write([]byte("window.__METACUBEXD_CONFIG__ = { defaultBackendURL: 'http://" + host + "', defaultSecret: '' };\n")) //nolint:errcheck

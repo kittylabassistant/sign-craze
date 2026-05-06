@@ -40,6 +40,8 @@ sign-craze --dpi on        # качает nfqws2 в /opt/sbin/, генерит /
 sign-craze --restart       # applier добавляет NFQUEUE-правила, lifecycle поднимает nfqws2
 ```
 
+> **nfqws2 загружается из репозитория `github.com/nfqws/nfqws2-keenetic`** в формате Entware `.ipk` (начиная с v1.1.5). Распаковка `.ipk` (outer tar.gz → `data.tar.gz` → бинарь) выполняется автоматически. Если скачивание падает с 404 — убедитесь, что бинарь sign-craze актуальный (`sign-craze --update`).
+
 После `--dpi on` состояние сохраняется в `state.json` и переживает ребуты — init.d shim `/opt/etc/init.d/S05signcraze` поднимет `nfqws2` автоматически.
 
 Для экономии CPU на MIPS-роутерах рекомендуется selective режим (см. следующий вопрос):
@@ -87,11 +89,13 @@ Discord voice использует UDP/QUIC без TLS SNI в открытом �
 
 ### Как открыть веб-интерфейс?
 
-Откройте в браузере `http://<ROUTER_IP>:9090/` из локальной сети. Это Zashboard — Clash-совместимый dashboard для управления прокси и мониторинга трафика. Предварительно запустите: `sign-craze --ui on`.
+Откройте в браузере `http://<ROUTER_IP>:9090/` из локальной сети. Это MetaCubeXD — Clash-совместимый dashboard, который показывает реальное дерево прокси, живые счётчики трафика, активные соединения и логи в реальном времени. Данные берутся напрямую из sing-box через Clash API реверс-прокси (sign-craze проксирует `/proxies`, `/connections`, `/traffic`, `/logs` и пр. на внутренний порт sing-box `9094`). Стриминговые эндпоинты (`/traffic`, `/logs`, `/connections`) передаются без буферизации. Предварительно запустите: `sign-craze --ui on`.
+
+Выбор активного прокси в MetaCubeXD сохраняется после рестарта sing-box (`store_mode=true` в конфиге).
 
 ### Какие порты открывает sign-craze?
 
-- `9090` — Zashboard (Clash-совместимый dashboard, управление прокси, мониторинг трафика)
+- `9090` — MetaCubeXD (Clash-совместимый dashboard, управление прокси, мониторинг трафика)
 - `9091` — admin REST API (статус, конфиг, порты, исключения, DPI targets)
 - `9092` — Routing Editor SPA (правила маршрутизации, geosite/geoip пресеты)
 
@@ -104,6 +108,20 @@ Discord voice использует UDP/QUIC без TLS SNI в открытом �
 Это by design. Sign-craze добавляет правило INPUT DROP в iptables для WAN-интерфейса на портах 9090/9091/9092 (chain `signcraze_local`). Локальная сеть имеет доступ. Если из LAN тоже не открывается — проверьте `iptables -nvL INPUT`, убедитесь что ваш интерфейс не определён как WAN ошибочно (см. `sign-craze --diag`).
 
 ## Установка / обновление
+
+### Можно ли передать прокси-URL сразу при установке, без интерактивного режима?
+
+Да, через флаг `--proxy <URL>`:
+
+```sh
+sign-craze --install --proxy 'vless://...'
+
+# При переустановке (sing-box уже работает):
+sign-craze --reinstall --proxy 'vless://...'
+sign-craze --restart
+```
+
+Флаг принимает те же форматы, что и интерактивный wizard: `vless://`, `vmess://`, `ss://`, `trojan://`, `http://`, `socks5://`. При `--reinstall` завершение говорит `--restart`, а не `--start` — sing-box не останавливается при переустановке.
 
 ### Где живёт state.json?
 

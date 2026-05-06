@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"os"
 
@@ -20,7 +21,11 @@ func (s *Server) loadRoutingConfig() (*types.RoutingConfig, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return routing.Default(), nil
 		}
-		return nil, err
+		// Ошибка валидации или парсинга: логируем предупреждение и возвращаем
+		// пустой конфиг по умолчанию, чтобы UI не отдавал HTTP 500.
+		slog.Warn("web: routing.json повреждён, используется пустой конфиг",
+			"path", s.cfg.RoutingUI.RoutingPath, "err", err)
+		return routing.Default(), nil
 	}
 	if cfg == nil {
 		return routing.Default(), nil

@@ -73,13 +73,18 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	// Доступ ограничивается iptables DROP на WAN_IF (не через bind).
 	clashMux := http.NewServeMux()
 	registerClashRoutes(clashMux, s)
+	// Вариант (a): zashboard — отдельный http.Server, поэтому WriteTimeout=0
+	// только для него. Стриминговые эндпоинты /traffic, /logs, /connections
+	// не должны обрываться по таймауту; защита от slowloris обеспечивается
+	// ReadHeaderTimeout (≤15 с). Admin (9091) оставляет WriteTimeout=30s.
 	s.zashboard = &http.Server{
-		Addr:           ":9090",
-		Handler:        recoverMiddleware(securityHeadersSPA(clashMux)),
-		ReadTimeout:    15 * time.Second,
-		WriteTimeout:   30 * time.Second,
-		IdleTimeout:    90 * time.Second,
-		MaxHeaderBytes: 8 * 1024,
+		Addr:              ":9090",
+		Handler:           recoverMiddleware(securityHeadersSPA(clashMux)),
+		ReadHeaderTimeout: 15 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      0, // стримы: /traffic, /logs, /connections
+		IdleTimeout:       90 * time.Second,
+		MaxHeaderBytes:    8 * 1024,
 	}
 
 	adminMux := http.NewServeMux()

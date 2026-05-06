@@ -256,7 +256,7 @@ const PROXY_TYPES = new Set(['vless', 'vmess', 'trojan', 'shadowsocks', 'http', 
 
 function OutboundModal({ item, onSave, onClose }) {
   const isNew = !item;
-  const [form, setForm] = useState(item || { tag: '', type: 'direct', server: '', port: '', uuid: '', password: '' });
+  const [form, setForm] = useState(item || { tag: '', type: 'direct', server: '', server_port: '', uuid: '', password: '' });
   const [err, setErr] = useState('');
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -265,13 +265,13 @@ function OutboundModal({ item, onSave, onClose }) {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (isProxy && !form.server) { setErr('server обязателен для прокси-типов'); return; }
-    const portNum = parseInt(form.port, 10);
+    const portNum = parseInt(form.server_port, 10);
     if (isProxy && (!portNum || portNum < 1 || portNum > 65535)) { setErr('port должен быть от 1 до 65535'); return; }
 
     const data = { tag: form.tag, type: form.type };
     if (isProxy) {
       data.server = form.server;
-      data.port = portNum;
+      data.server_port = portNum;
       if (form.uuid) data.uuid = form.uuid;
       if (form.password) data.password = form.password;
     }
@@ -298,7 +298,7 @@ function OutboundModal({ item, onSave, onClose }) {
           </label>
           <label>
             Port
-            <input required type="number" min="1" max="65535" value=${form.port} onInput=${(e) => set('port', e.target.value)} />
+            <input required type="number" min="1" max="65535" value=${form.server_port} onInput=${(e) => set('server_port', e.target.value)} />
           </label>
           ${(form.type === 'vless' || form.type === 'vmess') && html`
             <label>
@@ -370,10 +370,10 @@ function OutboundsTab({ outbounds, onReload, showToast }) {
                 <tr key=${ob.tag}>
                   <td>${ob.tag}</td>
                   <td><code>${ob.type}</code></td>
-                  <td>${ob.server ? `${ob.server}:${ob.port}` : '—'}</td>
+                  <td>${ob.server ? `${ob.server}:${ob.server_port}` : '—'}</td>
                   <td>
                     <div class="action-cell">
-                      <button class="secondary" onClick=${() => setModal({ ...ob, port: ob.port ? String(ob.port) : '' })}>Изменить</button>
+                      <button class="secondary" onClick=${() => setModal({ ...ob, server_port: ob.server_port ? String(ob.server_port) : '' })}>Изменить</button>
                       <button class="contrast" onClick=${() => handleDelete(ob.tag)}>Удалить</button>
                     </div>
                   </td>
@@ -748,10 +748,23 @@ function PresetsDropdown({ onReload, showToast }) {
   const [presets, setPresets] = useState([]);
   // visible управляет видимостью выпадающего списка
   const [visible, setVisible] = useState(false);
+  const containerRef = useRef(null);
 
   useEffect(() => {
     api.get('/api/presets').then(setPresets).catch(() => {});
   }, []);
+
+  // Закрытие по клику вне компонента
+  useEffect(() => {
+    if (!visible) return;
+    const handler = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setVisible(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [visible]);
 
   // apply делается fire-and-forget: сначала запускаем запрос, потом скрываем
   // dropdown. Если скрыть сначала, preact unmount'ит preset-item между
@@ -770,9 +783,8 @@ function PresetsDropdown({ onReload, showToast }) {
 
   return html`
     <div
+      ref=${containerRef}
       style="position:relative"
-      onMouseEnter=${() => setVisible(true)}
-      onMouseLeave=${() => setVisible(false)}
     >
       <button
         class="secondary"
@@ -814,7 +826,8 @@ function Toolbar({ onReload, showToast }) {
 
   const handleValidate = async () => {
     try {
-      const res = await api.post('/api/validate', {});
+      const res = await fetch('/api/validate', { method: 'POST', credentials: 'include' })
+        .then(r => r.ok ? r.json() : Promise.reject(new Error(`${r.status} ${r.statusText}`)));
       if (res.ok) {
         showToast('Конфигурация валидна', 'success');
       } else {
