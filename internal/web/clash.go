@@ -20,8 +20,24 @@ func registerClashRoutes(mux *http.ServeMux, s *Server) {
 	mux.HandleFunc("GET /traffic", s.clashTrafficWS)
 	mux.HandleFunc("GET /logs", s.clashLogsWS)
 
+	// /config.js — runtime-конфиг встроенного MetaCubeXD/Zashboard SPA.
+	// Подменяем статический файл из assets, чтобы defaultBackendURL указывал
+	// на тот же origin, с которого открыта страница (LAN IP роутера). Иначе
+	// SPA при первом открытии показывает экран ввода backend и просит secret.
+	mux.HandleFunc("GET /config.js", s.clashSPAConfig)
+
 	// SPA fallback: все незарегистрированные пути → встроенный Zashboard
 	mux.Handle("/", spa)
+}
+
+// clashSPAConfig отдаёт config.js с defaultBackendURL = "http://<host>" —
+// MetaCubeXD/Zashboard подключаются автоматически без формы ввода.
+// Secret пустой: внешний доступ к 9090 закрыт правилом INPUT DROP на WAN_IF.
+func (s *Server) clashSPAConfig(w http.ResponseWriter, r *http.Request) {
+	host := r.Host // "192.168.1.1:9090"
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write([]byte("window.__METACUBEXD_CONFIG__ = { defaultBackendURL: 'http://" + host + "', defaultSecret: '' };\n"))
 }
 
 // clashRoot отдаёт SPA-страницу Zashboard, если клиент — браузер
