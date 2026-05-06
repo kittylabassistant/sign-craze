@@ -1,5 +1,5 @@
 [submodule "internal/web/assets/zashboard"]
 	path = internal/web/assets/zashboard
-	url = https://github.com/Zephyruso/zashboard.git
+	url = https://github.com/MetaCubeX/metacubexd.git
 	branch = gh-pages
 	shallow = true
