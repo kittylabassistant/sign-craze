@@ -9,12 +9,13 @@ import (
 )
 
 // nfqws2AssetPattern — суффикс asset для каждой архитектуры в релизе nfqws2-keenetic.
+// Начиная с v1.1.5 релизы публикуются как Entware .ipk пакеты (outer tar.gz → data.tar.gz → бинарь).
 var nfqws2AssetPattern = map[types.Arch]string{
-	types.ArchARM64:  "aarch64.tar.gz",
-	types.ArchARM7:   "armv7l.tar.gz",
-	types.ArchMIPSLE: "mipsel.tar.gz",
-	types.ArchMIPS:   "mips.tar.gz",
-	types.ArchAMD64:  "x86_64.tar.gz",
+	types.ArchARM64:  "aarch64-3.10.ipk",
+	types.ArchARM7:   "armv7-3.2.ipk",
+	types.ArchMIPSLE: "mipsel-3.4.ipk",
+	types.ArchMIPS:   "mips-3.4.ipk",
+	types.ArchAMD64:  "x86_64-3.2.ipk",
 }
 
 // DownloadResult описывает результат вызова Download.
@@ -37,7 +38,7 @@ func Download(ctx context.Context, arch types.Arch, dstDir string) (DownloadResu
 	}
 
 	res, err := ghrelease.New().Fetch(ctx, ghrelease.FetchOptions{
-		Owner:      "bol-van",
+		Owner:      "nfqws",
 		Repo:       "nfqws2-keenetic",
 		AssetMatch: ghrelease.MatchByContains(pattern),
 		DstDir:     dstDir,

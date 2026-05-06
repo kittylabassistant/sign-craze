@@ -2,11 +2,13 @@ package dpi
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
 	"github.com/kittylabassistant/sign-craze/internal/log"
@@ -24,11 +26,15 @@ const (
 	DefaultHostlistPath = "/opt/etc/sign-craze/dpi-hostlist.txt"
 )
 
-// Install устанавливает бинарь nfqws2 из tarball в binDst.
+// Install устанавливает бинарь nfqws2 из tarball или .ipk пакета в binDst.
 // Алгоритм:
 //  1. Резервная копия текущего бинаря (rename, без чтения в RAM).
-//  2. Стриминговая распаковка tarball → атомарная запись в binDst с правами 0755.
+//  2. Стриминговая распаковка → атомарная запись в binDst с правами 0755.
 //  3. При ошибке записи — откат через RestoreBackup.
+//
+// Поддерживаемые форматы:
+//   - .tar.gz — прямой tar.gz, содержащий бинарь "nfqws2" в любом подкаталоге.
+//   - .ipk    — Entware-пакет: outer tar.gz → data.tar.gz → бинарь "nfqws2".
 //
 // Не загружает бинарь в RAM — критично для роутеров с 128MB.
 func Install(tarPath, binDst string) error {
@@ -56,9 +62,20 @@ type binaryStream struct {
 
 func (b *binaryStream) Close() error { return b.closer() }
 
-// openNfqwsBinaryStream открывает tarball, ищет файл "nfqws2" в любом
-// подкаталоге, возвращает stream без буферизации в RAM.
+// openNfqwsBinaryStream открывает tarball или .ipk пакет, ищет файл "nfqws2",
+// возвращает stream без буферизации в RAM.
+//
+// Для .ipk (Entware): outer tar.gz содержит data.tar.gz, внутри которого бинарь.
+// Для .tar.gz: прямой поиск бинаря "nfqws2" в любом подкаталоге.
 func openNfqwsBinaryStream(tarPath string) (*binaryStream, error) {
+	if strings.HasSuffix(tarPath, ".ipk") {
+		return openNfqwsBinaryStreamIPK(tarPath)
+	}
+	return openNfqwsBinaryStreamTarGZ(tarPath)
+}
+
+// openNfqwsBinaryStreamTarGZ ищет бинарь "nfqws2" в обычном tar.gz архиве.
+func openNfqwsBinaryStreamTarGZ(tarPath string) (*binaryStream, error) {
 	f, err := os.Open(tarPath)
 	if err != nil {
 		return nil, fmt.Errorf("открытие tarball: %w", err)
@@ -94,6 +111,80 @@ func openNfqwsBinaryStream(tarPath string) (*binaryStream, error) {
 			return f.Close()
 		}
 		return &binaryStream{Reader: tr, closer: closer}, nil
+	}
+}
+
+// openNfqwsBinaryStreamIPK извлекает бинарь "nfqws2" из Entware .ipk пакета.
+// Формат .ipk: tar.gz → { data.tar.gz, control.tar.gz, debian-binary }.
+// Бинарь находится в data.tar.gz по пути */sbin/nfqws2 или */bin/nfqws2.
+// Всё содержимое data.tar.gz буферизуется в RAM (обычно < 500KB).
+func openNfqwsBinaryStreamIPK(ipkPath string) (*binaryStream, error) {
+	f, err := os.Open(ipkPath)
+	if err != nil {
+		return nil, fmt.Errorf("открытие .ipk: %w", err)
+	}
+	defer f.Close()
+
+	outerGZ, err := gzip.NewReader(f)
+	if err != nil {
+		return nil, fmt.Errorf(".ipk gzip reader: %w", err)
+	}
+	defer outerGZ.Close()
+
+	// Ищем data.tar.gz в outer tar.
+	outerTar := tar.NewReader(outerGZ)
+	var dataTarBytes []byte
+	for {
+		hdr, err := outerTar.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf(".ipk outer tar: %w", err)
+		}
+		if hdr.Name == "./data.tar.gz" || hdr.Name == "data.tar.gz" {
+			dataTarBytes, err = io.ReadAll(outerTar)
+			if err != nil {
+				return nil, fmt.Errorf(".ipk чтение data.tar.gz: %w", err)
+			}
+			break
+		}
+	}
+	if dataTarBytes == nil {
+		return nil, fmt.Errorf(".ipk: data.tar.gz не найден в %s", ipkPath)
+	}
+
+	// Ищем бинарь nfqws2 в data.tar.gz.
+	innerGZ, err := gzip.NewReader(bytes.NewReader(dataTarBytes))
+	if err != nil {
+		return nil, fmt.Errorf(".ipk inner gzip: %w", err)
+	}
+	defer innerGZ.Close()
+
+	innerTar := tar.NewReader(innerGZ)
+	for {
+		hdr, err := innerTar.Next()
+		if err == io.EOF {
+			return nil, fmt.Errorf("бинарь 'nfqws2' не найден в data.tar.gz (%s)", ipkPath)
+		}
+		if err != nil {
+			return nil, fmt.Errorf(".ipk inner tar: %w", err)
+		}
+		if hdr.Typeflag != tar.TypeReg {
+			continue
+		}
+		if filepath.Base(hdr.Name) != "nfqws2" {
+			continue
+		}
+		// Читаем бинарь в буфер — innerTar ссылается на dataTarBytes, уже в RAM.
+		binBytes, err := io.ReadAll(innerTar)
+		if err != nil {
+			return nil, fmt.Errorf(".ipk чтение бинаря: %w", err)
+		}
+		return &binaryStream{
+			Reader: bytes.NewReader(binBytes),
+			closer: func() error { return nil },
+		}, nil
 	}
 }
 

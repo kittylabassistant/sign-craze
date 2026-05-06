@@ -13,7 +13,7 @@ import (
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
-const releasesPath = "/repos/bol-van/nfqws2-keenetic/releases/latest"
+const releasesPath = "/repos/nfqws/nfqws2-keenetic/releases/latest"
 
 func TestDownload_СкачиваетТарбол(t *testing.T) {
 	fakeContent := []byte("fake-nfqws2-tarball")
@@ -24,7 +24,7 @@ func TestDownload_СкачиваетТарбол(t *testing.T) {
 			TagName: "v1.0.0",
 			Assets: []types.Asset{
 				{
-					Name:               "nfqws2-v1.0.0-aarch64.tar.gz",
+					Name:               "nfqws2-keenetic_1.0.0_aarch64-3.10.ipk",
 					BrowserDownloadURL: "http://" + r.Host + "/download/nfqws2.tar.gz",
 				},
 			},
@@ -71,7 +71,7 @@ func TestDownload_ПропускаетПриСовпаденииETag(t *testing.
 			TagName: "v1.0.0",
 			Assets: []types.Asset{
 				{
-					Name:               "nfqws2-v1.0.0-aarch64.tar.gz",
+					Name:               "nfqws2-keenetic_1.0.0_aarch64-3.10.ipk",
 					BrowserDownloadURL: "http://" + r.Host + "/download/nfqws2.tar.gz",
 				},
 			},
@@ -95,7 +95,7 @@ func TestDownload_ПропускаетПриСовпаденииETag(t *testing.
 	defer func() { ghrelease.APIBaseURL = old }()
 
 	dstDir := t.TempDir()
-	dstFile := filepath.Join(dstDir, "nfqws2-v1.0.0-aarch64.tar.gz")
+	dstFile := filepath.Join(dstDir, "nfqws2-keenetic_1.0.0_aarch64-3.10.ipk")
 
 	if err := os.WriteFile(dstFile+".etag", []byte(`"etag-v1"`), 0o644); err != nil {
 		t.Fatal(err)
