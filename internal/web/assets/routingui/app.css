@@ -139,8 +139,10 @@ button.secondary:hover {
   margin-top: 1rem;
 }
 
-/* Inputs внутри модалки тоже тёмные */
-.modal-content input,
+/* Inputs внутри модалки тоже тёмные.
+ * Чекбоксы и радио-кнопки исключены — иначе тёмный background перекрывает
+ * нативный маркер, и пользователь не видит снят/поставлен галочку. */
+.modal-content input:not([type="checkbox"]):not([type="radio"]),
 .modal-content select,
 .modal-content textarea {
   background: rgba(15, 20, 28, 0.6);
@@ -148,11 +150,17 @@ button.secondary:hover {
   border: 1px solid var(--sc-border);
 }
 
-.modal-content input:focus,
+.modal-content input:not([type="checkbox"]):not([type="radio"]):focus,
 .modal-content select:focus,
 .modal-content textarea:focus {
   border-color: var(--sc-primary);
   outline: none;
+}
+
+/* Tinting для checkbox/radio — нативный маркер красим в primary */
+.modal-content input[type="checkbox"],
+.modal-content input[type="radio"] {
+  accent-color: var(--sc-primary);
 }
 
 /* ===== Chip ===== */

@@ -886,10 +886,6 @@ function Footer() {
       <a href="https://github.com/kittylabassistant/sign-craze" target="_blank" rel="noopener noreferrer">
         sign-craze on GitHub
       </a>
-      ${' · '}
-      <a href="https://github.com/nfqws/nfqws2-keenetic" target="_blank" rel="noopener noreferrer">
-        nfqws2-keenetic
-      </a>
     </footer>
   `;
 }
