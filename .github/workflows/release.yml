@@ -49,6 +49,10 @@ jobs:
           GOARM: ${{ matrix.goarm }}
           GOMIPS: ${{ matrix.gomips }}
         run: |
+          # Чистим dist полностью: в main закоммичены stale бинари (abcf418),
+          # без очистки они просочатся в artifact и через merge-multiple
+          # перезапишут правильные сжатые бинари других матриц.
+          rm -rf dist
           mkdir -p dist
           go build -buildvcs=false \
             -ldflags="-s -w -X github.com/kittylabassistant/sign-craze/internal/version.Version=${{ github.ref_name }}" \
@@ -93,7 +97,11 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: sign-craze-${{ matrix.suffix }}
-          path: dist/
+          # Явный список — защита от случайного включения чужих файлов.
+          path: |
+            dist/sign-craze-${{ matrix.suffix }}
+            dist/sign-craze-${{ matrix.suffix }}.sha256
+            dist/signcraze-${{ matrix.suffix }}.tar.gz
 
   publish:
     name: publish release
