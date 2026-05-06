@@ -45,10 +45,11 @@ func TestXrayCheck_Golden(t *testing.T) {
 				t.Fatalf("filepath.Abs(%s): %v", f, err)
 			}
 
-			// `xray test -c <файл>` валидирует конфиг без запуска сервера.
-			// Флаг `-test` (xray run -config <файл> -test) также работает в
-			// некоторых версиях; предпочитаем `xray test -c`.
-			cmd := exec.Command(xrayBin, "test", "-c", abs)
+			// `xray run -test -c <файл>` валидирует конфиг без запуска
+			// сервера: парсит JSON и проверяет схему/протоколы. В Xray-core
+			// v25+ subcommand `test` отсутствует — есть только флаг `-test`
+			// у `run`.
+			cmd := exec.Command(xrayBin, "run", "-test", "-c", abs)
 			out, err := cmd.CombinedOutput()
 			if err != nil {
 				t.Errorf("xray test завершился с ошибкой для %s:\n%s", base, string(out))

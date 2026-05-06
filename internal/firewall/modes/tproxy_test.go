@@ -33,7 +33,6 @@ func TestTProxyRules_СодержитОбязательныеПравила(t *t
 		needles []string
 	}{
 		{"mark-ipv4", "signcraze", []string{"--match-set signcraze_ipv4 dst", "-j MARK", "0x53"}},
-		{"mark-ipv6", "signcraze", []string{"--match-set signcraze_ipv6 dst", "-j MARK", "0x53"}},
 		{"prerouting-dpi", "PREROUTING", []string{"-j signcraze_dpi"}},
 		{"prerouting-mark", "PREROUTING", []string{"-j signcraze"}},
 	}

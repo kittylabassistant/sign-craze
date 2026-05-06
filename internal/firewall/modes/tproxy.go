@@ -21,18 +21,12 @@ func TProxyRules(fwmark uint32) []RuleSpec {
 
 	return []RuleSpec{
 		// Маркировка по ipset signcraze_ipv4: dst-host в списке → MARK.
+		// IPv6-аналог требует ip6tables (отдельный путь, вне scope v0.5.3 —
+		// iptables-nft отвергает IPv6-family set в IPv4-цепочке).
 		{
 			Table: "mangle", Chain: "signcraze",
 			Args: []string{
 				"-m", "set", "--match-set", "signcraze_ipv4", "dst",
-				"-j", "MARK", "--set-mark", mark,
-			},
-		},
-		// Маркировка по ipset signcraze_ipv6.
-		{
-			Table: "mangle", Chain: "signcraze",
-			Args: []string{
-				"-m", "set", "--match-set", "signcraze_ipv6", "dst",
 				"-j", "MARK", "--set-mark", mark,
 			},
 		},

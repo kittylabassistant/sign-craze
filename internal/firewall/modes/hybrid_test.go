@@ -14,7 +14,6 @@ func TestHybridRules_СодержитMARKПравила(t *testing.T) {
 		needles []string
 	}{
 		{"mark-ipv4", "signcraze", []string{"--match-set signcraze_ipv4 dst", "-j MARK"}},
-		{"mark-ipv6", "signcraze", []string{"--match-set signcraze_ipv6 dst", "-j MARK"}},
 		{"prerouting-dpi", "PREROUTING", []string{"-j signcraze_dpi"}},
 		{"prerouting-mark", "PREROUTING", []string{"-j signcraze"}},
 	}
