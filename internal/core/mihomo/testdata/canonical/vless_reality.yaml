@@ -1,0 +1,28 @@
+log-level: info
+mode: rule
+
+tproxy-port: 7895
+routing-mark: 83
+
+dns:
+  enable: true
+  listen: 0.0.0.0:5353
+  enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.1/16
+  default-nameserver:
+    - 114.114.114.114
+  nameserver:
+    - https://dns.google/dns-query
+
+proxies:
+- {name: vless-reality-out, type: vless, server: example.com, port: 443, client-fingerprint: chrome, flow: xtls-rprx-vision, reality-opts: {public-key: mwRiBidYJGzBfYLhvYFCGisjZ1sT4kmjqKCyWHPRtXo, short-id: deadbeef00}, servername: example.com, tls: true, uuid: aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee}
+
+proxy-groups:
+  - name: PROXY
+    type: select
+    proxies:
+      - vless-reality-out
+      - DIRECT
+
+rules:
+  - MATCH,PROXY

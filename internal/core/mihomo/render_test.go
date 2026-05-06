@@ -1,11 +1,154 @@
 package mihomo
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
+
+// mihomoGoldenCases — canonical-случаи для TestRender_GoldenWriteback.
+// Каждый элемент описывает имя golden-файла (без .yaml) и соответствующий ConfigParams.
+// При UPDATE_GOLDEN=1 файлы перегенерируются; без флага — diff против файлов.
+var mihomoGoldenCases = []struct {
+	name   string
+	params ConfigParams
+}{
+	{
+		name: "hysteria2",
+		params: func() ConfigParams {
+			p := DefaultConfigParams()
+			p.Outbounds = []types.Outbound{{Tag: "hy2-out", Type: "hysteria2", Server: "hy2.example.com", Port: 443}}
+			p.Canonicals = map[string]types.Canonical{
+				"hy2-out": {
+					Protocol: types.ProtocolHysteria2,
+					Proto: &types.ProtoOpts{
+						Password:          "hy2-password-placeholder",
+						Hysteria2UpMbps:   100,
+						Hysteria2DownMbps: 300,
+					},
+					TLS: &types.TLSConfig{
+						ServerName: "hy2.example.com",
+						Insecure:   false,
+					},
+				},
+			}
+			p.DefaultTag = "hy2-out"
+			return p
+		}(),
+	},
+	{
+		name: "tuic_v5",
+		params: func() ConfigParams {
+			p := DefaultConfigParams()
+			p.Outbounds = []types.Outbound{{Tag: "tuic-out", Type: "tuic", Server: "tuic.example.com", Port: 443}}
+			p.Canonicals = map[string]types.Canonical{
+				"tuic-out": {
+					Protocol: types.ProtocolTUIC,
+					Proto: &types.ProtoOpts{
+						UUID:           "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+						Password:       "tuic-password-placeholder",
+						TUICCongestion: "bbr",
+						TUICUDPRelay:   "native",
+					},
+					TLS: &types.TLSConfig{
+						Enabled:    true,
+						ServerName: "tuic.example.com",
+					},
+				},
+			}
+			p.DefaultTag = "tuic-out"
+			return p
+		}(),
+	},
+	{
+		name: "vless_reality",
+		params: func() ConfigParams {
+			p := DefaultConfigParams()
+			p.Outbounds = []types.Outbound{{Tag: "vless-reality-out", Type: "vless", Server: "example.com", Port: 443}}
+			p.Canonicals = map[string]types.Canonical{
+				"vless-reality-out": {
+					Protocol: types.ProtocolVLESS,
+					Proto: &types.ProtoOpts{
+						UUID: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+						Flow: "xtls-rprx-vision",
+					},
+					TLS: &types.TLSConfig{
+						Enabled:    true,
+						ServerName: "example.com",
+						UTLS:       &types.UTLSConfig{Enabled: true, Fingerprint: "chrome"},
+						Reality: &types.RealityConfig{
+							Enabled:   true,
+							PublicKey: "mwRiBidYJGzBfYLhvYFCGisjZ1sT4kmjqKCyWHPRtXo",
+							ShortID:   "deadbeef00",
+						},
+					},
+				},
+			}
+			p.DefaultTag = "vless-reality-out"
+			return p
+		}(),
+	},
+	{
+		name: "shadowsocks",
+		params: func() ConfigParams {
+			p := DefaultConfigParams()
+			p.Outbounds = []types.Outbound{{Tag: "ss-out", Type: "shadowsocks", Server: "ss.example.com", Port: 8388}}
+			p.Canonicals = map[string]types.Canonical{
+				"ss-out": {
+					Protocol: types.ProtocolShadowsocks,
+					Proto: &types.ProtoOpts{
+						Method:   "chacha20-ietf-poly1305",
+						Password: "s3cr3t-password-placeholder",
+					},
+				},
+			}
+			p.DefaultTag = "ss-out"
+			return p
+		}(),
+	},
+}
+
+// TestRender_GoldenWriteback проверяет соответствие вывода Render() golden-файлам
+// в testdata/canonical/.
+//
+// При UPDATE_GOLDEN=1 golden-файлы перегенерируются. Без флага — байтовый diff
+// против файла (YAML выводится детерминированно через marshalYAMLInline).
+func TestRender_GoldenWriteback(t *testing.T) {
+	update := os.Getenv("UPDATE_GOLDEN") == "1"
+
+	for _, tc := range mihomoGoldenCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := Render(tc.params)
+			if err != nil {
+				t.Fatalf("Render: %v", err)
+			}
+
+			goldenPath := filepath.Join("testdata", "canonical", tc.name+".yaml")
+
+			if update {
+				if err := os.WriteFile(goldenPath, got, 0o644); err != nil {
+					t.Fatalf("запись golden-файла %s: %v", goldenPath, err)
+				}
+				t.Logf("обновлён golden: %s", goldenPath)
+				return
+			}
+
+			want, err := os.ReadFile(goldenPath)
+			if err != nil {
+				t.Fatalf("golden-файл не найден %s; запустите с UPDATE_GOLDEN=1 для генерации: %v", goldenPath, err)
+			}
+
+			// Побайтовый diff (YAML детерминирован через marshalYAMLInline + sort).
+			if string(got) != string(want) {
+				t.Errorf("Render не совпадает с golden %s:\ngot:\n%s\nwant:\n%s", goldenPath, got, want)
+			}
+		})
+	}
+}
 
 func TestRender_VLESS_XHTTP_PacketUp(t *testing.T) {
 	p := DefaultConfigParams()
