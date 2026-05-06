@@ -124,6 +124,15 @@ func runUIServer(ctx context.Context) error {
 		slog.Warn("--ui: ошибка загрузки state.json (используются дефолты RoutingUI)", "err", stErr)
 	}
 
+	// Если routing.json ещё не существует — создаём его из текущего state.
+	// Это позволяет пользователю сразу видеть настроенные outbound'ы в UI,
+	// вместо пустых таблиц при первом открытии редактора.
+	if st != nil {
+		if bsErr := routing.BootstrapFromState(routing.DefaultPath, st); bsErr != nil {
+			slog.Warn("--ui: не удалось создать routing.json из state (UI будет пустым)", "err", bsErr)
+		}
+	}
+
 	routingDeps := &web.RoutingUIDeps{
 		RoutingPath: routing.DefaultPath,
 		DefaultOutboundTag: func() string {

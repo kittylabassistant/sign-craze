@@ -99,6 +99,115 @@ func TestLoad_InvalidJSON(t *testing.T) {
 	}
 }
 
+// bootstrapState — заглушка BootstrapState для тестов.
+type bootstrapState struct {
+	outbounds []types.Outbound
+}
+
+func (b *bootstrapState) GetOutbounds() []types.Outbound { return b.outbounds }
+
+// TestBootstrapFromState_CreatesIfMissing проверяет, что при отсутствии routing.json
+// файл создаётся и содержит outbounds из state, а также стандартный tun-inbound.
+func TestBootstrapFromState_CreatesIfMissing(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "routing.json")
+
+	st := &bootstrapState{
+		outbounds: []types.Outbound{
+			{Tag: "vless-grpc-craze", Type: "vless", Server: "example.com", Port: 443},
+			{Tag: "direct", Type: "direct"},
+		},
+	}
+
+	if err := BootstrapFromState(path, st); err != nil {
+		t.Fatalf("BootstrapFromState: %v", err)
+	}
+
+	c, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load после bootstrap: %v", err)
+	}
+	if c == nil {
+		t.Fatal("Load вернул nil после bootstrap")
+	}
+
+	// Проверяем версию схемы.
+	if c.Version != SchemaVersion {
+		t.Errorf("Version: got %d, want %d", c.Version, SchemaVersion)
+	}
+
+	// Должен быть один inbound tun-in.
+	if len(c.Inbounds) != 1 || c.Inbounds[0].Tag != "tun-in" {
+		t.Errorf("Inbounds: got %+v, want [{Tag:tun-in}]", c.Inbounds)
+	}
+
+	// Outbounds должны совпадать со state.
+	if len(c.Outbounds) != 2 {
+		t.Errorf("Outbounds len: got %d, want 2", len(c.Outbounds))
+	}
+	if c.Outbounds[0].Tag != "vless-grpc-craze" {
+		t.Errorf("Outbounds[0].Tag: got %q, want %q", c.Outbounds[0].Tag, "vless-grpc-craze")
+	}
+
+	// Final — тег первого outbound.
+	if c.Final != "vless-grpc-craze" {
+		t.Errorf("Final: got %q, want %q", c.Final, "vless-grpc-craze")
+	}
+}
+
+// TestBootstrapFromState_SkipsIfExists проверяет, что существующий routing.json
+// не перезаписывается при повторном вызове BootstrapFromState.
+func TestBootstrapFromState_SkipsIfExists(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "routing.json")
+
+	// Создаём исходный файл с известным содержимым.
+	original := &types.RoutingConfig{
+		Version:   SchemaVersion,
+		Outbounds: []types.Outbound{{Tag: "direct", Type: "direct"}},
+		Final:     "direct",
+	}
+	if err := Save(path, original); err != nil {
+		t.Fatalf("Save original: %v", err)
+	}
+
+	// Пытаемся bootstrap с другими outbound'ами.
+	st := &bootstrapState{
+		outbounds: []types.Outbound{
+			{Tag: "vless-grpc-craze", Type: "vless", Server: "example.com", Port: 443},
+		},
+	}
+	if err := BootstrapFromState(path, st); err != nil {
+		t.Fatalf("BootstrapFromState: %v", err)
+	}
+
+	// Файл не должен измениться.
+	c, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(c.Outbounds) != 1 || c.Outbounds[0].Tag != "direct" {
+		t.Errorf("файл был перезаписан: outbounds = %+v", c.Outbounds)
+	}
+}
+
+// TestBootstrapFromState_EmptyOutbounds проверяет корректное поведение,
+// когда state не содержит ни одного outbound.
+func TestBootstrapFromState_EmptyOutbounds(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "routing.json")
+
+	st := &bootstrapState{outbounds: nil}
+	if err := BootstrapFromState(path, st); err != nil {
+		t.Fatalf("BootstrapFromState: %v", err)
+	}
+
+	c, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c.Final != "" {
+		t.Errorf("Final при пустых outbounds: got %q, want %q", c.Final, "")
+	}
+}
+
 // TestLoad_InvalidConfig проверяет ошибку при невалидном (но корректном JSON) конфиге.
 func TestLoad_InvalidConfig(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "routing.json")

@@ -11,6 +11,13 @@ import (
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
+// BootstrapState — минимальный интерфейс state, необходимый для начальной
+// инициализации routing.json. Позволяет избежать циклической зависимости
+// между пакетами routing и state.
+type BootstrapState interface {
+	GetOutbounds() []types.Outbound
+}
+
 // DefaultPath — стандартный путь к файлу routing-конфигурации.
 const DefaultPath = "/opt/etc/sign-craze/routing.json"
 
@@ -60,4 +67,53 @@ func Default() *types.RoutingConfig {
 	return &types.RoutingConfig{
 		Version: SchemaVersion,
 	}
+}
+
+// defaultTunInbound — стандартный tun-inbound, добавляемый при bootstrap.
+// Параметры соответствуют шаблону sing-box tun в sign-craze.
+var defaultTunInbound = types.Inbound{
+	Tag:  "tun-in",
+	Type: "tun",
+	Settings: map[string]any{
+		"interface_name": "signbox-tun",
+		"inet4_address":  "172.19.0.1/30",
+		"auto_route":     true,
+		"stack":          "system",
+	},
+}
+
+// BootstrapFromState создаёт routing.json по пути rcPath на основе state,
+// если файл ещё не существует. Если файл уже есть — no-op.
+// Генерирует минимальный RoutingConfig:
+//   - Inbounds: один tun-inbound (signbox-tun)
+//   - Outbounds: копия outbounds из state
+//   - Rules: пустой список
+//   - RuleSets: пустой список
+//   - Final: тег первого outbound (если есть)
+func BootstrapFromState(rcPath string, st BootstrapState) error {
+	// Проверяем существование файла; если есть — ничего не делаем.
+	if _, err := os.Stat(rcPath); err == nil {
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("routing: bootstrap stat %s: %w", rcPath, err)
+	}
+
+	outbounds := st.GetOutbounds()
+
+	// Определяем final tag — тег первого outbound в списке.
+	final := ""
+	if len(outbounds) > 0 {
+		final = outbounds[0].Tag
+	}
+
+	c := &types.RoutingConfig{
+		Version:   SchemaVersion,
+		Inbounds:  []types.Inbound{defaultTunInbound},
+		Outbounds: append([]types.Outbound(nil), outbounds...),
+		Rules:     []types.RouteRule{},
+		RuleSets:  []types.RuleSetRef{},
+		Final:     final,
+	}
+
+	return Save(rcPath, c)
 }

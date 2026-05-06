@@ -219,6 +219,12 @@ func migrateAdminPort(s *State) {
 	s.AdminPort = 0
 }
 
+// GetOutbounds возвращает список outbound'ов из state.
+// Реализует интерфейс routing.BootstrapState.
+func (s *State) GetOutbounds() []types.Outbound {
+	return s.Outbounds
+}
+
 // Validate проверяет корректность критичных полей State.
 // Нулевые значения для optional-полей (BootTimeoutSec=0) допустимы.
 // AdminPorts пустой = bypass выключен.
