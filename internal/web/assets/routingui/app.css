@@ -1,41 +1,71 @@
-/* ===== ArgoCD-совместимая цветовая палитра ===== */
+/* ===== ArgoCD Teal palette (тёмная тема) ===== */
 :root {
-  /* Основные цвета ArgoCD */
-  --sc-primary:          #0090d8;
-  --sc-primary-hover:    #007aa3;
-  --sc-accent:           #ff7e00;
-  --sc-bg:               #f5f7fa;
-  --sc-card-bg:          #ffffff;
-  --sc-fg:               #222831;
-  --sc-fg-muted:         #5d6671;
-  --sc-border:           #dee4eb;
-  --sc-sidebar-bg:       #1a1f25;
-  --sc-sidebar-fg:       #dee4eb;
+  /* Базовые цвета */
+  --sc-bg:               #1e2837;            /* Argo Navy */
+  --sc-card-bg:          rgba(30, 40, 55, 0.8); /* glass */
+  --sc-fg:               #f4f4f5;
+  --sc-fg-muted:         #94a3b8;
+  --sc-primary:          #3bbeb1;            /* Argo Teal */
+  --sc-primary-hover:    #4ad1c4;
+  --sc-accent:           #ef7b4e;            /* Argo Orange */
+  --sc-border:           rgba(59, 190, 177, 0.15);
+  --sc-danger:           #e96d76;
+  --sc-success:          #18be94;
+  --sc-sidebar-bg:       #0f141c;
+  --sc-sidebar-fg:       #f4f4f5;
+  --sc-shadow:           0 8px 32px 0 rgba(0, 0, 0, 0.4);
 
-  /* Переопределение переменных Pico v2 */
+  /* Pico v2 переопределения */
   --pico-primary:                    var(--sc-primary);
   --pico-primary-hover:              var(--sc-primary-hover);
   --pico-primary-background:         var(--sc-primary);
-  --pico-primary-inverse:            #ffffff;
+  --pico-primary-inverse:            #0f141c;
+  --pico-primary-border:             var(--sc-primary);
   --pico-background-color:           var(--sc-bg);
   --pico-card-background-color:      var(--sc-card-bg);
+  --pico-card-border-color:          var(--sc-border);
+  --pico-card-sectioning-background-color: var(--sc-card-bg);
   --pico-color:                      var(--sc-fg);
+  --pico-h1-color:                   var(--sc-fg);
+  --pico-h2-color:                   var(--sc-fg);
+  --pico-h3-color:                   var(--sc-fg);
   --pico-muted-color:                var(--sc-fg-muted);
   --pico-muted-border-color:         var(--sc-border);
+  --pico-form-element-background-color: rgba(15, 20, 28, 0.6);
+  --pico-form-element-color:         var(--sc-fg);
   --pico-form-element-border-color:  var(--sc-border);
+  --pico-form-element-focus-color:   var(--sc-primary);
+  --pico-table-border-color:         var(--sc-border);
+  --pico-code-background-color:      rgba(15, 20, 28, 0.6);
+  --pico-code-color:                 #e2e8f0;
 }
 
-/* ===== Кнопки: -15% размер, border-radius +5% ===== */
-/*
- * Базовые значения Pico v2 примерно: font-size 1rem, padding 0.5rem 1rem,
- * border-radius 0.25rem.
- * После уменьшения: font-size 0.85em, padding 0.425rem 0.85rem,
- * border-radius calc(0.25rem * 1.05).
- */
+html, body { background: var(--sc-bg); color: var(--sc-fg); }
+
+/* ===== Кнопки: -15% размер, +5% радиус ===== */
 button {
   font-size: 0.85em;
   padding: 0.425rem 0.85rem;
   border-radius: calc(0.25rem * 1.05);
+  background: var(--sc-primary);
+  border: 1px solid var(--sc-primary);
+  color: #0f141c;
+  font-weight: 500;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+button:hover:not(:disabled) {
+  background: var(--sc-primary-hover);
+  border-color: var(--sc-primary-hover);
+  transform: translateY(-1px);
+}
+button.secondary, button[class*="secondary"] {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--sc-border);
+  color: var(--sc-fg);
+}
+button.secondary:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--sc-primary);
 }
 
 /* ===== Вкладки ===== */
@@ -52,28 +82,29 @@ button {
   border-bottom: 2px solid transparent;
   border-radius: 0;
   margin-bottom: -1px;
-  /* font-size и padding берутся из блока button выше */
   cursor: pointer;
   color: var(--sc-fg-muted);
-  transition: background 0.15s;
+  transition: background 0.15s, color 0.15s;
 }
 
-/* Hover-подсветка вкладки полупрозрачным primary */
 .tabs button:hover {
-  background: rgba(0, 144, 216, 0.12);
-  cursor: pointer;
+  background: rgba(59, 190, 177, 0.12);
+  color: var(--sc-fg);
 }
 
 .tabs button.active {
   color: var(--sc-primary);
   border-bottom-color: var(--sc-primary);
+  background: none;
 }
 
-/* ===== Модальное окно ===== */
+/* ===== Модальное окно (тёмный glass) ===== */
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -82,13 +113,17 @@ button {
 
 .modal-content {
   background: var(--sc-card-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--sc-border);
+  box-shadow: var(--sc-shadow);
   border-radius: calc(0.5rem * 1.05);
   padding: 1.5rem;
   min-width: 480px;
   max-width: 680px;
   max-height: 80vh;
   overflow-y: auto;
+  color: var(--sc-fg);
 }
 
 .modal-content h3 {
@@ -104,7 +139,23 @@ button {
   margin-top: 1rem;
 }
 
-/* ===== Chip — элемент мульти-ввода ===== */
+/* Inputs внутри модалки тоже тёмные */
+.modal-content input,
+.modal-content select,
+.modal-content textarea {
+  background: rgba(15, 20, 28, 0.6);
+  color: var(--sc-fg);
+  border: 1px solid var(--sc-border);
+}
+
+.modal-content input:focus,
+.modal-content select:focus,
+.modal-content textarea:focus {
+  border-color: var(--sc-primary);
+  outline: none;
+}
+
+/* ===== Chip ===== */
 .chips-container {
   display: flex;
   flex-wrap: wrap;
@@ -115,6 +166,7 @@ button {
   min-height: 2.5rem;
   align-items: center;
   cursor: text;
+  background: rgba(15, 20, 28, 0.4);
 }
 
 .chip {
@@ -122,13 +174,12 @@ button {
   align-items: center;
   gap: 0.25rem;
   background: var(--sc-primary);
-  color: #ffffff;
+  color: #0f141c;
   border-radius: calc(1rem * 1.05);
   padding: 0.1rem 0.5rem;
   font-size: 0.8rem;
 }
 
-/* Кнопка удаления чипа — не наследует общий отступ */
 .chip button {
   background: none;
   border: none;
@@ -151,7 +202,7 @@ button {
   color: var(--sc-fg);
 }
 
-/* ===== Ручка для drag-and-drop ===== */
+/* ===== Ручка drag-and-drop ===== */
 .handle {
   cursor: grab;
   padding: 0 0.5rem;
@@ -160,9 +211,7 @@ button {
   font-size: 1.1rem;
 }
 
-.handle:active {
-  cursor: grabbing;
-}
+.handle:active { cursor: grabbing; }
 
 /* ===== Toolbar ===== */
 .toolbar {
@@ -171,12 +220,13 @@ button {
   background: var(--sc-sidebar-bg);
   color: var(--sc-sidebar-fg);
   z-index: 100;
-  padding: 0.75rem 0;
+  padding: 0.75rem 1rem;
   display: flex;
   gap: 0.5rem;
   align-items: center;
   border-bottom: 1px solid var(--sc-border);
   margin-bottom: 1rem;
+  border-radius: 0 0 calc(0.5rem * 1.05) calc(0.5rem * 1.05);
 }
 
 .toolbar h1 {
@@ -186,31 +236,37 @@ button {
   color: var(--sc-sidebar-fg);
 }
 
-/* ===== Toast уведомление ===== */
+.toolbar h1 span,
+.toolbar h1 strong { color: var(--sc-primary); }
+
+/* ===== Toast ===== */
 .toast {
   position: fixed;
   bottom: 1.5rem;
   right: 1.5rem;
   padding: 0.75rem 1.25rem;
   border-radius: calc(0.5rem * 1.05);
-  color: #fff;
+  color: var(--sc-fg);
   font-weight: 500;
   z-index: 2000;
   animation: fade-in 0.2s ease;
+  background: var(--sc-card-bg);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--sc-border);
+  box-shadow: var(--sc-shadow);
 }
-
-.toast.success { background: #2ecc71; }
-.toast.error   { background: #e74c3c; }
+.toast.success { border-left: 4px solid var(--sc-success); }
+.toast.error   { border-left: 4px solid var(--sc-danger); }
 
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(0.5rem); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* ===== Таблица действий ===== */
-table td, table th {
-  vertical-align: middle;
-}
+/* ===== Таблицы ===== */
+table { color: var(--sc-fg); }
+table td, table th { vertical-align: middle; border-color: var(--sc-border); }
+table th { color: var(--sc-fg-muted); font-weight: 500; }
 
 .action-cell {
   display: flex;
@@ -218,16 +274,17 @@ table td, table th {
   white-space: nowrap;
 }
 
-/* Кнопки внутри ячеек таблицы имеют ещё более компактный отступ */
 .action-cell button {
   padding: 0.17rem 0.425rem;
   font-size: 0.7rem;
   margin: 0;
 }
 
-/* ===== Предпросмотр конфига ===== */
+/* ===== Preview конфига ===== */
 .config-preview {
-  background: var(--pico-code-background-color, #f0f2f5);
+  background: rgba(15, 20, 28, 0.6);
+  color: #e2e8f0;
+  border: 1px solid var(--sc-border);
   border-radius: calc(0.25rem * 1.05);
   padding: 1rem;
   max-height: 60vh;
@@ -252,10 +309,14 @@ table td, table th {
 
 /* ===== Preset dropdown items ===== */
 .preset-item {
-  padding: 0.5rem 0.75rem;
+  padding: 0.4rem 0.6rem;
   cursor: pointer;
   transition: background 0.15s;
+  font-size: 0.5em;     /* в 2 раза меньше базового button (0.85em → 0.425em) */
+  line-height: 1.4;
 }
+.preset-item strong { font-size: 1em; font-weight: 600; }
+.preset-item small  { font-size: 0.85em; }
 .preset-item:hover {
-  background: rgba(0, 144, 216, 0.12);
+  background: rgba(59, 190, 177, 0.18);
 }
