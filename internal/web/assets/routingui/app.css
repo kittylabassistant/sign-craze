@@ -249,3 +249,13 @@ table td, table th {
   text-align: center;
   padding: 2rem;
 }
+
+/* ===== Preset dropdown items ===== */
+.preset-item {
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.preset-item:hover {
+  background: rgba(0, 144, 216, 0.12);
+}

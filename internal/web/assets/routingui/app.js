@@ -789,7 +789,7 @@ function PresetsDropdown({ onReload, showToast }) {
           ${presets.map(p => html`
             <div
               key=${p.name}
-              style="padding:0.5rem 0.75rem;cursor:pointer"
+              class="preset-item"
               onMouseDown=${(e) => { e.preventDefault(); apply(p.name); }}
               title=${p.description || ''}
             >
