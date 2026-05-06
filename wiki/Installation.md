@@ -448,7 +448,7 @@ sign-craze --dpi-targets clear
 Через Web UI: `PUT /api/dpi/targets` (порт 9091) или встроенные пресеты:
 
 ```sh
-curl -u admin:<пароль> -X POST http://<router>:9091/api/dpi/presets/discord-youtube/apply
+curl -X POST http://<router>:9091/api/dpi/presets/discord-youtube/apply
 ```
 
 Доступные пресеты: `discord`, `youtube`, `discord-youtube`. Список — `GET /api/dpi/presets`.

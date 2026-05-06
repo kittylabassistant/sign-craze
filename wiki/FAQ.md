@@ -64,7 +64,7 @@ sign-craze --restart
 Готовые пресеты доступны через Web UI или API:
 
 ```sh
-curl -u admin:<пароль> -X POST http://<router>:9091/api/dpi/presets/discord-youtube/apply
+curl -X POST http://<router>:9091/api/dpi/presets/discord-youtube/apply
 ```
 
 ### Сколько ресурсов потребляет nfqws2 на MIPS-роутере?
