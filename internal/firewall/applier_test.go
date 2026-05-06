@@ -205,6 +205,40 @@ func TestApplier_Remove_Идемпотентен(t *testing.T) {
 	}
 }
 
+// TestApply_DropsWAN9090 — Apply должен добавлять INPUT DROP TCP и UDP
+// на порт 9090 на WAN-интерфейсе. Это закрывает Zashboard от доступа
+// из интернета через iptables, без bind на конкретный интерфейс.
+func TestApply_DropsWAN9090(t *testing.T) {
+	r := &autoRunner{}
+	cfg := DefaultConfig()
+	cfg.WANIface = "eth0"
+	a := NewApplier(r, cfg)
+	if err := a.Apply(context.Background(), types.ModeFull); err != nil {
+		t.Fatalf("Apply(full) вернул ошибку: %v", err)
+	}
+	if !r.hasCall("iptables -t filter -A INPUT -i eth0 -p tcp --dport 9090 -j DROP") {
+		t.Error("INPUT DROP TCP 9090 на WAN не добавлен")
+	}
+	if !r.hasCall("iptables -t filter -A INPUT -i eth0 -p udp --dport 9090 -j DROP") {
+		t.Error("INPUT DROP UDP 9090 на WAN не добавлен")
+	}
+}
+
+// TestApply_DropsWAN9090_ПустойWANIface_NoOp — если WANIface не задан,
+// правило DROP на 9090 не добавляется (Keenetic-среда без RCI-детекта).
+func TestApply_DropsWAN9090_ПустойWANIface_NoOp(t *testing.T) {
+	r := &autoRunner{}
+	cfg := DefaultConfig()
+	// WANIface намеренно пуст
+	a := NewApplier(r, cfg)
+	if err := a.Apply(context.Background(), types.ModeFull); err != nil {
+		t.Fatalf("Apply(full) вернул ошибку: %v", err)
+	}
+	if r.hasCall("iptables -t filter -A INPUT") {
+		t.Error("INPUT правило не должно добавляться при пустом WANIface")
+	}
+}
+
 func TestApplier_DefaultConfig_ЗначенияИзСпецификации(t *testing.T) {
 	cfg := DefaultConfig()
 	if cfg.FWMark != 0x53 {

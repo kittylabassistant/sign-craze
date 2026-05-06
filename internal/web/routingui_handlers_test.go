@@ -33,7 +33,7 @@ func authReq(method, path, password string, body any) *http.Request {
 		rdr = bytes.NewReader(nil)
 	}
 	req := httptest.NewRequest(method, path, rdr)
-	req.SetBasicAuth(adminUsername, password)
+	req.SetBasicAuth("admin", password)
 	req.Header.Set("Content-Type", "application/json")
 	req.Host = "127.0.0.1:9092"
 	req.Header.Set("Origin", "http://127.0.0.1:9092")

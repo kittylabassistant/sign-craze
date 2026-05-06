@@ -6,14 +6,10 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
 )
-
-// adminUsername — единственный допустимый логин Basic Auth.
-const adminUsername = "admin"
 
 // ServerConfig содержит зависимости и параметры сервера.
 type ServerConfig struct {
@@ -47,10 +43,11 @@ type ServerConfig struct {
 	RoutingUI *RoutingUIDeps
 }
 
-// Server — встроенный HTTP-сервер (порт 9091 admin API, опционально 9092 для routing UI).
+// Server — встроенный HTTP-сервер (порт 9090 Zashboard, 9091 admin API, опционально 9092 для routing UI).
 type Server struct {
-	admin *http.Server
-	// routingUI — второй сервер для UI-редактора routing. nil если RoutingUIEnabled=false.
+	zashboard *http.Server
+	admin     *http.Server
+	// routingUI — третий сервер для UI-редактора routing. nil если RoutingUIEnabled=false.
 	routingUI         *http.Server
 	routingUIPort     uint16       // фактически выбранный порт (после FindFreePort)
 	routingUIListener net.Listener // зарезервированный listener; передаётся в routingUI.Serve
@@ -71,6 +68,19 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	}
 
 	s := &Server{creds: creds, cfg: cfg}
+
+	// Zashboard (порт 9090): Clash-совместимый API + встроенный SPA.
+	// Доступ ограничивается iptables DROP на WAN_IF (не через bind).
+	clashMux := http.NewServeMux()
+	registerClashRoutes(clashMux, s)
+	s.zashboard = &http.Server{
+		Addr:           ":9090",
+		Handler:        recoverMiddleware(securityHeadersSPA(clashMux)),
+		ReadTimeout:    15 * time.Second,
+		WriteTimeout:   30 * time.Second,
+		IdleTimeout:    90 * time.Second,
+		MaxHeaderBytes: 8 * 1024,
+	}
 
 	adminMux := http.NewServeMux()
 	registerAdminRoutes(adminMux, s)
@@ -122,10 +132,17 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 // 0 если RoutingUIEnabled=false.
 func (s *Server) RoutingUIPort() uint16 { return s.routingUIPort }
 
-// Start запускает все листенеры (admin + опционально routing UI).
+// Start запускает все листенеры (Zashboard 9090, admin 9091, опционально routing UI 9092).
 // Блокируется до отмены ctx или критической ошибки.
 func (s *Server) Start(ctx context.Context) error {
-	errCh := make(chan error, 2)
+	errCh := make(chan error, 3)
+
+	go func() {
+		slog.Info("web: Zashboard запущен", "addr", s.zashboard.Addr)
+		if err := s.zashboard.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			errCh <- fmt.Errorf("zashboard listener: %w", err)
+		}
+	}()
 
 	go func() {
 		slog.Info("web: admin API запущен", "addr", s.admin.Addr)
@@ -160,6 +177,9 @@ func (s *Server) Stop(ctx context.Context) error {
 	defer cancel()
 
 	var errs []error
+	if err := s.zashboard.Shutdown(shutCtx); err != nil {
+		errs = append(errs, fmt.Errorf("zashboard: %w", err))
+	}
 	if err := s.admin.Shutdown(shutCtx); err != nil {
 		errs = append(errs, fmt.Errorf("admin: %w", err))
 	}
@@ -172,19 +192,6 @@ func (s *Server) Stop(ctx context.Context) error {
 		return fmt.Errorf("web stop: %v", errs)
 	}
 	return nil
-}
-
-// basicAuth — middleware: требует Basic Auth (логин admin, пароль из admin.creds).
-func (s *Server) basicAuth(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		user, password, ok := r.BasicAuth()
-		if !ok || user != adminUsername || CheckPassword(s.creds, password) != nil {
-			w.Header().Set("WWW-Authenticate", `Basic realm="sign-craze"`)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
 }
 
 // cspAdmin — строгая Content-Security-Policy для admin REST (порт 9091).
@@ -219,49 +226,6 @@ func setSecurityHeaders(next http.Handler, csp string) http.Handler {
 		h.Set("Content-Security-Policy", csp)
 		next.ServeHTTP(w, r)
 	})
-}
-
-// originGuard защищает state-changing запросы от CSRF: Origin должен совпадать с Host.
-// Применяется только к POST/PUT/DELETE/PATCH; GET/HEAD пропускаются.
-func originGuard(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet, http.MethodHead, http.MethodOptions:
-			next.ServeHTTP(w, r)
-			return
-		}
-		origin := r.Header.Get("Origin")
-		if origin == "" {
-			// Нет Origin → потенциально curl/CLI, но в браузере он всегда выставляется.
-			// Для admin API требуем явного Origin, чтобы исключить CSRF-формы.
-			referer := r.Header.Get("Referer")
-			if referer == "" {
-				http.Error(w, "Forbidden: Origin required", http.StatusForbidden)
-				return
-			}
-			origin = referer
-		}
-		if !sameHostOrigin(origin, r.Host) {
-			http.Error(w, "Forbidden: cross-origin", http.StatusForbidden)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-// sameHostOrigin проверяет, что origin указывает на тот же host, что и Host-header.
-// Сравнение чувствительно к порту: http://localhost:9091 ↔ Host: localhost:9091.
-func sameHostOrigin(origin, host string) bool {
-	// Origin формата scheme://host[:port][/...].
-	idx := strings.Index(origin, "://")
-	if idx < 0 {
-		return false
-	}
-	rest := origin[idx+3:]
-	if slash := strings.Index(rest, "/"); slash >= 0 {
-		rest = rest[:slash]
-	}
-	return rest == host
 }
 
 // recoverMiddleware перехватывает паники и возвращает 500.

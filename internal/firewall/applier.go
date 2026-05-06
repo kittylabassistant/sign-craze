@@ -58,6 +58,11 @@ type Config struct {
 	// DPIEnabled управляет добавлением NFQUEUE-правил в режиме ModePolicy.
 	// В режиме ModeFull DPI-правила являются частью HybridRules.
 	DPIEnabled bool
+
+	// WANIface — имя WAN-интерфейса (например, eth0, GigabitEthernet1).
+	// Если задано, Apply добавляет INPUT DROP на порт 9090 (Zashboard) с WAN_IF,
+	// чтобы закрыть доступ из интернета. Remove удаляет это правило.
+	WANIface string
 }
 
 // IPSetExcludes — имя ipset для bypass-исключений.
@@ -143,11 +148,50 @@ func (a *applierImpl) Apply(ctx context.Context, mode types.Mode) error {
 func (a *applierImpl) applyInternal(ctx context.Context, mode types.Mode) error {
 	switch mode {
 	case types.ModePolicy:
-		return a.applyPolicyMode(ctx)
+		if err := a.applyPolicyMode(ctx); err != nil {
+			return err
+		}
 	case types.ModeFull:
-		return a.applyFullMode(ctx)
+		if err := a.applyFullMode(ctx); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("firewall: неподдерживаемый режим %q", mode)
+	}
+	// Защита Zashboard (9090) от доступа через WAN: DROP на входящем WAN-интерфейсе.
+	if err := a.ensureWAN9090Drop(ctx); err != nil {
+		return err
+	}
+	return nil
+}
+
+// ensureWAN9090Drop добавляет INPUT DROP TCP/UDP на порт 9090 для WAN-интерфейса.
+// Если WANIface не задан — no-op (правило применяется только при известном WAN).
+func (a *applierImpl) ensureWAN9090Drop(ctx context.Context) error {
+	if a.cfg.WANIface == "" {
+		return nil
+	}
+	for _, proto := range []string{"tcp", "udp"} {
+		if err := a.ipt.EnsureRule(ctx, "filter", "INPUT",
+			"-i", a.cfg.WANIface, "-p", proto, "--dport", "9090", "-j", "DROP",
+		); err != nil {
+			return fmt.Errorf("firewall: WAN 9090 DROP (%s): %w", proto, err)
+		}
+	}
+	return nil
+}
+
+// deleteWAN9090Drop удаляет INPUT DROP TCP/UDP на порт 9090 для WAN-интерфейса.
+func (a *applierImpl) deleteWAN9090Drop(ctx context.Context) {
+	if a.cfg.WANIface == "" {
+		return
+	}
+	for _, proto := range []string{"tcp", "udp"} {
+		if err := a.ipt.DeleteRule(ctx, "filter", "INPUT",
+			"-i", a.cfg.WANIface, "-p", proto, "--dport", "9090", "-j", "DROP",
+		); err != nil {
+			log.L().Warn("firewall: ошибка удаления WAN 9090 DROP", "proto", proto, "err", err)
+		}
 	}
 }
 
@@ -366,6 +410,9 @@ func (a *applierImpl) Remove(ctx context.Context) error {
 	if err := a.ipset.DestroySet(ctx, IPSetExcludes); err != nil {
 		log.L().Warn("firewall: ошибка удаления ipset", "name", IPSetExcludes, "err", err)
 	}
+
+	// 5. Удалить WAN DROP для Zashboard (9090).
+	a.deleteWAN9090Drop(ctx)
 
 	// Восстановить исходные значения Keenetic FASTNAT/FASTROUTE.
 	if err := RestoreFastPath(); err != nil {

@@ -47,7 +47,7 @@ func TestRoutingUI_SPAServesIndex(t *testing.T) {
 	h := servingMux(s)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.SetBasicAuth(adminUsername, password)
+	req.SetBasicAuth("admin", password)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -65,7 +65,7 @@ func TestRoutingUI_SPAServesAppJS(t *testing.T) {
 	h := servingMux(s)
 
 	req := httptest.NewRequest(http.MethodGet, "/app.js", nil)
-	req.SetBasicAuth(adminUsername, password)
+	req.SetBasicAuth("admin", password)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -83,7 +83,7 @@ func TestRoutingUI_SPAFallback(t *testing.T) {
 	h := servingMux(s)
 
 	req := httptest.NewRequest(http.MethodGet, "/some/spa/route", nil)
-	req.SetBasicAuth(adminUsername, password)
+	req.SetBasicAuth("admin", password)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
