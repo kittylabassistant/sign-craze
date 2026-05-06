@@ -6,6 +6,17 @@
   <title>sign-craze &middot; Routing Editor</title>
   <link rel="stylesheet" href="vendor/pico.min.css">
   <link rel="stylesheet" href="app.css">
+  <!-- Import map: preact-hooks.module.js имеет bare import "preact"; без map
+       браузер не резолвит и SPA молча зависает на "Loading…". -->
+  <script type="importmap">
+  {
+    "imports": {
+      "preact": "./vendor/preact.module.js",
+      "preact-hooks": "./vendor/preact-hooks.module.js",
+      "htm": "./vendor/htm.module.js"
+    }
+  }
+  </script>
 </head>
 <body>
   <main class="container" id="app">Loading&hellip;</main>
