@@ -746,14 +746,16 @@ function RuleSetsTab({ ruleSets, onReload, showToast }) {
 // ---------------------------------------------------------------------------
 function PresetsDropdown({ onReload, showToast }) {
   const [presets, setPresets] = useState([]);
-  const [open, setOpen] = useState(false);
+  // visible управляет видимостью выпадающего списка
+  const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     api.get('/api/presets').then(setPresets).catch(() => {});
   }, []);
 
   const apply = async (name) => {
-    setOpen(false);
+    // Скрываем список до начала запроса, чтобы не блокировать UI
+    setVisible(false);
     try {
       await api.post(`/api/presets/${name}/apply`, {});
       showToast(`Пресет "${name}" применён`, 'success');
@@ -766,9 +768,16 @@ function PresetsDropdown({ onReload, showToast }) {
   if (presets.length === 0) return null;
 
   return html`
-    <div style="position:relative">
-      <button class="secondary" onClick=${() => setOpen(o => !o)}>Пресеты ▾</button>
-      ${open && html`
+    <div
+      style="position:relative"
+      onMouseEnter=${() => setVisible(true)}
+      onMouseLeave=${() => setVisible(false)}
+    >
+      <button
+        class="secondary"
+        onClick=${() => setVisible(v => !v)}
+      >Пресеты ▾</button>
+      ${visible && html`
         <div style="
           position:absolute;top:100%;right:0;
           background:var(--pico-background-color);
@@ -781,7 +790,7 @@ function PresetsDropdown({ onReload, showToast }) {
             <div
               key=${p.name}
               style="padding:0.5rem 0.75rem;cursor:pointer"
-              onClick=${() => apply(p.name)}
+              onMouseDown=${(e) => { e.preventDefault(); apply(p.name); }}
               title=${p.description || ''}
             >
               <strong>${p.name}</strong>
@@ -865,6 +874,23 @@ function Toolbar({ onReload, showToast }) {
         </div>
       </${Modal}>
     `}
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// Footer — ссылки на связанные проекты на GitHub
+// ---------------------------------------------------------------------------
+function Footer() {
+  return html`
+    <footer style="text-align:center;padding:1rem;font-size:0.85em;color:var(--pico-muted-color)">
+      <a href="https://github.com/kittylabassistant/sign-craze" target="_blank" rel="noopener noreferrer">
+        sign-craze on GitHub
+      </a>
+      ${' · '}
+      <a href="https://github.com/nfqws/nfqws2-keenetic" target="_blank" rel="noopener noreferrer">
+        nfqws2-keenetic
+      </a>
+    </footer>
   `;
 }
 
@@ -959,6 +985,8 @@ function App() {
           onDone=${() => setToast(null)}
         />
       `}
+
+      <${Footer} />
     </${Fragment}>
   `;
 }
