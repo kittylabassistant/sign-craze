@@ -16,7 +16,7 @@ GO_IMAGE   := golang:1.25
 WORKSPACE  := $(shell pwd)
 GO_RUN     := $(CONTAINER_RT) run --rm -v $(WORKSPACE):/workspace:z -w /workspace $(GO_IMAGE)
 
-.PHONY: all upx lint test test-integration tidy clean
+.PHONY: all upx lint test test-integration tidy clean bundle
 
 all: $(TARGETS:%=$(DIST)/sign-craze-%)
 
@@ -63,6 +63,22 @@ test-integration:
 release: all upx
 	cd $(DIST) && sha256sum sign-craze-* > sha256sums.txt
 	@echo "Release artifacts in $(DIST)/"
+
+# bundle: per-arch tar.gz для offline-установки.
+# Содержит sign-craze, sign-craze.sha256, install.sh, install-offline.sh.
+bundle: all upx
+	@for arch in $(TARGETS); do \
+	  B=$(DIST)/signcraze-$$arch-bundle; \
+	  rm -rf $$B && mkdir -p $$B; \
+	  cp $(DIST)/sign-craze-$$arch $$B/sign-craze; \
+	  (cd $$B && sha256sum sign-craze > sign-craze.sha256); \
+	  cp scripts/install.sh $$B/install.sh; \
+	  printf '#!/bin/sh\nset -eu\nDIR=$$(cd "$$(dirname "$$0")" && pwd)\nexec env SIGNCRAZE_BIN="$$DIR/sign-craze" SIGNCRAZE_SHA256="$$DIR/sign-craze.sha256" SIGNCRAZE_VERSION="$(VERSION)-'$$arch'" sh "$$DIR/install.sh"\n' > $$B/install-offline.sh; \
+	  chmod +x $$B/install-offline.sh; \
+	  tar czf $(DIST)/signcraze-$$arch.tar.gz -C $(DIST) signcraze-$$arch-bundle; \
+	  rm -rf $$B; \
+	done
+	@echo "Bundles in $(DIST)/signcraze-*.tar.gz"
 
 clean:
 	rm -rf $(DIST)

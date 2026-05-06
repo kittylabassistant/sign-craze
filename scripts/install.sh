@@ -22,6 +22,47 @@ else
   exit 1
 fi
 
+# Offline-режим: SIGNCRAZE_BIN=<путь> пропускает arch detection + GitHub.
+# Опционально SIGNCRAZE_SHA256=<путь> для верификации checksum.
+# Опционально SIGNCRAZE_VERSION=<строка> для логирования.
+if [ -n "${SIGNCRAZE_BIN:-}" ]; then
+  if [ ! -f "$SIGNCRAZE_BIN" ]; then
+    echo "SIGNCRAZE_BIN: файл не найден: $SIGNCRAZE_BIN" >&2
+    exit 1
+  fi
+  VERSION="${SIGNCRAZE_VERSION:-offline}"
+  echo "Offline-установка sign-craze ${VERSION}..."
+
+  mkdir -p "$INSTALL_DIR"
+  FREE_KB=$(df -k /opt | awk 'NR==2 {print $4}')
+  if [ -z "$FREE_KB" ] || [ "$FREE_KB" -lt "$MIN_FREE_KB" ]; then
+    echo "Недостаточно места в /opt: ${FREE_KB:-0} KB < ${MIN_FREE_KB} KB" >&2
+    exit 1
+  fi
+
+  TMP=$(mktemp "/tmp/${BINARY}.XXXXXX")
+  trap 'rm -f "$TMP"' EXIT
+  cp "$SIGNCRAZE_BIN" "$TMP"
+
+  if [ -n "${SIGNCRAZE_SHA256:-}" ] && [ -f "$SIGNCRAZE_SHA256" ]; then
+    EXPECTED=$(awk '{print $1}' "$SIGNCRAZE_SHA256")
+    ACTUAL=$(sha256sum "$TMP" | awk '{print $1}')
+    if [ "$EXPECTED" != "$ACTUAL" ]; then
+      echo "SHA256 mismatch: ожидался $EXPECTED, получен $ACTUAL" >&2
+      exit 1
+    fi
+    echo "SHA256 OK: $ACTUAL"
+  else
+    echo "WARN: SIGNCRAZE_SHA256 не задан, checksum не проверен" >&2
+  fi
+
+  chmod +x "$TMP"
+  mv "$TMP" "$INSTALL_DIR/$BINARY"
+  trap - EXIT
+  echo "Готово: $INSTALL_DIR/$BINARY"
+  exit 0
+fi
+
 # Определить архитектуру
 ARCH=$(uname -m)
 case "$ARCH" in
@@ -58,6 +99,16 @@ fi
 
 URL="https://github.com/$REPO/releases/download/${VERSION}/${BINARY}-${SUFFIX}"
 SHA_URL="${URL}.sha256"
+# Fallback: raw.githubusercontent.com — другой CDN/IP-диапазон. Помогает,
+# когда releases-домен заблокирован у провайдера, а raw — проходит.
+# Работает только если бинарь закоммичен в репо (по умолчанию нет — dist/ в
+# .gitignore). Для override используйте SIGNCRAZE_URL=<полный URL>.
+RAW_URL="https://raw.githubusercontent.com/$REPO/refs/heads/main/dist/${BINARY}-${SUFFIX}"
+RAW_SHA_URL="${RAW_URL}.sha256"
+if [ -n "${SIGNCRAZE_URL:-}" ]; then
+  URL="$SIGNCRAZE_URL"
+  SHA_URL="${SIGNCRAZE_SHA256_URL:-${URL}.sha256}"
+fi
 
 echo "Устанавливаю sign-craze ${VERSION} для ${SUFFIX}..."
 
@@ -73,7 +124,15 @@ fi
 TMP=$(mktemp "/tmp/${BINARY}.XXXXXX")
 trap 'rm -f "$TMP" "$TMP.sha256"' EXIT
 
-$DL_OUT "$TMP" "$URL"
+# Primary: releases. Fallback: raw.githubusercontent.com.
+if ! $DL_OUT "$TMP" "$URL" 2>/dev/null; then
+  echo "WARN: $URL недоступен, пробую raw.githubusercontent.com..." >&2
+  if ! $DL_OUT "$TMP" "$RAW_URL"; then
+    echo "Не удалось скачать бинарь ни с releases, ни с raw" >&2
+    exit 1
+  fi
+  SHA_URL="$RAW_SHA_URL"
+fi
 
 # SHA256 опционален — если .sha256 отсутствует, warning
 if $DL_OUT "$TMP.sha256" "$SHA_URL" 2>/dev/null; then

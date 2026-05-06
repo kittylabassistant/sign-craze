@@ -68,6 +68,28 @@ jobs:
           cd dist
           sha256sum sign-craze-${{ matrix.suffix }} > sign-craze-${{ matrix.suffix }}.sha256
 
+      - name: bundle tar.gz (offline install)
+        run: |
+          cd dist
+          BUNDLE="signcraze-${{ matrix.suffix }}-bundle"
+          mkdir -p "$BUNDLE"
+          cp "sign-craze-${{ matrix.suffix }}" "$BUNDLE/sign-craze"
+          (cd "$BUNDLE" && sha256sum sign-craze > sign-craze.sha256)
+          cp ../scripts/install.sh "$BUNDLE/install.sh"
+          cat > "$BUNDLE/install-offline.sh" <<'EOF'
+          #!/bin/sh
+          set -eu
+          DIR=$(cd "$(dirname "$0")" && pwd)
+          exec env SIGNCRAZE_BIN="$DIR/sign-craze" \
+                   SIGNCRAZE_SHA256="$DIR/sign-craze.sha256" \
+                   SIGNCRAZE_VERSION="__VERSION__" \
+                   sh "$DIR/install.sh"
+          EOF
+          sed -i "s|__VERSION__|${{ github.ref_name }}-${{ matrix.suffix }}|" "$BUNDLE/install-offline.sh"
+          chmod +x "$BUNDLE/install-offline.sh"
+          tar czf "signcraze-${{ matrix.suffix }}.tar.gz" "$BUNDLE"
+          rm -rf "$BUNDLE"
+
       - uses: actions/upload-artifact@v7
         with:
           name: sign-craze-${{ matrix.suffix }}

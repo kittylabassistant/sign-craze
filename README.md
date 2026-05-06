@@ -61,6 +61,10 @@ Go-утилита для управления межсетевым экрано�
 # Определить архитектуру автоматически и установить последний релиз
 curl -fsSL https://github.com/kittylabassistant/sign-craze/releases/latest/download/install.sh | sh
 
+# Альтернатива: скрипт напрямую с raw.githubusercontent.com (другой CDN —
+# может пройти, если releases-домен заблокирован у провайдера или DNS).
+curl -fsSL https://raw.githubusercontent.com/kittylabassistant/sign-craze/refs/heads/main/scripts/install.sh | sh
+
 # Запустить установку (интерактивно: запросит URL прокси / outbound)
 sign-craze --install
 
@@ -74,6 +78,27 @@ sign-craze --start
 > [!NOTE]
 > `sing-box` загружается с GitHub Releases во время `--install` и **не входит** в sign-craze.
 > `nfqws2` загружается **только при первом `sign-craze --dpi on`** — DPI-обход отключён по умолчанию (opt-in). См. [wiki/FAQ → «Работает ли DPI/nfqws2 из коробки»](https://github.com/kittylabassistant/sign-craze/wiki/FAQ#работает-ли-dpinfqws2-из-коробки).
+
+### Offline-установка (роутер без доступа к GitHub)
+
+Если на роутере нет интернета — скачать bundle на машине с интернетом, перенести по `scp` и запустить локально.
+
+На машине с интернетом (укажите arch — `arm64`, `arm7`, `mipsle` или `mips`):
+
+```sh
+ARCH=mipsle
+wget https://github.com/kittylabassistant/sign-craze/releases/latest/download/signcraze-${ARCH}.tar.gz
+scp signcraze-${ARCH}.tar.gz root@192.168.1.1:/tmp/
+```
+
+На роутере:
+
+```sh
+cd /tmp && tar xzf signcraze-mipsle.tar.gz
+cd signcraze-mipsle-bundle && ./install-offline.sh
+```
+
+> Только сам бинарь sign-craze ставится offline. `sign-craze --install` всё равно тянет sing-box с GitHub. Для полностью изолированной установки — скачайте sing-box tarball отдельно и используйте `sign-craze --install-offline /tmp/sing-box-*.tar.gz`.
 
 ## Web UI
 
