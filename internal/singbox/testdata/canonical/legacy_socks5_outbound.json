@@ -1,0 +1,9 @@
+{
+  "password": "pass",
+  "server": "proxy.example.com",
+  "server_port": 1080,
+  "tag": "legacy-socks5-out",
+  "type": "socks",
+  "username": "user",
+  "version": "5"
+}

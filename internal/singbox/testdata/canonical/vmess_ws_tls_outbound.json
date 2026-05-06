@@ -1,0 +1,19 @@
+{
+  "security": "auto",
+  "server": "ws.example.com",
+  "server_port": 443,
+  "tag": "vmess-ws-tls-out",
+  "tls": {
+    "enabled": true,
+    "server_name": "ws.example.com"
+  },
+  "transport": {
+    "headers": {
+      "Host": "ws.example.com"
+    },
+    "path": "/wsapi",
+    "type": "ws"
+  },
+  "type": "vmess",
+  "uuid": "bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
+}

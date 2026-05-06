@@ -1,0 +1,15 @@
+{
+  "password": "trojan-password-placeholder",
+  "server": "trojan.example.com",
+  "server_port": 443,
+  "tag": "trojan-grpc-out",
+  "tls": {
+    "enabled": true,
+    "server_name": "trojan.example.com"
+  },
+  "transport": {
+    "service_name": "grpc.service.example",
+    "type": "grpc"
+  },
+  "type": "trojan"
+}

@@ -1,0 +1,35 @@
+{
+  "log": {
+    "level": "info",
+    "timestamp": true
+  },
+  "inbounds": [
+    {
+      "type": "direct",
+      "tag": "direct-in",
+      "listen": "127.0.0.1",
+      "listen_port": 10808,
+      "override_address": "1.0.0.1",
+      "override_port": 443
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "socks",
+      "tag": "legacy-socks5-out",
+      "server": "proxy.example.com",
+      "server_port": 1080,
+      "version": "5",
+      "username": "user",
+      "password": "pass"
+    },
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ],
+  "route": {
+    "final": "legacy-socks5-out",
+    "auto_detect_interface": true
+  }
+}

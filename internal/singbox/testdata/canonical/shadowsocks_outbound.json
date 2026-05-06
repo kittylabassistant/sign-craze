@@ -1,0 +1,8 @@
+{
+  "method": "chacha20-ietf-poly1305",
+  "password": "s3cr3t-password-placeholder",
+  "server": "ss.example.com",
+  "server_port": 8388,
+  "tag": "shadowsocks-out",
+  "type": "shadowsocks"
+}

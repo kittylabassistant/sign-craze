@@ -1,0 +1,47 @@
+{
+  "log": {
+    "level": "info",
+    "timestamp": true
+  },
+  "inbounds": [
+    {
+      "type": "direct",
+      "tag": "direct-in",
+      "listen": "127.0.0.1",
+      "listen_port": 10808,
+      "override_address": "1.0.0.1",
+      "override_port": 443
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "vless",
+      "tag": "vless-reality-out",
+      "server": "example.com",
+      "server_port": 443,
+      "uuid": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      "flow": "xtls-rprx-vision",
+      "tls": {
+        "enabled": true,
+        "server_name": "example.com",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        },
+        "reality": {
+          "enabled": true,
+          "public_key": "mwRiBidYJGzBfYLhvYFCGisjZ1sT4kmjqKCyWHPRtXo",
+          "short_id": "deadbeef00"
+        }
+      }
+    },
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ],
+  "route": {
+    "final": "vless-reality-out",
+    "auto_detect_interface": true
+  }
+}

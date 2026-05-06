@@ -1,0 +1,41 @@
+{
+  "log": {
+    "level": "info",
+    "timestamp": true
+  },
+  "inbounds": [
+    {
+      "type": "direct",
+      "tag": "direct-in",
+      "listen": "127.0.0.1",
+      "listen_port": 10808,
+      "override_address": "1.0.0.1",
+      "override_port": 443
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "trojan",
+      "tag": "trojan-grpc-out",
+      "server": "trojan.example.com",
+      "server_port": 443,
+      "password": "trojan-password-placeholder",
+      "transport": {
+        "type": "grpc",
+        "service_name": "grpc.service.example"
+      },
+      "tls": {
+        "enabled": true,
+        "server_name": "trojan.example.com"
+      }
+    },
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ],
+  "route": {
+    "final": "trojan-grpc-out",
+    "auto_detect_interface": true
+  }
+}

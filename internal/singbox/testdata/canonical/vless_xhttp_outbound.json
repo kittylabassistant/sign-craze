@@ -1,0 +1,21 @@
+{
+  "packet_encoding": "xudp",
+  "server": "xhttp.example.com",
+  "server_port": 443,
+  "tag": "vless-xhttp-out",
+  "tls": {
+    "enabled": true,
+    "server_name": "xhttp.example.com",
+    "utls": {
+      "enabled": true,
+      "fingerprint": "chrome"
+    }
+  },
+  "transport": {
+    "host": "xhttp.example.com",
+    "path": "/xhttp",
+    "type": "xhttp"
+  },
+  "type": "vless",
+  "uuid": "cccccccc-dddd-eeee-ffff-000000000000"
+}

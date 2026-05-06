@@ -1,0 +1,21 @@
+{
+  "flow": "xtls-rprx-vision",
+  "server": "example.com",
+  "server_port": 443,
+  "tag": "vless-reality-out",
+  "tls": {
+    "enabled": true,
+    "reality": {
+      "enabled": true,
+      "public_key": "mwRiBidYJGzBfYLhvYFCGisjZ1sT4kmjqKCyWHPRtXo",
+      "short_id": "deadbeef00"
+    },
+    "server_name": "example.com",
+    "utls": {
+      "enabled": true,
+      "fingerprint": "chrome"
+    }
+  },
+  "type": "vless",
+  "uuid": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+}

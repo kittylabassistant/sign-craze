@@ -2,6 +2,8 @@ package singbox
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/kittylabassistant/sign-craze/pkg/types"
@@ -321,6 +323,188 @@ func TestRenderOutboundJSON_ValidJSON(t *testing.T) {
 			}
 			if !json.Valid(b) {
 				t.Errorf("невалидный JSON для %q: %s", o.Protocol, b)
+			}
+		})
+	}
+}
+
+// canonicalGoldenCases — canonical-случаи, используемые в TestRender_GoldenWriteback.
+// Каждый элемент описывает имя golden-файла и соответствующий Outbound.
+// При флаге -update (или UPDATE_GOLDEN=1) файлы перегенерируются; без флага —
+// результат render сравнивается с содержимым файла.
+var canonicalGoldenCases = []struct {
+	name     string
+	outbound types.Outbound
+}{
+	{
+		name: "legacy_socks5",
+		outbound: types.Outbound{
+			Tag:    "legacy-socks5-out",
+			Type:   "socks",
+			Server: "proxy.example.com",
+			Port:   1080,
+			// Protocol пустой → legacy-путь: Settings flatten-ятся
+			Settings: map[string]any{
+				"version":  "5",
+				"username": "user",
+				"password": "pass",
+			},
+		},
+	},
+	{
+		name: "vless_reality",
+		outbound: types.Outbound{
+			Tag:      "vless-reality-out",
+			Type:     "vless",
+			Server:   "example.com",
+			Port:     443,
+			Protocol: types.ProtocolVLESS,
+			Proto: &types.ProtoOpts{
+				UUID: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+				Flow: "xtls-rprx-vision",
+			},
+			TLS: &types.TLSConfig{
+				Enabled:    true,
+				ServerName: "example.com",
+				UTLS:       &types.UTLSConfig{Enabled: true, Fingerprint: "chrome"},
+				Reality: &types.RealityConfig{
+					Enabled:   true,
+					PublicKey: "mwRiBidYJGzBfYLhvYFCGisjZ1sT4kmjqKCyWHPRtXo",
+					ShortID:   "deadbeef00",
+				},
+			},
+		},
+	},
+	{
+		name: "vmess_ws_tls",
+		outbound: types.Outbound{
+			Tag:      "vmess-ws-tls-out",
+			Type:     "vmess",
+			Server:   "ws.example.com",
+			Port:     443,
+			Protocol: types.ProtocolVMess,
+			Proto: &types.ProtoOpts{
+				UUID: "bbbbbbbb-cccc-dddd-eeee-ffffffffffff",
+			},
+			Transport: &types.Transport{
+				Kind: types.TransportWS,
+				Path: "/wsapi",
+				Host: "ws.example.com",
+			},
+			TLS: &types.TLSConfig{
+				Enabled:    true,
+				ServerName: "ws.example.com",
+			},
+		},
+	},
+	{
+		name: "shadowsocks",
+		outbound: types.Outbound{
+			Tag:      "shadowsocks-out",
+			Type:     "shadowsocks",
+			Server:   "ss.example.com",
+			Port:     8388,
+			Protocol: types.ProtocolShadowsocks,
+			Proto: &types.ProtoOpts{
+				Method:   "chacha20-ietf-poly1305",
+				Password: "s3cr3t-password-placeholder",
+			},
+		},
+	},
+	{
+		name: "trojan_grpc",
+		outbound: types.Outbound{
+			Tag:      "trojan-grpc-out",
+			Type:     "trojan",
+			Server:   "trojan.example.com",
+			Port:     443,
+			Protocol: types.ProtocolTrojan,
+			Proto: &types.ProtoOpts{
+				Password: "trojan-password-placeholder",
+			},
+			Transport: &types.Transport{
+				Kind:        types.TransportGRPC,
+				ServiceName: "grpc.service.example",
+			},
+			TLS: &types.TLSConfig{
+				Enabled:    true,
+				ServerName: "trojan.example.com",
+			},
+		},
+	},
+	{
+		name: "vless_xhttp",
+		outbound: types.Outbound{
+			Tag:      "vless-xhttp-out",
+			Type:     "vless",
+			Server:   "xhttp.example.com",
+			Port:     443,
+			Protocol: types.ProtocolVLESS,
+			Proto: &types.ProtoOpts{
+				UUID:      "cccccccc-dddd-eeee-ffff-000000000000",
+				PacketEnc: "xudp",
+			},
+			Transport: &types.Transport{
+				Kind: types.TransportXHTTP,
+				Path: "/xhttp",
+				Host: "xhttp.example.com",
+			},
+			TLS: &types.TLSConfig{
+				Enabled:    true,
+				ServerName: "xhttp.example.com",
+				UTLS:       &types.UTLSConfig{Enabled: true, Fingerprint: "chrome"},
+			},
+		},
+	},
+}
+
+// TestRender_GoldenWriteback проверяет соответствие вывода renderOutboundJSON
+// golden-файлам в testdata/canonical/.
+//
+// При UPDATE_GOLDEN=1 (или флаге -update) golden-файлы перегенерируются на
+// основе in-memory canonical структур. Используется для синхронизации после
+// изменений render-логики.
+func TestRender_GoldenWriteback(t *testing.T) {
+	update := os.Getenv("UPDATE_GOLDEN") == "1"
+
+	for _, tc := range canonicalGoldenCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			m, err := renderOutboundJSON(tc.outbound)
+			if err != nil {
+				t.Fatalf("renderOutboundJSON: %v", err)
+			}
+			got, err := json.MarshalIndent(m, "", "  ")
+			if err != nil {
+				t.Fatalf("json.MarshalIndent: %v", err)
+			}
+
+			goldenPath := filepath.Join("testdata", "canonical", tc.name+"_outbound.json")
+
+			if update {
+				if err := os.WriteFile(goldenPath, append(got, '\n'), 0o644); err != nil {
+					t.Fatalf("запись golden-файла %s: %v", goldenPath, err)
+				}
+				t.Logf("обновлён golden: %s", goldenPath)
+				return
+			}
+
+			want, err := os.ReadFile(goldenPath)
+			if err != nil {
+				// Golden-файл не существует — создать с hint
+				t.Fatalf("golden-файл не найден %s; запустите с UPDATE_GOLDEN=1 для генерации: %v", goldenPath, err)
+			}
+
+			// Нормализуем оба через re-marshal чтобы избежать diff по пробелам
+			var wantObj any
+			if err := json.Unmarshal(want, &wantObj); err != nil {
+				t.Fatalf("golden-файл невалидный JSON %s: %v", goldenPath, err)
+			}
+			wantNorm, _ := json.MarshalIndent(wantObj, "", "  ")
+			gotNorm, _ := json.MarshalIndent(m, "", "  ")
+
+			if string(gotNorm) != string(wantNorm) {
+				t.Errorf("render не совпадает с golden %s:\ngot:\n%s\nwant:\n%s", goldenPath, gotNorm, wantNorm)
 			}
 		})
 	}

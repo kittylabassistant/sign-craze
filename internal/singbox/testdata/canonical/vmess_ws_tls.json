@@ -1,0 +1,45 @@
+{
+  "log": {
+    "level": "info",
+    "timestamp": true
+  },
+  "inbounds": [
+    {
+      "type": "direct",
+      "tag": "direct-in",
+      "listen": "127.0.0.1",
+      "listen_port": 10808,
+      "override_address": "1.0.0.1",
+      "override_port": 443
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "vmess",
+      "tag": "vmess-ws-tls-out",
+      "server": "ws.example.com",
+      "server_port": 443,
+      "uuid": "bbbbbbbb-cccc-dddd-eeee-ffffffffffff",
+      "security": "auto",
+      "transport": {
+        "type": "ws",
+        "path": "/wsapi",
+        "headers": {
+          "Host": "ws.example.com"
+        }
+      },
+      "tls": {
+        "enabled": true,
+        "server_name": "ws.example.com"
+      }
+    },
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ],
+  "route": {
+    "final": "vmess-ws-tls-out",
+    "auto_detect_interface": true
+  }
+}

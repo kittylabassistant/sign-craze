@@ -1,0 +1,34 @@
+{
+  "log": {
+    "level": "info",
+    "timestamp": true
+  },
+  "inbounds": [
+    {
+      "type": "direct",
+      "tag": "direct-in",
+      "listen": "127.0.0.1",
+      "listen_port": 10808,
+      "override_address": "1.0.0.1",
+      "override_port": 443
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "shadowsocks",
+      "tag": "shadowsocks-out",
+      "server": "ss.example.com",
+      "server_port": 8388,
+      "method": "chacha20-ietf-poly1305",
+      "password": "s3cr3t-password-placeholder"
+    },
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ],
+  "route": {
+    "final": "shadowsocks-out",
+    "auto_detect_interface": true
+  }
+}

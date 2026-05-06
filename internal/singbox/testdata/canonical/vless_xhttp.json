@@ -1,0 +1,47 @@
+{
+  "log": {
+    "level": "info",
+    "timestamp": true
+  },
+  "inbounds": [
+    {
+      "type": "direct",
+      "tag": "direct-in",
+      "listen": "127.0.0.1",
+      "listen_port": 10808,
+      "override_address": "1.0.0.1",
+      "override_port": 443
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "vless",
+      "tag": "vless-xhttp-out",
+      "server": "xhttp.example.com",
+      "server_port": 443,
+      "uuid": "cccccccc-dddd-eeee-ffff-000000000000",
+      "packet_encoding": "xudp",
+      "transport": {
+        "type": "xhttp",
+        "path": "/xhttp",
+        "host": "xhttp.example.com"
+      },
+      "tls": {
+        "enabled": true,
+        "server_name": "xhttp.example.com",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        }
+      }
+    },
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ],
+  "route": {
+    "final": "vless-xhttp-out",
+    "auto_detect_interface": true
+  }
+}
