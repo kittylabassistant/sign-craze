@@ -23,10 +23,10 @@ import (
 const minFreeBytes = 30 * 1024 * 1024
 
 func init() {
-	Register(Cmd{Short: "-i", Long: "--install", Help: "установка с интерактивной настройкой outbound [--core <ядро>]", Handler: handleInstall})
-	Register(Cmd{Long: "--install-auto", Help: "установка без интерактива (stub direct outbound) [--core <ядро>]", Handler: handleInstallAuto})
-	Register(Cmd{Long: "--install-offline", Help: "установка из локального tarball <путь> [--core <ядро>]", Handler: handleInstallOffline})
-	Register(Cmd{Long: "--reinstall", Help: "переустановка поверх существующей (использует --install-auto)", Handler: handleReinstall})
+	Register(Cmd{Short: "-i", Long: "--install", Help: "установка с интерактивной настройкой outbound [--core <ядро>] [--proxy <URL>]", Handler: handleInstall})
+	Register(Cmd{Long: "--install-auto", Help: "установка без интерактива (stub direct outbound) [--core <ядро>] [--proxy <URL>]", Handler: handleInstallAuto})
+	Register(Cmd{Long: "--install-offline", Help: "установка из локального tarball <путь> [--core <ядро>] [--proxy <URL>]", Handler: handleInstallOffline})
+	Register(Cmd{Long: "--reinstall", Help: "переустановка поверх существующей [--proxy <URL>]", Handler: handleReinstall})
 }
 
 type installMode int
@@ -44,7 +44,7 @@ func parseInstallCoreFlag(args []string) (coreName string, rest []string) {
 	for i := 0; i < len(args); i++ {
 		if args[i] == "--core" && i+1 < len(args) {
 			coreName = args[i+1]
-			i++ // пропустить значение
+			i++
 			continue
 		}
 		if after, ok := strings.CutPrefix(args[i], "--core="); ok {
@@ -56,29 +56,57 @@ func parseInstallCoreFlag(args []string) (coreName string, rest []string) {
 	return
 }
 
+// parseProxyFlag вытягивает --proxy <URL> / --proxy=<URL> из args.
+// URL без --proxy остаётся в rest (для install-offline он трактуется как путь к tarball).
+func parseProxyFlag(args []string) (proxyURL string, rest []string) {
+	rest = make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--proxy" && i+1 < len(args) {
+			proxyURL = args[i+1]
+			i++
+			continue
+		}
+		if after, ok := strings.CutPrefix(args[i], "--proxy="); ok {
+			proxyURL = after
+			continue
+		}
+		rest = append(rest, args[i])
+	}
+	return
+}
+
 func handleInstall(ctx context.Context, args []string) error {
-	coreName, _ := parseInstallCoreFlag(args)
-	return withLock(ctx, func() error { return doInstall(ctx, installInteractive, "", false, coreName) })
+	coreName, rest := parseInstallCoreFlag(args)
+	proxyURL, _ := parseProxyFlag(rest)
+	return withLock(ctx, func() error { return doInstall(ctx, installInteractive, "", false, coreName, proxyURL) })
 }
 
 func handleInstallAuto(ctx context.Context, args []string) error {
-	coreName, _ := parseInstallCoreFlag(args)
-	return withLock(ctx, func() error { return doInstall(ctx, installAuto, "", false, coreName) })
+	coreName, rest := parseInstallCoreFlag(args)
+	proxyURL, _ := parseProxyFlag(rest)
+	return withLock(ctx, func() error { return doInstall(ctx, installAuto, "", false, coreName, proxyURL) })
 }
 
 func handleInstallOffline(ctx context.Context, args []string) error {
 	coreName, rest := parseInstallCoreFlag(args)
+	proxyURL, rest := parseProxyFlag(rest)
 	if len(rest) == 0 {
 		return fmt.Errorf("--install-offline: требуется путь к tarball")
 	}
-	return withLock(ctx, func() error { return doInstall(ctx, installOffline, rest[0], false, coreName) })
+	return withLock(ctx, func() error { return doInstall(ctx, installOffline, rest[0], false, coreName, proxyURL) })
 }
 
-func handleReinstall(ctx context.Context, _ []string) error {
-	return withLock(ctx, func() error { return doInstall(ctx, installAuto, "", true, "") })
+func handleReinstall(ctx context.Context, args []string) error {
+	_, rest := parseInstallCoreFlag(args)
+	proxyURL, _ := parseProxyFlag(rest)
+	mode := installAuto
+	if proxyURL != "" {
+		mode = installInteractive
+	}
+	return withLock(ctx, func() error { return doInstall(ctx, mode, "", true, "", proxyURL) })
 }
 
-func doInstall(ctx context.Context, mode installMode, offlineTar string, force bool, coreName string) error {
+func doInstall(ctx context.Context, mode installMode, offlineTar string, force bool, coreName string, proxyURL string) error {
 	// Определяем целевое ядро. Пустое имя → sing-box (default).
 	if coreName == "" {
 		coreName = state.DefaultCore
@@ -159,8 +187,16 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string, force b
 	}
 
 	// 4. Собрать outbounds.
+	// Приоритет: --proxy <URL> (передан в args) > интерактивный wizard > stub direct.
 	var outbounds []types.Outbound
-	if mode == installInteractive {
+	switch {
+	case proxyURL != "":
+		o, err := parseProxyURLToOutbound(proxyURL)
+		if err != nil {
+			return fmt.Errorf("--install --proxy: %w", err)
+		}
+		outbounds = []types.Outbound{o}
+	case mode == installInteractive:
 		ob, err := runProxyWizard(os.Stdin, os.Stdout)
 		if err != nil {
 			return fmt.Errorf("--install: wizard: %w", err)
@@ -266,10 +302,36 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string, force b
 	fmt.Println("Установка завершена.")
 	if outbounds[0].Type == "direct" {
 		fmt.Println("ВНИМАНИЕ: outbound настроен как 'direct' — проксирования нет.")
-		fmt.Println("Запустите: sign-craze --ui on  и настройте через admin UI на :9091.")
+		fmt.Println("Передайте URL через --proxy <URL> или зайдите в admin UI на :9091.")
 	}
-	fmt.Println("Запуск сервиса: sign-craze --start")
+	if force {
+		fmt.Println("Перезапуск сервиса: sign-craze --restart")
+	} else {
+		fmt.Println("Запуск сервиса: sign-craze --start")
+	}
 	return nil
+}
+
+// parseProxyURLToOutbound — общий парсер URL для CLI-флага --proxy.
+// Тот же путь, что и в wizardURL: ParseCanonical с fallback на legacy Parse.
+func parseProxyURLToOutbound(url string) (types.Outbound, error) {
+	o, canon, err := proxyparse.ParseCanonical(url)
+	if err != nil {
+		var legacyErr error
+		o, legacyErr = proxyparse.Parse(url)
+		if legacyErr != nil {
+			return types.Outbound{}, fmt.Errorf("парсинг URL: %w", err)
+		}
+	} else {
+		o.Protocol = canon.Protocol
+		o.Transport = canon.Transport
+		o.TLS = canon.TLS
+		o.Proto = canon.Proto
+	}
+	if err := o.Validate(); err != nil {
+		return types.Outbound{}, fmt.Errorf("валидация: %w", err)
+	}
+	return o, nil
 }
 
 func checkOptMounted() error {
