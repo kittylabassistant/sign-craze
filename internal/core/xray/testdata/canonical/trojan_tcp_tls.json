@@ -1,0 +1,72 @@
+{
+  "inbounds": [
+    {
+      "port": 7895,
+      "protocol": "dokodemo-door",
+      "settings": {
+        "followRedirect": true,
+        "network": "tcp,udp"
+      },
+      "sniffing": {
+        "destOverride": [
+          "http",
+          "tls",
+          "quic"
+        ],
+        "enabled": true
+      },
+      "streamSettings": {
+        "sockopt": {
+          "mark": 83,
+          "tproxy": "tproxy"
+        }
+      },
+      "tag": "tproxy-in"
+    }
+  ],
+  "log": {
+    "loglevel": "warning"
+  },
+  "outbounds": [
+    {
+      "protocol": "trojan",
+      "settings": {
+        "servers": [
+          {
+            "address": "trojan.example.com",
+            "password": "trojan-password-placeholder",
+            "port": 443
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "tls",
+        "tlsSettings": {
+          "serverName": "trojan.example.com"
+        }
+      },
+      "tag": "trojan-tcp-tls"
+    },
+    {
+      "protocol": "freedom",
+      "tag": "direct"
+    },
+    {
+      "protocol": "blackhole",
+      "tag": "block"
+    }
+  ],
+  "routing": {
+    "domainStrategy": "AsIs",
+    "rules": [
+      {
+        "inboundTag": [
+          "tproxy-in"
+        ],
+        "outboundTag": "trojan-tcp-tls",
+        "type": "field"
+      }
+    ]
+  }
+}

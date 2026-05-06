@@ -2,11 +2,166 @@ package xray
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
+
+// xrayGoldenCases — canonical-случаи, используемые в TestRender_GoldenWriteback.
+// Каждый элемент задаёт имя golden-файла (без .json) и ConfigParams для Render.
+// При UPDATE_GOLDEN=1 файлы перегенерируются; без него — нормализованный JSON-diff.
+var xrayGoldenCases = []struct {
+	name   string
+	tag    string
+	server string
+	port   types.Port
+	c      types.Canonical
+}{
+	{
+		// VLESS + Vision flow udp443 + Reality
+		name: "vless_vision_udp443", tag: "vless-vision-udp443",
+		server: "example.com", port: 443,
+		c: types.Canonical{
+			Protocol: types.ProtocolVLESS,
+			TLS: &types.TLSConfig{
+				Enabled:    true,
+				ServerName: "example.com",
+				UTLS:       &types.UTLSConfig{Enabled: true, Fingerprint: "chrome"},
+				Reality: &types.RealityConfig{
+					Enabled:   true,
+					PublicKey: "mwRiBidYJGzBfYLhvYFCGisjZ1sT4kmjqKCyWHPRtXo",
+					ShortID:   "deadbeef00",
+				},
+			},
+			Proto: &types.ProtoOpts{
+				UUID:       "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+				Encryption: "none",
+				Flow:       "xtls-rprx-vision-udp443",
+			},
+		},
+	},
+	{
+		// VLESS + XHTTP packet-up mode + TLS + uTLS chrome
+		name: "vless_xhttp_packetup", tag: "vless-xhttp-packetup",
+		server: "xhttp.example.com", port: 443,
+		c: types.Canonical{
+			Protocol: types.ProtocolVLESS,
+			Transport: &types.Transport{
+				Kind: types.TransportXHTTP,
+				Path: "/xhttp",
+				Host: "xhttp.example.com",
+				Mode: types.XHTTPPacketUp,
+			},
+			TLS: &types.TLSConfig{
+				Enabled:    true,
+				ServerName: "xhttp.example.com",
+				UTLS:       &types.UTLSConfig{Enabled: true, Fingerprint: "chrome"},
+			},
+			Proto: &types.ProtoOpts{
+				UUID:       "cccccccc-dddd-eeee-ffff-000000000000",
+				Encryption: "none",
+			},
+		},
+	},
+	{
+		// VLESS + TCP + Reality + uTLS chrome
+		name: "vless_reality", tag: "vless-reality",
+		server: "example.com", port: 443,
+		c: types.Canonical{
+			Protocol: types.ProtocolVLESS,
+			TLS: &types.TLSConfig{
+				Enabled:    true,
+				ServerName: "example.com",
+				UTLS:       &types.UTLSConfig{Enabled: true, Fingerprint: "chrome"},
+				Reality: &types.RealityConfig{
+					Enabled:   true,
+					PublicKey: "mwRiBidYJGzBfYLhvYFCGisjZ1sT4kmjqKCyWHPRtXo",
+					ShortID:   "deadbeef00",
+				},
+			},
+			Proto: &types.ProtoOpts{
+				UUID:       "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+				Encryption: "none",
+				Flow:       "xtls-rprx-vision",
+			},
+		},
+	},
+	{
+		// Trojan + TCP + TLS (для контраста с VLESS)
+		name: "trojan_tcp_tls", tag: "trojan-tcp-tls",
+		server: "trojan.example.com", port: 443,
+		c: types.Canonical{
+			Protocol: types.ProtocolTrojan,
+			TLS: &types.TLSConfig{
+				Enabled:    true,
+				ServerName: "trojan.example.com",
+			},
+			Proto: &types.ProtoOpts{
+				Password: "trojan-password-placeholder",
+			},
+		},
+	},
+}
+
+// TestRender_GoldenWriteback проверяет соответствие вывода Render golden-файлам
+// из testdata/canonical/.
+//
+// При UPDATE_GOLDEN=1 файлы перегенерируются из in-memory canonical-описаний.
+// Используется для синхронизации golden-файлов после изменений render-логики.
+func TestRender_GoldenWriteback(t *testing.T) {
+	update := os.Getenv("UPDATE_GOLDEN") == "1"
+
+	for _, tc := range xrayGoldenCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			p := DefaultConfigParams()
+			p.DefaultTag = tc.tag
+			p.Outbounds = []types.Outbound{{Tag: tc.tag, Server: tc.server, Port: tc.port}}
+			p.Canonicals = map[string]types.Canonical{tc.tag: tc.c}
+
+			data, err := Render(p)
+			if err != nil {
+				t.Fatalf("Render: %v", err)
+			}
+
+			// Нормализуем через промежуточный any: гарантируем устойчивый JSON-diff
+			var gotObj any
+			if err := json.Unmarshal(data, &gotObj); err != nil {
+				t.Fatalf("json.Unmarshal вывода Render: %v", err)
+			}
+			gotNorm, _ := json.MarshalIndent(gotObj, "", "  ")
+
+			goldenPath := filepath.Join("testdata", "canonical", tc.name+".json")
+
+			if update {
+				if err := os.WriteFile(goldenPath, append(gotNorm, '\n'), 0o644); err != nil {
+					t.Fatalf("запись golden-файла %s: %v", goldenPath, err)
+				}
+				t.Logf("обновлён golden: %s", goldenPath)
+				return
+			}
+
+			want, err := os.ReadFile(goldenPath)
+			if err != nil {
+				t.Fatalf("golden-файл не найден %s; запустите с UPDATE_GOLDEN=1 для генерации: %v", goldenPath, err)
+			}
+
+			var wantObj any
+			if err := json.Unmarshal(want, &wantObj); err != nil {
+				t.Fatalf("golden-файл содержит невалидный JSON %s: %v", goldenPath, err)
+			}
+			wantNorm, _ := json.MarshalIndent(wantObj, "", "  ")
+
+			if string(gotNorm) != string(wantNorm) {
+				t.Errorf("Render не совпадает с golden %s:\ngot:\n%s\nwant:\n%s",
+					goldenPath, gotNorm, wantNorm)
+			}
+		})
+	}
+}
 
 // mustRender — вспомогательная функция: вызывает Render и проваливает тест при ошибке.
 func mustRender(t *testing.T, p ConfigParams) map[string]any {
