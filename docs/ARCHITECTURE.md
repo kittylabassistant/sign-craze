@@ -38,7 +38,7 @@ singbox         dpi             firewall
 |---|---|
 | `internal/service` | генерация init.d shim; интерфейс `Lifecycle`, связывающий singbox и nfqws2 |
 | `internal/geo` | загрузка SRS из sign-craze-dats; конвертация IP-листа → ipset |
-| `internal/web` | встроенный HTTP-сервер (admin UI + Routing Editor + DPI targets REST API) |
+| `internal/web` | встроенный HTTP-сервер (Zashboard :9090 + admin REST API :9091 + Routing Editor :9092 + DPI targets API) |
 | `internal/locks` | эксклюзивный flock против параллельных запусков |
 | `internal/log` | глобальный `slog.Logger` с ротацией по размеру |
 | `internal/atomicfs` | атомарная запись: write → fsync → rename |
@@ -69,6 +69,16 @@ cli/service.Run
       → nfqws2.lifecycle.Start     (только если режим dpi включён)
   → locks.Release
 ```
+
+## Порты Web UI
+
+| Порт | Назначение |
+|------|-----------|
+| `9090` | Zashboard — Clash-совместимый dashboard (управление прокси, мониторинг трафика) |
+| `9091` | Admin REST API sign-craze |
+| `9092` | Routing Editor SPA (Preact) |
+
+Все порты слушают на `0.0.0.0`. Iptables-правила в chain `signcraze_local` дропают входящий трафик на эти порты от WAN-интерфейса.
 
 ## Поток данных: `--ui on` (watchdog)
 

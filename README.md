@@ -31,7 +31,7 @@ Go-утилита для управления межсетевым экрано�
 - Три режима маршрутизации: `proxy` (tproxy), `dpi` (nfqws2 + NFQUEUE), `hybrid`
 - Атомарное применение правил iptables/ipset с гарантированным откатом
 - Гео-фильтрация через SRS rule-set (выборочная загрузка по SHA256)
-- Встроенный Web UI: admin API `:9091`, Routing Editor `:9092` (vanilla Preact + htm SPA)
+- Встроенный Web UI (только из LAN): Zashboard `:9090`, admin API `:9091`, Routing Editor `:9092` (vanilla Preact + htm SPA)
 - Selective DPI: desync только для выбранных доменов/SNI через `--dpi-targets`
 - Firewall watchdog: автовосстановление iptables-правил каждые 30 с при работающем `--ui on`
 - Управление портами и исключениями без перезапуска
@@ -75,6 +75,18 @@ sign-craze --start
 > `sing-box` загружается с GitHub Releases во время `--install` и **не входит** в sign-craze.
 > `nfqws2` загружается **только при первом `sign-craze --dpi on`** — DPI-обход отключён по умолчанию (opt-in). См. [wiki/FAQ → «Работает ли DPI/nfqws2 из коробки»](https://github.com/kittylabassistant/sign-craze/wiki/FAQ#работает-ли-dpinfqws2-из-коробки).
 
+## Web UI
+
+**Web UI** (только из LAN):
+
+- **9090** — Zashboard (управление прокси, мониторинг трафика, Clash-совместимый API). Откройте `http://<ROUTER_LAN_IP>:9090/` в браузере.
+- **9091** — admin REST API sign-craze (статус, конфиг, порты, исключения, DPI targets).
+- **9092** — Routing Editor SPA (визуальный редактор правил маршрутизации).
+
+Порты 9090/9091/9092 слушают на `0.0.0.0`; iptables-правила в chain `signcraze_local` дропают входящий трафик на эти порты от WAN-интерфейса. Из локальной сети доступ открыт без аутентификации.
+
+Запуск: `sign-craze --ui on`.
+
 ## Команды
 
 ```bash
@@ -105,7 +117,7 @@ sign-craze --exclude-add <ip>   Добавить IP/CIDR в исключения
 sign-craze --exclude-del <ip>   Удалить из исключений
 sign-craze --exclude-list       Показать исключения
 
-sign-craze --ui on|off          Включить / выключить Web UI (порты 9091/9092)
+sign-craze --ui on|off          Включить / выключить Web UI (порты 9090/9091/9092)
                                 Watchdog firewall активен, пока процесс `--ui on` работает
 sign-craze --backup  / -b       Создать резервную копию конфигурации
 sign-craze --restore <путь>     Восстановить из резервной копии

@@ -27,7 +27,7 @@ Go-утилита для управления межсетевым экрано�
 - DPI bypass через `nfqws2` (opt-in, **off by default**) — включается `sign-craze --dpi on`; selective режим `--dpi-targets` ограничивает desync выбранными доменами (Discord, YouTube) через `nfqws2 --hostlist`
 - Firewall watchdog: автоматическое восстановление правил после ndm reconciliation (защита от "перестаёт проксировать через несколько часов")
 - Гео-фильтрация через SRS rule-set (выборочная загрузка по SHA256)
-- Встроенный Web UI: admin REST API на порту `9091` + Routing Editor SPA на `9092`
+- Встроенный Web UI (только из LAN): Zashboard на порту `9090` (Clash-совместимый dashboard), admin REST API на `9091`, Routing Editor SPA на `9092`
 - Встроенные пресеты роутинга: `block-ads`, `ru-direct`, `blocked-vpn`, `discord-vpn`, `torrents-direct` и DPI-пресеты `discord`/`youtube`/`discord-youtube`
 - Управление портами и исключениями без перезапуска
 - Резервное копирование и восстановление конфигурации

@@ -400,12 +400,13 @@ ui:          off
 sign-craze --ui on
 ```
 
-Откроются два HTTP-сервиса:
+Откроются три HTTP-сервиса (только из LAN):
 
+- `http://<router-ip>:9090/` — **Zashboard** (Clash-совместимый dashboard: управление прокси, мониторинг трафика). Откройте в браузере: `http://<ROUTER_LAN_IP>:9090/`.
 - `http://<router-ip>:9091/api/status` — **admin REST API** (статус, конфиг, порты, исключения, DPI targets).
 - `http://<router-ip>:9092` — **Routing Editor SPA** (визуальный редактор inbounds/outbounds/rules, пресеты).
 
-Оба порта работают без аутентификации.
+Все порты работают без аутентификации. Доступ извне LAN заблокирован iptables-правилами.
 
 ---
 
