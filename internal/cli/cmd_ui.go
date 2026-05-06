@@ -61,10 +61,10 @@ func handleUI(ctx context.Context, args []string) error {
 			// Lifecycle.Start уже отрапортовал успех; не валим команду
 			// из-за дёрнутой Status — просто печатаем без PID.
 			slog.Warn("--ui on: Status после Start не удался", "err", statErr)
-			fmt.Println("Web UI запущен (порты 9090/9091/9092)")
+			fmt.Println("Web UI запущен (Zashboard 9090, admin REST 9091, routing editor 9092). Доступ только из LAN.")
 			return nil
 		}
-		fmt.Printf("Web UI запущен (pid=%d, порты 9090/9091/9092)\n", st.PID)
+		fmt.Printf("Web UI запущен (pid=%d, Zashboard 9090, admin REST 9091, routing editor 9092). Доступ только из LAN.\n", st.PID)
 		return nil
 	case "off":
 		if err := lc.Stop(ctx); err != nil {

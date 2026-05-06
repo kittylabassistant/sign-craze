@@ -15,10 +15,9 @@ import (
 // `runtime.futexwakeup ... returned -89` (ENOSYS) делает официальные
 // MIPS-бинари непригодными.
 //
-// Workflow `.github/workflows/build-xray-mips.yml` собирает xray из
-// XTLS/Xray-core с принудительным toolchain Go 1.24 + GOMIPS=softfloat и
-// публикует результат в release с tag-ом ниже. Значение синхронизируется
-// вручную при выкатке нового xray.
+// Бинарь xray для MIPS собирается в отдельном репозитории kittylabassistant/sign-craze-xray
+// и публикуется в его GitHub Releases. Значение синхронизируется вручную при
+// выкатке нового xray.
 //
 // Pinned tag — v25.12.8: последний stable перед xray v26.x bump'нул
 // gvisor до версии, требующей Go 1.25.5+. v25.12.8 даёт всё ключевое:

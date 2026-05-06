@@ -70,7 +70,6 @@ func (coreImpl) ParseVersion(line string) (string, error) {
 //
 // Примечание: routing.json (RoutingConfig) не загружается здесь — для полного
 // пути с routing.json используется ensureConfigFresh в CLI (legacy путь sing-box).
-// TODO: подгрузить routing.Load при необходимости preview-рендера в web UI.
 func (coreImpl) RenderConfig(p types.CoreRenderParams) ([]byte, error) {
 	for _, ob := range p.Outbounds {
 		if err := Validate(ob); err != nil {
