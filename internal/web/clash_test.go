@@ -77,32 +77,37 @@ func TestClashVersion(t *testing.T) {
 	}
 }
 
-func TestClashConfigs(t *testing.T) {
+// TestClashConfigs_ProxiedToSingbox — /configs проксируется в sing-box clash_api.
+// В тестовой среде sing-box не запущен → ожидаем 502 (Bad Gateway) с понятным
+// JSON-сообщением. Сам факт 502 подтверждает что endpoint попадает в reverse-proxy.
+func TestClashConfigs_ProxiedToSingbox(t *testing.T) {
 	mux := newClashMux(t)
 	req := httptest.NewRequest(http.MethodGet, "/configs", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("ожидался 200, получен %d", rec.Code)
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("ожидался 502 (sing-box не запущен в тесте), получен %d", rec.Code)
 	}
 	var body map[string]any
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("неверный JSON: %v", err)
 	}
-	if body["mode"] == nil {
-		t.Error("нет поля mode")
+	if body["message"] == nil {
+		t.Error("нет поля message в ответе ErrorHandler")
 	}
 }
 
-func TestClashConnections(t *testing.T) {
+// TestClashConnections_ProxiedToSingbox — /connections тоже идёт через
+// reverse-proxy. См. TestClashConfigs_ProxiedToSingbox.
+func TestClashConnections_ProxiedToSingbox(t *testing.T) {
 	mux := newClashMux(t)
 	req := httptest.NewRequest(http.MethodGet, "/connections", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("ожидался 200, получен %d", rec.Code)
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("ожидался 502 (sing-box не запущен в тесте), получен %d", rec.Code)
 	}
 }
 

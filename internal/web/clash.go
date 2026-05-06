@@ -1,33 +1,77 @@
 package web
 
 import (
-	"encoding/json"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"strings"
-	"time"
 
 	"github.com/kittylabassistant/sign-craze/internal/version"
 )
 
-// registerClashRoutes регистрирует Clash-совместимые маршруты на порту 9090.
+// singboxClashAPIAddr — адрес experimental.clash_api в sing-box (см. шаблон
+// tun.json.tmpl). Запросы Zashboard к /proxies, /connections, /traffic, /logs
+// и т.д. проксируются на этот адрес — sing-box сам отдаёт реальные данные.
+const singboxClashAPIAddr = "http://127.0.0.1:9094"
+
+// registerClashRoutes регистрирует роуты на порту 9090: SPA (Zashboard) +
+// reverse-proxy всех Clash-API запросов в sing-box experimental.clash_api.
 func registerClashRoutes(mux *http.ServeMux, s *Server) {
 	spa := newSPAHandler()
+	clashProxy := newClashAPIProxy()
+
 	mux.Handle("GET /{$}", s.clashRoot(spa))
-	mux.HandleFunc("GET /version", s.clashVersion)
-	mux.HandleFunc("GET /configs", s.clashConfigs)
-	mux.HandleFunc("GET /proxies", s.clashProxies)
-	mux.HandleFunc("GET /connections", s.clashConnections)
-	mux.HandleFunc("GET /traffic", s.clashTrafficWS)
-	mux.HandleFunc("GET /logs", s.clashLogsWS)
 
 	// /config.js — runtime-конфиг встроенного MetaCubeXD/Zashboard SPA.
-	// Подменяем статический файл из assets, чтобы defaultBackendURL указывал
-	// на тот же origin, с которого открыта страница (LAN IP роутера). Иначе
-	// SPA при первом открытии показывает экран ввода backend и просит secret.
+	// Подменяем статический файл из assets: defaultBackendURL = тот же origin,
+	// иначе SPA при первом открытии показывает экран ввода backend и secret.
 	mux.HandleFunc("GET /config.js", s.clashSPAConfig)
 
-	// SPA fallback: все незарегистрированные пути → встроенный Zashboard
+	// /version — собственный handler: совмещает sign-craze build info
+	// с признаком "premium=false" (Zashboard ждёт это поле).
+	mux.HandleFunc("GET /version", s.clashVersion)
+
+	// Все остальные Clash-API эндпоинты проксируем в sing-box clash_api:
+	// /configs, /proxies, /providers/*, /connections, /traffic, /logs,
+	// /group, /rules, /cache, /dns/query — реальные данные из ядра.
+	mux.Handle("/configs", clashProxy)
+	mux.Handle("/proxies", clashProxy)
+	mux.Handle("/proxies/", clashProxy)
+	mux.Handle("/providers/", clashProxy)
+	mux.Handle("/connections", clashProxy)
+	mux.Handle("/connections/", clashProxy)
+	mux.Handle("/traffic", clashProxy)
+	mux.Handle("/memory", clashProxy)
+	mux.Handle("/logs", clashProxy)
+	mux.Handle("/group", clashProxy)
+	mux.Handle("/group/", clashProxy)
+	mux.Handle("/rules", clashProxy)
+	mux.Handle("/rules/", clashProxy)
+	mux.Handle("/cache", clashProxy)
+	mux.Handle("/cache/", clashProxy)
+	mux.Handle("/dns/query", clashProxy)
+	mux.Handle("/profile/", clashProxy)
+	mux.Handle("/script/", clashProxy)
+
+	// SPA fallback: все остальные пути → встроенный Zashboard
 	mux.Handle("/", spa)
+}
+
+// newClashAPIProxy создаёт ReverseProxy на sing-box clash_api.
+// Поддерживает HTTP и WebSocket (httputil.ReverseProxy с Go 1.20+ работает
+// прозрачно для Upgrade: websocket).
+func newClashAPIProxy() http.Handler {
+	target, _ := url.Parse(singboxClashAPIAddr)
+	rp := httputil.NewSingleHostReverseProxy(target)
+	// Sing-box clash_api может отвечать 502/503 если sing-box ещё не запущен —
+	// возвращаем понятный JSON, чтобы SPA показал "backend offline" а не
+	// «Network Error».
+	rp.ErrorHandler = func(w http.ResponseWriter, _ *http.Request, _ error) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(`{"message":"sing-box clash_api недоступен (port 9094)"}`))
+	}
+	return rp
 }
 
 // clashSPAConfig отдаёт config.js с defaultBackendURL = "http://<host>" —
@@ -68,62 +112,4 @@ func (s *Server) clashVersion(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) clashConfigs(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, map[string]any{
-		"mode":      "proxy",
-		"port":      7895,
-		"log-level": "info",
-	})
-}
-
-func (s *Server) clashProxies(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, map[string]any{"proxies": map[string]any{}})
-}
-
-func (s *Server) clashConnections(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, map[string]any{
-		"downloadTotal": 0,
-		"uploadTotal":   0,
-		"connections":   []any{},
-	})
-}
-
-func (s *Server) clashTrafficWS(w http.ResponseWriter, r *http.Request) {
-	conn, err := wsUpgrade(w, r)
-	if err != nil {
-		return
-	}
-	defer conn.Close()
-
-	tick := time.NewTicker(time.Second)
-	defer tick.Stop()
-
-	frame, marshalErr := json.Marshal(map[string]int{"up": 0, "down": 0})
-	if marshalErr != nil {
-		return
-	}
-
-	// 5s write deadline ловит застрявших клиентов (slowloris) на 128MB роутере
-	// без накопления горутин в TCP-буферах (safety-fixes #15).
-	for {
-		select {
-		case <-r.Context().Done():
-			return
-		case <-tick.C:
-			_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second)) //nolint:errcheck // best-effort, реальная ошибка ловится в SendText
-			if sendErr := conn.SendText(frame); sendErr != nil {
-				return
-			}
-		}
-	}
-}
-
-func (s *Server) clashLogsWS(w http.ResponseWriter, r *http.Request) {
-	conn, err := wsUpgrade(w, r)
-	if err != nil {
-		return
-	}
-	// Держим соединение открытым до ошибки; реальный поток логов — будущая задача.
-	conn.Close()
-}
 
