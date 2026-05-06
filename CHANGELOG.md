@@ -31,6 +31,17 @@
 ### E2E
 
 - Добавлены скрипты оркестрованного E2E-прогона на Keenetic: `scripts/e2e/{00-build,01-install,02-policy,03-dpi-hostlist,04-reboot,99-uninstall,run}.sh`.
+- Прогон на KN-1810 / Keenetic 5.0.4: `--install-auto → --start → --status` зелёный, RPi-клиент в `sign-craze` policy, трафик идёт через `signbox-tun` (fwmark `0xffffaab → 0x53 → table 83`).
+
+### Bug fixes (выявлены при E2E на KN-1810)
+
+- `singbox`: устранён дубликат outbound `direct` в сгенерированном `config.json` — `sing-box check` падал с `duplicate outbound/endpoint tag: direct` сразу после `--install-auto`. Шаблон `tun.json.tmpl` перестал безусловно добавлять auto-direct, если он уже описан в `state.outbounds`.
+- `singbox`: пропуск DNS `detour: direct` в шаблоне, когда `Final == "direct"`. Без фикса sing-box падал на старте: `start dns/tls[remote]: detour to an empty direct outbound makes no sense`. Затрагивает свежие установки до настройки реального outbound.
+
+### Known issues
+
+- `--dpi on` падает с `GitHub API вернул 404` для `bol-van/nfqws2-keenetic`: репозиторий-источник недоступен или переименован. DPI E2E (Phase 10) откладывается до 0.5.4 и поиска актуального upstream nfqws2.
+- E2E xray/mihomo на роутере (Phase 12 B.10/C.10) — отдельный hardware-цикл.
 
 ---
 
