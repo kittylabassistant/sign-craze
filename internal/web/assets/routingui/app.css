@@ -1,9 +1,49 @@
-/* Вкладки */
+/* ===== ArgoCD-совместимая цветовая палитра ===== */
+:root {
+  /* Основные цвета ArgoCD */
+  --sc-primary:          #0090d8;
+  --sc-primary-hover:    #007aa3;
+  --sc-accent:           #ff7e00;
+  --sc-bg:               #f5f7fa;
+  --sc-card-bg:          #ffffff;
+  --sc-fg:               #222831;
+  --sc-fg-muted:         #5d6671;
+  --sc-border:           #dee4eb;
+  --sc-sidebar-bg:       #1a1f25;
+  --sc-sidebar-fg:       #dee4eb;
+
+  /* Переопределение переменных Pico v2 */
+  --pico-primary:                    var(--sc-primary);
+  --pico-primary-hover:              var(--sc-primary-hover);
+  --pico-primary-background:         var(--sc-primary);
+  --pico-primary-inverse:            #ffffff;
+  --pico-background-color:           var(--sc-bg);
+  --pico-card-background-color:      var(--sc-card-bg);
+  --pico-color:                      var(--sc-fg);
+  --pico-muted-color:                var(--sc-fg-muted);
+  --pico-muted-border-color:         var(--sc-border);
+  --pico-form-element-border-color:  var(--sc-border);
+}
+
+/* ===== Кнопки: -15% размер, border-radius +5% ===== */
+/*
+ * Базовые значения Pico v2 примерно: font-size 1rem, padding 0.5rem 1rem,
+ * border-radius 0.25rem.
+ * После уменьшения: font-size 0.85em, padding 0.425rem 0.85rem,
+ * border-radius calc(0.25rem * 1.05).
+ */
+button {
+  font-size: 0.85em;
+  padding: 0.425rem 0.85rem;
+  border-radius: calc(0.25rem * 1.05);
+}
+
+/* ===== Вкладки ===== */
 .tabs {
   display: flex;
   gap: 0.25rem;
   margin-bottom: 1.5rem;
-  border-bottom: 1px solid var(--pico-muted-border-color);
+  border-bottom: 1px solid var(--sc-border);
 }
 
 .tabs button {
@@ -12,22 +52,28 @@
   border-bottom: 2px solid transparent;
   border-radius: 0;
   margin-bottom: -1px;
-  padding: 0.5rem 1rem;
+  /* font-size и padding берутся из блока button выше */
   cursor: pointer;
-  color: var(--pico-muted-color);
-  font-size: 0.9rem;
+  color: var(--sc-fg-muted);
+  transition: background 0.15s;
+}
+
+/* Hover-подсветка вкладки полупрозрачным primary */
+.tabs button:hover {
+  background: rgba(0, 144, 216, 0.12);
+  cursor: pointer;
 }
 
 .tabs button.active {
-  color: var(--pico-primary);
-  border-bottom-color: var(--pico-primary);
+  color: var(--sc-primary);
+  border-bottom-color: var(--sc-primary);
 }
 
-/* Модальное окно */
+/* ===== Модальное окно ===== */
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.5);
+  background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -35,8 +81,9 @@
 }
 
 .modal-content {
-  background: var(--pico-background-color);
-  border-radius: 0.5rem;
+  background: var(--sc-card-bg);
+  border: 1px solid var(--sc-border);
+  border-radius: calc(0.5rem * 1.05);
   padding: 1.5rem;
   min-width: 480px;
   max-width: 680px;
@@ -47,6 +94,7 @@
 .modal-content h3 {
   margin-top: 0;
   margin-bottom: 1rem;
+  color: var(--sc-fg);
 }
 
 .modal-footer {
@@ -56,13 +104,13 @@
   margin-top: 1rem;
 }
 
-/* Chip — элемент мульти-ввода */
+/* ===== Chip — элемент мульти-ввода ===== */
 .chips-container {
   display: flex;
   flex-wrap: wrap;
   gap: 0.25rem;
   padding: 0.25rem;
-  border: 1px solid var(--pico-form-element-border-color);
+  border: 1px solid var(--sc-border);
   border-radius: var(--pico-border-radius);
   min-height: 2.5rem;
   align-items: center;
@@ -73,13 +121,14 @@
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  background: var(--pico-primary-background);
-  color: var(--pico-primary-inverse);
-  border-radius: 1rem;
+  background: var(--sc-primary);
+  color: #ffffff;
+  border-radius: calc(1rem * 1.05);
   padding: 0.1rem 0.5rem;
   font-size: 0.8rem;
 }
 
+/* Кнопка удаления чипа — не наследует общий отступ */
 .chip button {
   background: none;
   border: none;
@@ -89,6 +138,7 @@
   font-size: 1rem;
   line-height: 1;
   margin: 0;
+  border-radius: 0;
 }
 
 .chips-input {
@@ -98,14 +148,14 @@
   flex: 1;
   min-width: 80px;
   padding: 0.1rem 0.25rem;
-  color: var(--pico-color);
+  color: var(--sc-fg);
 }
 
-/* Ручка для drag-and-drop */
+/* ===== Ручка для drag-and-drop ===== */
 .handle {
   cursor: grab;
   padding: 0 0.5rem;
-  color: var(--pico-muted-color);
+  color: var(--sc-fg-muted);
   user-select: none;
   font-size: 1.1rem;
 }
@@ -114,17 +164,18 @@
   cursor: grabbing;
 }
 
-/* Toolbar */
+/* ===== Toolbar ===== */
 .toolbar {
   position: sticky;
   top: 0;
-  background: var(--pico-background-color);
+  background: var(--sc-sidebar-bg);
+  color: var(--sc-sidebar-fg);
   z-index: 100;
   padding: 0.75rem 0;
   display: flex;
   gap: 0.5rem;
   align-items: center;
-  border-bottom: 1px solid var(--pico-muted-border-color);
+  border-bottom: 1px solid var(--sc-border);
   margin-bottom: 1rem;
 }
 
@@ -132,30 +183,31 @@
   margin: 0;
   font-size: 1.2rem;
   flex: 1;
+  color: var(--sc-sidebar-fg);
 }
 
-/* Toast уведомление */
+/* ===== Toast уведомление ===== */
 .toast {
   position: fixed;
   bottom: 1.5rem;
   right: 1.5rem;
   padding: 0.75rem 1.25rem;
-  border-radius: 0.5rem;
+  border-radius: calc(0.5rem * 1.05);
   color: #fff;
   font-weight: 500;
   z-index: 2000;
   animation: fade-in 0.2s ease;
 }
 
-.toast.success { background: var(--pico-ins-color, #2ecc71); }
-.toast.error   { background: var(--pico-del-color, #e74c3c); }
+.toast.success { background: #2ecc71; }
+.toast.error   { background: #e74c3c; }
 
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(0.5rem); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Таблица действий */
+/* ===== Таблица действий ===== */
 table td, table th {
   vertical-align: middle;
 }
@@ -166,16 +218,17 @@ table td, table th {
   white-space: nowrap;
 }
 
+/* Кнопки внутри ячеек таблицы имеют ещё более компактный отступ */
 .action-cell button {
-  padding: 0.2rem 0.5rem;
-  font-size: 0.75rem;
+  padding: 0.17rem 0.425rem;
+  font-size: 0.7rem;
   margin: 0;
 }
 
-/* Предпросмотр конфига */
+/* ===== Предпросмотр конфига ===== */
 .config-preview {
-  background: var(--pico-code-background-color);
-  border-radius: 0.25rem;
+  background: var(--pico-code-background-color, #f0f2f5);
+  border-radius: calc(0.25rem * 1.05);
   padding: 1rem;
   max-height: 60vh;
   overflow-y: auto;
@@ -184,15 +237,15 @@ table td, table th {
   font-family: var(--pico-font-family-monospace);
 }
 
-/* Drag-over highlight */
+/* ===== Drag-over highlight ===== */
 .drag-over {
-  outline: 2px dashed var(--pico-primary);
+  outline: 2px dashed var(--sc-primary);
   outline-offset: 2px;
 }
 
-/* Пустой список */
+/* ===== Пустой список ===== */
 .empty-state {
-  color: var(--pico-muted-color);
+  color: var(--sc-fg-muted);
   text-align: center;
   padding: 2rem;
 }
