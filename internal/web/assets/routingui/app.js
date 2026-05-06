@@ -753,16 +753,17 @@ function PresetsDropdown({ onReload, showToast }) {
     api.get('/api/presets').then(setPresets).catch(() => {});
   }, []);
 
-  const apply = async (name) => {
-    // Скрываем список до начала запроса, чтобы не блокировать UI
-    setVisible(false);
-    try {
-      await api.post(`/api/presets/${name}/apply`, {});
-      showToast(`Пресет "${name}" применён`, 'success');
-      onReload();
-    } catch (e) {
-      showToast(`Ошибка применения пресета: ${e.message}`, 'error');
-    }
+  // apply делается fire-and-forget: сначала запускаем запрос, потом скрываем
+  // dropdown. Если скрыть сначала, preact unmount'ит preset-item между
+  // mousedown и обработчиком и клик теряется (родитель уже re-render'ится).
+  const apply = (name) => {
+    api.post(`/api/presets/${name}/apply`, {})
+      .then(() => {
+        showToast(`Пресет "${name}" применён`, 'success');
+        onReload();
+      })
+      .catch(e => showToast(`Ошибка применения пресета: ${e.message}`, 'error'))
+      .finally(() => setVisible(false));
   };
 
   if (presets.length === 0) return null;
@@ -790,7 +791,7 @@ function PresetsDropdown({ onReload, showToast }) {
             <div
               key=${p.name}
               class="preset-item"
-              onMouseDown=${(e) => { e.preventDefault(); apply(p.name); }}
+              onClick=${() => apply(p.name)}
               title=${p.description || ''}
             >
               <strong>${p.name}</strong>

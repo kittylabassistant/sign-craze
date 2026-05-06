@@ -157,10 +157,19 @@ button.secondary:hover {
   outline: none;
 }
 
-/* Tinting для checkbox/radio — нативный маркер красим в primary */
+/* Checkbox / radio:
+ *   - unchecked: серый border, никаких заливок — явно видно "снят"
+ *   - checked: primary teal заливка через accent-color (нативный маркер) */
 .modal-content input[type="checkbox"],
 .modal-content input[type="radio"] {
   accent-color: var(--sc-primary);
+  border: 1px solid var(--sc-fg-muted);
+  background: transparent;
+}
+.modal-content input[type="checkbox"]:checked,
+.modal-content input[type="radio"]:checked {
+  border-color: var(--sc-primary);
+  background: var(--sc-primary);
 }
 
 /* ===== Chip ===== */
@@ -320,7 +329,7 @@ table th { color: var(--sc-fg-muted); font-weight: 500; }
   padding: 0.4rem 0.6rem;
   cursor: pointer;
   transition: background 0.15s;
-  font-size: 0.5em;     /* в 2 раза меньше базового button (0.85em → 0.425em) */
+  font-size: 0.625em;   /* +25% от 0.5em */
   line-height: 1.4;
 }
 .preset-item strong { font-size: 1em; font-weight: 600; }
