@@ -24,11 +24,13 @@
   "outbounds": [
 {{- range $i, $o := .Outbounds }}{{ if $i }},{{ end }}
     {{ jsonMarshal $o }}
-{{- end }}{{ if .Outbounds }},{{ end }}
+{{- end }}
+{{- if not .HasDirect }}{{ if .Outbounds }},{{ end }}
     {
       "type": "direct",
       "tag": "direct"
     }
+{{- end }}
   ],
   "route": {
     "default_domain_resolver": "local",
@@ -49,8 +51,8 @@
       {
         "type": "tls",
         "tag": "remote",
-        "server": "8.8.8.8",
-        "detour": {{ jsonMarshal .Final }}
+        "server": "8.8.8.8"{{ if ne .Final "direct" }},
+        "detour": {{ jsonMarshal .Final }}{{ end }}
       },
       {
         "type": "local",

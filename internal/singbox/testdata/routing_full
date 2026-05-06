@@ -4,7 +4,6 @@
     "rules": [],
     "servers": [
       {
-        "detour": "direct",
         "server": "8.8.8.8",
         "tag": "remote",
         "type": "tls"

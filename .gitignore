@@ -35,3 +35,4 @@ id_ecdsa*
 
 # Локальные креды веб-UI
 admin.creds
+backups/

@@ -17,13 +17,26 @@ type effectiveModel struct {
 	TUNMTU           int
 
 	Inbounds  []types.Inbound  // если пусто — шаблон рендерит default TUN
-	Outbounds []types.Outbound // служебный "direct" добавляется программно в шаблоне
+	Outbounds []types.Outbound // служебный "direct" добавляется программно в шаблоне, если HasDirect=false
+	HasDirect bool             // true → пользователь уже определил outbound с tag=direct, шаблон не дублирует
 	BaseRules []string         // resolve, sniff, hijack-dns — уже сериализованный JSON
 	UserRules []string         // пользовательские правила — уже сериализованный JSON
 	RuleSets  []types.RuleSetRef
 	Final     string
 
 	DNSDirectRuleSets []string // legacy путь: GeoSiteDirect → local DNS
+}
+
+// outboundsHaveDirect возвращает true, если среди списка есть outbound с tag=direct.
+// Нужен для подавления auto-direct в шаблоне tun.json.tmpl, иначе sing-box check
+// падает с "duplicate outbound/endpoint tag: direct".
+func outboundsHaveDirect(obs []types.Outbound) bool {
+	for _, o := range obs {
+		if o.Tag == "direct" {
+			return true
+		}
+	}
+	return false
 }
 
 // marshalRule сериализует значение в JSON-строку для хранения в BaseRules/UserRules.
@@ -71,6 +84,7 @@ func buildEffectiveModel(p ConfigParams) (effectiveModel, error) {
 	if p.RoutingConfig != nil {
 		// новый путь: RoutingConfig имеет приоритет
 		m.Outbounds = p.RoutingConfig.Outbounds
+		m.HasDirect = outboundsHaveDirect(m.Outbounds)
 		for _, r := range p.RoutingConfig.Rules {
 			s, err := marshalRule(r)
 			if err != nil {
@@ -87,6 +101,7 @@ func buildEffectiveModel(p ConfigParams) (effectiveModel, error) {
 	} else {
 		// legacy путь: Routing + Outbounds
 		m.Outbounds = p.Outbounds
+		m.HasDirect = outboundsHaveDirect(m.Outbounds)
 		if len(p.Routing.GeoSiteDirect) > 0 {
 			s, err := marshalRule(map[string]any{
 				"rule_set": p.Routing.GeoSiteDirect,
