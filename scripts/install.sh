@@ -11,16 +11,30 @@ MIN_FREE_KB=30000  # 30 MB запас
 
 # Выбрать загрузчик с проверкой TLS-сертификата.
 # Если на роутере нет корневых CA — поставить: opkg install ca-certificates
+# Таймауты обязательны: без них зависший connect к releases висит 60-120 сек,
+# и фолбэк на raw не срабатывает за разумное время.
 if command -v curl >/dev/null 2>&1; then
-  DL="curl -fsSL"
-  DL_OUT="curl -fsSL -o"
+  DL="curl -fsSL --connect-timeout 10 --max-time 60"
+  DL_OUT="curl -fsSL --connect-timeout 10 --max-time 180 -o"
+  DL_TYPE="curl"
 elif wget --help 2>&1 | grep -q -- '--https-only\|HTTPS support'; then
-  DL="wget -qO-"
-  DL_OUT="wget -qO"
+  DL="wget -q -T 30 --tries=1 -O-"
+  DL_OUT="wget -q -T 180 --tries=1 -O"
+  DL_TYPE="wget"
 else
   echo "Нужен curl или wget-ssl. Установите: opkg install curl ca-certificates" >&2
   exit 1
 fi
+
+# probe <url> — быстрая проверка доступности (5s connect / 10s total).
+# Возврат 0 = доступен, !=0 = недоступен/timeout.
+probe() {
+  if [ "$DL_TYPE" = "curl" ]; then
+    curl -sSfI --connect-timeout 5 --max-time 10 -o /dev/null "$1" 2>/dev/null
+  else
+    wget -q --spider -T 10 --tries=1 "$1" 2>/dev/null
+  fi
+}
 
 # Offline-режим: SIGNCRAZE_BIN=<путь> пропускает arch detection + GitHub.
 # Опционально SIGNCRAZE_SHA256=<путь> для верификации checksum.
@@ -124,14 +138,28 @@ fi
 TMP=$(mktemp "/tmp/${BINARY}.XXXXXX")
 trap 'rm -f "$TMP" "$TMP.sha256"' EXIT
 
-# Primary: releases. Fallback: raw.githubusercontent.com.
-if ! $DL_OUT "$TMP" "$URL" 2>/dev/null; then
-  echo "WARN: $URL недоступен, пробую raw.githubusercontent.com..." >&2
-  if ! $DL_OUT "$TMP" "$RAW_URL"; then
-    echo "Не удалось скачать бинарь ни с releases, ни с raw" >&2
+# Pre-check: пингуем primary 10s. Если недоступен — сразу raw, без долгого
+# ожидания TCP-таймаута на полной загрузке. Releases часто блокируется у
+# российских провайдеров, raw.githubusercontent.com — проходит.
+if ! probe "$URL"; then
+  echo "WARN: $URL недоступен (probe 10s timeout), переключаюсь на raw..." >&2
+  URL="$RAW_URL"
+  SHA_URL="$RAW_SHA_URL"
+fi
+
+# Primary download attempt. Если внезапно упал на самой загрузке — fallback.
+if ! $DL_OUT "$TMP" "$URL"; then
+  if [ "$URL" != "$RAW_URL" ]; then
+    echo "WARN: загрузка с $URL не удалась, пробую raw..." >&2
+    if ! $DL_OUT "$TMP" "$RAW_URL"; then
+      echo "Не удалось скачать бинарь ни с releases, ни с raw" >&2
+      exit 1
+    fi
+    SHA_URL="$RAW_SHA_URL"
+  else
+    echo "Не удалось скачать бинарь с $URL" >&2
     exit 1
   fi
-  SHA_URL="$RAW_SHA_URL"
 fi
 
 # SHA256 опционален — если .sha256 отсутствует, warning
