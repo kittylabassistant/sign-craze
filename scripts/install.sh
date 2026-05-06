@@ -27,10 +27,12 @@ else
 fi
 
 # probe <url> — быстрая проверка доступности (5s connect / 10s total).
-# Возврат 0 = доступен, !=0 = недоступен/timeout.
+# -L обязателен: github.com/releases/download/* всегда отдаёт 302 на
+# release-assets.githubusercontent.com — без редиректа probe вернёт 0
+# даже при заблокированном asset-домене.
 probe() {
   if [ "$DL_TYPE" = "curl" ]; then
-    curl -sSfI --connect-timeout 5 --max-time 10 -o /dev/null "$1" 2>/dev/null
+    curl -sSfIL --connect-timeout 5 --max-time 10 -o /dev/null "$1" 2>/dev/null
   else
     wget -q --spider -T 10 --tries=1 "$1" 2>/dev/null
   fi
@@ -113,12 +115,14 @@ fi
 
 URL="https://github.com/$REPO/releases/download/${VERSION}/${BINARY}-${SUFFIX}"
 SHA_URL="${URL}.sha256"
-# Fallback: raw.githubusercontent.com — другой CDN/IP-диапазон. Помогает,
-# когда releases-домен заблокирован у провайдера, а raw — проходит.
-# Работает только если бинарь закоммичен в репо (по умолчанию нет — dist/ в
-# .gitignore). Для override используйте SIGNCRAZE_URL=<полный URL>.
-RAW_URL="https://raw.githubusercontent.com/$REPO/refs/heads/main/dist/${BINARY}-${SUFFIX}"
-RAW_SHA_URL="${RAW_URL}.sha256"
+# Mirror: gh-proxy.com — публичный reverse-proxy github releases через
+# Cloudflare. Принимает полный github.com URL и отдаёт байт-в-байт. Помогает
+# когда release-assets.githubusercontent.com заблокирован у провайдера
+# (типичная картина для российских ISP — releases/download редиректит на
+# *.githubusercontent.com, который блокируется отдельно от github.com).
+# Override: SIGNCRAZE_URL=<полный URL>.
+MIRROR_URL="https://gh-proxy.com/${URL}"
+MIRROR_SHA_URL="https://gh-proxy.com/${SHA_URL}"
 if [ -n "${SIGNCRAZE_URL:-}" ]; then
   URL="$SIGNCRAZE_URL"
   SHA_URL="${SIGNCRAZE_SHA256_URL:-${URL}.sha256}"
@@ -138,24 +142,24 @@ fi
 TMP=$(mktemp "/tmp/${BINARY}.XXXXXX")
 trap 'rm -f "$TMP" "$TMP.sha256"' EXIT
 
-# Pre-check: пингуем primary 10s. Если недоступен — сразу raw, без долгого
-# ожидания TCP-таймаута на полной загрузке. Releases часто блокируется у
-# российских провайдеров, raw.githubusercontent.com — проходит.
+# Pre-check: пингуем primary с -L (следуя редиректам) — иначе HEAD на
+# github.com/releases/download/* всегда отдаёт 302 даже при заблокированном
+# asset-домене. 10s timeout вместо 60-120s на TCP connect.
 if ! probe "$URL"; then
-  echo "WARN: $URL недоступен (probe 10s timeout), переключаюсь на raw..." >&2
-  URL="$RAW_URL"
-  SHA_URL="$RAW_SHA_URL"
+  echo "WARN: $URL недоступен (probe 10s timeout), переключаюсь на gh-proxy..." >&2
+  URL="$MIRROR_URL"
+  SHA_URL="$MIRROR_SHA_URL"
 fi
 
 # Primary download attempt. Если внезапно упал на самой загрузке — fallback.
 if ! $DL_OUT "$TMP" "$URL"; then
-  if [ "$URL" != "$RAW_URL" ]; then
-    echo "WARN: загрузка с $URL не удалась, пробую raw..." >&2
-    if ! $DL_OUT "$TMP" "$RAW_URL"; then
-      echo "Не удалось скачать бинарь ни с releases, ни с raw" >&2
+  if [ "$URL" != "$MIRROR_URL" ]; then
+    echo "WARN: загрузка с $URL не удалась, пробую gh-proxy..." >&2
+    if ! $DL_OUT "$TMP" "$MIRROR_URL"; then
+      echo "Не удалось скачать бинарь ни с releases, ни с gh-proxy" >&2
       exit 1
     fi
-    SHA_URL="$RAW_SHA_URL"
+    SHA_URL="$MIRROR_SHA_URL"
   else
     echo "Не удалось скачать бинарь с $URL" >&2
     exit 1
