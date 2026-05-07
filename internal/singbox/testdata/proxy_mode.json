@@ -24,7 +24,8 @@
   },
   "experimental": {
     "cache_file": {
-      "enabled": true
+      "enabled": true,
+      "path": "/opt/var/lib/sign-craze/cache.db"
     },
     "clash_api": {
       "default_mode": "rule",
