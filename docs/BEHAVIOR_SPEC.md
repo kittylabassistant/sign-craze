@@ -3,13 +3,9 @@
 Функциональная спецификация sign-craze, написанная в режиме clean-room.
 Исходники XKeen не читались. Только публичные источники.
 
-> **v0.3.0 (breaking)**: TPROXY-режим заменён на TUN-режим. Стоковое
-> ядро/iptables на Keenetic mipsel-3.4 не имеет xt_TPROXY. Sign-craze теперь
-> использует sing-box `tun` inbound (interface_name=`signbox-tun`,
-> address=`172.19.0.1/30`, stack=`system`, auto_route=`false`); iptables
-> ставит только MARK + переход в нашу цепочку, а ip rule fwmark → table →
-> default через `signbox-tun` поднимает помеченные пакеты в TUN. Разделы
-> ниже про TPROXY — историческое описание (refresh в отдельном коммите).
+> **Текущая архитектура (TUN-mode):** sign-craze использует TPROXY-аналог через
+> TUN-интерфейс sing-box. Routing к `signbox-tun` идёт через fwmark `0x53` →
+> table `83` → default route. Описание ниже отражает текущую TUN-mode архитектуру.
 
 Использованные источники:
 
@@ -34,7 +30,7 @@
 - Устанавливает бинарь в `/opt/sbin/sing-box`, права `0755`.
 - Создаёт директорию конфигов `/opt/etc/sign-craze/`, права `0755`.
 - Генерирует `/opt/etc/sign-craze/config.json` (tproxy inbound на порту `7895`, fwmark `0x53`).
-- Создаёт init.d shim `/opt/etc/init.d/S05signcraze`, права `0755`.
+- Создаёт init.d shim `/opt/etc/init.d/S99signcraze`, права `0755`.
 - Создаёт NDM netfilter.d hook `/opt/etc/ndm/netfilter.d/50-sign-craze`,
   права `0755` (см. §3c — persistence через NDM rebuild).
 - Создаёт директорию состояния `/opt/var/lib/sign-craze/`, права `0755`.
@@ -112,8 +108,8 @@
 ```plain
 sing-box:  запущен  (pid 1234)
 nfqws2:    остановлен
-режим:     proxy
-версия:    sign-craze v0.1.0 / sing-box v1.10.0
+режим:     policy
+версия:    sign-craze v0.1.0 / sing-box v1.13.x
 ```
 
 Состояние системы не изменяется.
@@ -210,7 +206,7 @@ sing-box   v<VERSION>  (установлен в /opt/sbin/sing-box)
 - порт `9091` — admin REST API sign-craze
 - порт `9092` — Routing Editor SPA
 
-Все серверы слушают на `0.0.0.0`. Iptables-правила в chain `signcraze_local` дропают входящий трафик на порты 9090/9091/9092 с WAN-интерфейса (определяется через `DetectISPInterface`). Доступ из LAN открыт без аутентификации.
+Серверы слушают на `0.0.0.0`. Правила в `filter/INPUT` (с owner-комментарием `signcraze:wan-block`, идемпотентно добавляются через `EnsureRule`) дропают входящий трафик на порт 9090 с WAN-интерфейса (определяется через `DetectISPInterface`). Доступ из LAN открыт без аутентификации.
 
 `off`: останавливает все HTTP-серверы.
 
@@ -248,6 +244,24 @@ sign-craze --dpi-targets clear
 Печатает текущий список DPI targets (один на строку) либо сообщение, что desync
 применяется ко всему трафику.
 
+### `--core-list`
+
+Выводит список зарегистрированных ядер (sing-box / xray / mihomo) с указанием активного.
+
+---
+
+### `--core <name>`
+
+Устанавливает активное ядро в `state.json`. Для применения требует `--restart`.
+
+---
+
+### `--core-install <name>`
+
+Скачивает и устанавливает указанное ядро в `/opt/sbin/`. Сервис **не перезапускает**.
+
+---
+
 ### `--mode policy|full`
 
 Переключает режим маршрутизации. Для применения требует перезапуска (`--restart`).
@@ -272,34 +286,33 @@ Legacy-имена (`proxy`, `dpi`, `hybrid`) принимаются для об�
 
 Источник: <https://sing-box.sagernet.org/configuration/>
 
-Минимальная структура tproxy inbound:
+Минимальная структура TUN inbound (из `internal/singbox/templates/tun.json.tmpl`):
 
 ```json
 {
-  "log": { "level": "info", "output": "/opt/var/log/sign-craze/sing-box.log" },
+  "log": { "level": "info", "output": "/opt/var/log/sign-craze/sing-box.log", "timestamp": true },
   "inbounds": [
     {
-      "type": "tproxy",
-      "tag": "tproxy-in",
-      "listen": "::",
-      "listen_port": 7895,
-      "tcp_fast_open": false,
-      "sniff": true,
-      "sniff_override_destination": false,
-      "domain_strategy": "prefer_ipv4",
-      "mark": 83
+      "type": "tun",
+      "tag": "tun-in",
+      "interface_name": "signbox-tun",
+      "address": ["172.19.0.1/30"],
+      "mtu": 9000,
+      "auto_route": false,
+      "stack": "gvisor"
     }
   ],
   "outbounds": [ /* задаётся пользователем */ ],
-  "route": { /* правила с SRS rule-set */ }
+  "route": { /* правила с SRS rule-set, auto_detect_interface: true */ }
 }
 ```
 
 Ключевые параметры (настраиваются через sign-craze):
 
-- `listen_port`: по умолчанию `7895`
-- `mark`: `83` (= `0x53`) — пакеты от sing-box перемаркируются для предотвращения петли
+- `interface_name`: всегда `"signbox-tun"` — фиксированное имя TUN-устройства
+- `auto_route`: `false` — маршрутизация управляется sign-craze через ip rule/ip route
 - Уровень логирования: зеркалирует `SIGNCRAZE_LOG_LEVEL`
+- `mark` не нужен для TUN inbound (применяется на уровне iptables fwmark)
 
 ### `/opt/etc/sign-craze/nfqws2.conf`
 
@@ -373,22 +386,22 @@ ip route:   table <T>: default via <gw> dev <WAN>, ...
 
 ```plain
 Chain PREROUTING
-  -j signcraze_policy
+  -j signcraze              # переход в основную цепочку маркировки
 
 Chain POSTROUTING
   -j signcraze_policy_dpi   # только если DPIEnabled=true
 
-Chain signcraze_policy
+Chain signcraze
   ! -s 127.0.0.0/8 ! -s 169.254.0.0/16 ! -i lo \
-    -m mark --mark 0xffffaaXX -p tcp -j TPROXY --tproxy-port 7895 --tproxy-mark 0x53
-    -m comment --comment "signcraze:tproxy-tcp"
+    -m mark --mark 0xffffaaXX -p tcp -j MARK --set-mark 0x53
+    -m comment --comment "signcraze:mark-policy-tcp"
   ! -s 127.0.0.0/8 ! -s 169.254.0.0/16 ! -i lo \
-    -m mark --mark 0xffffaaXX -p udp -j TPROXY --tproxy-port 7895 --tproxy-mark 0x53
-    -m comment --comment "signcraze:tproxy-udp"
+    -m mark --mark 0xffffaaXX -p udp -j MARK --set-mark 0x53
+    -m comment --comment "signcraze:mark-policy-udp"
 
 Chain signcraze_policy_dpi  # только если DPIEnabled=true; в POSTROUTING
-  -p tcp --dport 443 -j NFQUEUE --queue-num 300 --queue-bypass
-  -p udp --dport 443 -j NFQUEUE --queue-num 300 --queue-bypass
+  -p tcp -m multiport --dport 80,443,2053:2096,8443 -j NFQUEUE --queue-num 300 --queue-bypass
+  -p udp -m multiport --dport 443,19200:19400,50000:50100 -j NFQUEUE --queue-num 300 --queue-bypass
 ```
 
 **Почему `signcraze_policy_dpi` в POSTROUTING, а не PREROUTING:** в режиме
@@ -407,16 +420,17 @@ NFQUEUE в POSTROUTING ловит ClientHello ПОСЛЕ sing-box, на пути
 
 `--queue-bypass`: если nfqws2 не запущен, пакеты проходят без обработки.
 
-#### ip rule + ip route (loop-prevention для sing-box)
+#### ip rule + ip route (маршрутизация помеченных пакетов в TUN)
 
 ```plain
 ip rule:    32765: from all fwmark 0x53 lookup 83
-ip route:   table 83: local 0.0.0.0/0 dev lo
+ip route:   table 83: default dev signbox-tun
 ```
 
-`mark=0x53` ставится sing-box'ом на исходящих сокетах (SO_MARK через
-`tproxy-mark`), чтобы пакеты от прокси не попадали повторно в собственный
-TPROXY.
+`mark=0x53` ставится iptables-правилами в `signcraze` (для policy) или
+`signcraze_full` (для full mode). Пакеты с этой меткой уходят в TUN-интерфейс
+`signbox-tun`, где их принимает sing-box. Loop-prevention: sing-box сам отправляет
+исходящие пакеты без метки (через `direct` outbound), поэтому повторного захвата нет.
 
 #### IP Policy в Keenetic RCI
 
@@ -465,17 +479,11 @@ Chain signcraze_dpi  # пустая если DPIEnabled=false
   -m mark ! --mark 0x53 -p udp -j NFQUEUE --queue-num 300 --queue-bypass -m comment --comment "signcraze:dpi-udp"
 ```
 
-```plain
-Chain PREROUTING (TPROXY)
-  -m mark --mark 0x53 -p tcp -j TPROXY --tproxy-port 7895 --tproxy-mark 0x53
-  -m mark --mark 0x53 -p udp -j TPROXY --tproxy-port 7895 --tproxy-mark 0x53
-```
-
-#### ip rule + ip route + ipset (как раньше)
+#### ip rule + ip route + ipset
 
 ```plain
 ip rule:   32765: from all fwmark 0x53 lookup 83
-ip route:  table 83: local 0.0.0.0/0 dev lo
+ip route:  table 83: default dev signbox-tun
 ipset:     signcraze_ipv4   Type: hash:net  Family: inet
            signcraze_ipv6   Type: hash:net  Family: inet6
            signcraze_excludes  Type: hash:net  Family: inet
@@ -542,7 +550,7 @@ WAN-fallback в Keenetic UI (`permit` с активным interface), table 4098
 
 ### Загрузка / init.d
 
-Keenetic вызывает `/opt/etc/init.d/S05signcraze start` при старте Entware.
+Keenetic вызывает `/opt/etc/init.d/S99signcraze start` при старте Entware.
 Shim делегирует в `sign-craze --service-start` (внутренняя команда, не отображается в help).
 
 ### `--service-start` (внутренняя)
@@ -579,19 +587,21 @@ Shim делегирует в `sign-craze --service-start` (внутренняя 
 sign-craze не демонизирует sing-box через watchdog-петлю (вне scope v0.1).
 Восстановление после краша — через перезапуск init.d или вызов `--restart`.
 
-### Firewall watchdog (`--ui on`)
+### Firewall watchdog (`--service-watchdog`)
 
-При запущенном `--ui on` стартует фоновая горутина `firewall.Watchdog` (интервал 30 с).
-Алгоритм каждые 30 с:
+Watchdog — автономный демон, запускаемый init.d shim `S99signcraze` через
+`nohup sign-craze --service-watchdog &`. Независим от `--ui on`: переживает
+перезапуск web-интерфейса и работает даже при отключённом UI. PID-файл —
+`/opt/var/run/sign-craze-watchdog.pid`.
+
+Алгоритм: каждые 30 с выполняет реконсиляцию:
 
 1. `IPTables.CheckCriticalRules(ctx, mode, keenMark)` — проверяет наличие критических правил через `iptables -C` (cheap, без полного Apply).
 2. Если правила на месте — ничего не делать.
 3. Если правила отсутствуют — вызвать `Applier.Reconcile(ctx, mode)`: idempotent re-apply без pre-flights и auto-rollback.
 4. Все ошибки логируются как Warn.
 
-**Ограничение**: watchdog активен, только пока работает процесс `sign-craze --ui on`. При его отсутствии восстановление — только через NDM hook `--reapply`.
-
-**Назначение**: страховка против NDM-rebuild-сценариев, которые event-driven hook пропускает (например, мягкий rebuild без сигнала netfilter.d).
+**Lifecycle**: watchdog запускается shim'ом при старте Entware и остаётся живым независимо от состояния `--ui on/off`. Завершается при `S99signcraze stop`.
 
 ### `--stop` при уже остановленном сервисе
 
@@ -604,10 +614,6 @@ sign-craze не демонизирует sing-box через watchdog-петлю
 ### Перезагрузка конфига
 
 SIGHUP-перезагрузки нет. Изменения конфига требуют `--restart`.
-
-### Бэкап при обновлении
-
-Если флаг `--backup-on-update` установлен в конфиге, команды `--update` и `--update-core` автоматически создают бэкап перед заменой бинаря.
 
 ---
 
@@ -625,7 +631,7 @@ SIGHUP-перезагрузки нет. Изменения конфига тре
 │   │   ├── dpi-hostlist.txt    # SNI-цели Selective DPI (генерируется, опционально)
 │   │   └── admin.creds         # bcrypt-хэш пароля для web UI
 │   ├── init.d/
-│   │   └── S05signcraze    # init.d shim (генерируется)
+│   │   └── S99signcraze    # init.d shim (генерируется)
 │   └── ndm/
 │       └── netfilter.d/
 │           └── 50-sign-craze   # NDM hook для persistence (генерируется)
@@ -679,14 +685,15 @@ POST   /api/dpi/presets/{name}/apply — применить пресет по и
 {
   "singbox":  {"running": true,  "pid": 1234},
   "nfqws2":   {"running": false, "pid": 0},
-  "mode":     "proxy",
-  "version":  {"sign_craze": "v0.1.0", "sing_box": "v1.10.0"},
+  "mode":     "policy",
+  "core":     "sing-box",
+  "version":  {"sign_craze": "v0.1.0", "sing_box": "v1.13.x"},
   "uptime_s": 3600
 }
 ```
 
-Коды ответов: `200 OK`, `400 Bad Request` (ошибка валидации), `401 Unauthorized`, `500 Internal Server Error`.
+Коды ответов: `200 OK`, `400 Bad Request` (ошибка валидации), `500 Internal Server Error`.
 
 ### Инвариант: LAN-only доступ к Web UI
 
-**Inv-Web-LAN-Only**: web-серверы (9090/9091/9092) слушают на `0.0.0.0`; iptables-правила в chain `signcraze_local` дропают входящий трафик на эти порты от WAN-интерфейса (`DetectISPInterface`). Правила применяются при `--ui on` и снимаются при `--ui off`. Из локальной сети доступ открыт.
+**Inv-Web-LAN-Only**: web-серверы (9090/9091/9092) слушают на `0.0.0.0`; правила в `filter/INPUT` (owner-комментарий `signcraze:wan-block`, идемпотентно через `EnsureRule`) дропают входящий трафик на порт 9090 от WAN-интерфейса (`DetectISPInterface`). Правила применяются при `--ui on` и снимаются при `--ui off`. Из локальной сети доступ открыт.

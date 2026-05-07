@@ -74,7 +74,7 @@ Keenetic поверх Entware: установка `sing-box`, опциональ
 
    ```sh
    sign-craze --diag           # короткая сводка состояния
-   sign-craze support-bundle   # полный архив с логами
+   sign-craze --diag > /tmp/sign-craze-diag.txt   # сохранить полный вывод диагностики
    ```
 
 В тело issue включите:
@@ -235,8 +235,8 @@ Smoke-test в QEMU `qemu-user-static` ловит часть проблем
 `chore` / `ci` / `build`.
 
 **Scope** (наблюдаемые в репозитории):
-`cli`, `singbox`, `firewall`, `dpi`, `routing`, `boot`, `install`,
-`shim`, `lint`, `ci`, `web`, `state`, `geo`.
+`cli`, `singbox`, `xray`, `mihomo`, `core`, `firewall`, `dpi`, `routing`, `boot`, `install`,
+`shim`, `lint`, `ci`, `web`, `state`, `geo`, `docs`.
 
 Тело коммита — на русском, императив («добавь», «убери»,
 «перенеси»), без эмодзи, без подписей сторонних AI-инструментов.

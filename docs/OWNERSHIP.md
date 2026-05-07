@@ -21,7 +21,7 @@ Sign-craze удаляет только те системные сущности,
 | `signcraze_dpi`        | full (DPI) | `applyFullMode`                                         | `PREROUTING`              | `FlushAndDeleteChain` + jump -D | `internal/firewall/applier.go:212`            |
 | `signcraze_ports`      | full       | `applyFullMode`, `PortRules`                            | `PREROUTING`              | `FlushAndDeleteChain` + jump -D | `applier.go:212`, `modes/ports.go`            |
 | `signcraze_policy`     | policy     | `applyPolicyMode`                                       | `PREROUTING`              | `FlushAndDeleteChain` + jump -D | `modes/policy.go:8`                           |
-| `signcraze_policy_dpi` | policy+DPI | `applyPolicyMode` (DPIEnabled)                          | `PREROUTING`              | `FlushAndDeleteChain` + jump -D | `modes/policy.go:12`                          |
+| `signcraze_policy_dpi` | policy+DPI | `applyPolicyMode` (DPIEnabled)                          | `POSTROUTING`             | `FlushAndDeleteChain` + jump -D | `modes/policy.go:12`                          |
 | `signcraze_probe`      | preflight  | `CheckRequiredIptablesModules` (временная, удаляется в defer) | нет                 | `FlushAndDeleteChain` в defer   | `internal/firewall/preflight.go`              |
 
 **Правило удаления:** для каждой chain сначала `DeleteJumpAll(mangle, PREROUTING, chain)`, затем `FlushAndDeleteChain(mangle, chain)`. Оба вызова идемпотентны. Реализовано в `Remove()` → `internal/firewall/applier.go:276-336`.
@@ -30,7 +30,29 @@ Sign-craze удаляет только те системные сущности,
 
 ## 3. iptables jumps (PREROUTING mangle)
 
-Sign-craze устанавливает jump-правила только в `mangle PREROUTING`. Никаких правил в `OUTPUT`, `nat`, `filter`, `raw`.
+Sign-craze устанавливает jump-правила только в `mangle PREROUTING` и `mangle POSTROUTING`. Никаких правил в `OUTPUT`, `nat`, `raw`.
+
+#### filter/FORWARD
+
+В режиме `policy` sign-craze добавляет два правила в `filter/FORWARD` для пропуска TUN-трафика:
+
+```plain
+-o signbox-tun -j ACCEPT  # signcraze:tun-fwd-out
+-i signbox-tun -j ACCEPT  # signcraze:tun-fwd-in
+```
+
+Добавляются idempotent через `EnsureRule`, удаляются в `Remove()` с тем же owner-маркером.
+
+#### filter/INPUT
+
+В обоих режимах при `--ui on` добавляется правило блокировки Zashboard с WAN:
+
+```plain
+-i <WAN> -p tcp --dport 9090 -j DROP  # signcraze:wan-block
+-i <WAN> -p udp --dport 9090 -j DROP  # signcraze:wan-block
+```
+
+Добавляется idempotent через `EnsureRule`, удаляется при `--ui off`.
 
 | Системная цепочка     | Направление трафика     | Условие jump | Target (user chain)       | Режим      |
 |-----------------------|-------------------------|--------------|---------------------------|------------|
@@ -39,9 +61,9 @@ Sign-craze устанавливает jump-правила только в `mangl
 | `mangle PREROUTING`   | входящий/транзитный     | безусловно   | `-j signcraze_dpi`        | full+DPI   |
 | `mangle PREROUTING`   | входящий/транзитный     | безусловно   | `-j signcraze_ports`      | full+ports |
 | `mangle PREROUTING`   | входящий/транзитный     | безусловно   | `-j signcraze_policy`     | policy     |
-| `mangle PREROUTING`   | входящий/транзитный     | безусловно   | `-j signcraze_policy_dpi` | policy+DPI |
+| `mangle POSTROUTING`  | исходящий (post-NAT)    | безусловно   | `-j signcraze_policy_dpi` | policy+DPI |
 
-Удаление: `iptables -t mangle -D PREROUTING -j <target>` по точному совпадению args (`DeleteJumpAll`). Цикл не более 16 итераций.
+Удаление: `iptables -t mangle -D PREROUTING -j <target>` (для PREROUTING-цепочек) и `iptables -t mangle -D POSTROUTING -j signcraze_policy_dpi` по точному совпадению args (`DeleteJumpAll`). Цикл не более 16 итераций.
 
 > Loop-prevention для исходящих от sing-box обеспечивается через `ip rule` (fwmark 0x53 lookup 83), не через правила в OUTPUT — поэтому в OUTPUT sign-craze ничего не пишет.
 
@@ -110,7 +132,7 @@ Sign-craze устанавливает jump-правила только в `mangl
 
 | Файл                                          | Назначение                                                           | Создаётся   | Удаляется при           | Источник                                  |
 |-----------------------------------------------|----------------------------------------------------------------------|-------------|-------------------------|-------------------------------------------|
-| `/opt/etc/init.d/S05signcraze`                | Entware init.d shim: start/stop/restart/status → sign-craze         | `--install` | `--uninstall` | `service/shim.go:16`                     |
+| `/opt/etc/init.d/S99signcraze`                | Entware init.d shim: start/stop/restart/status → sign-craze         | `--install` | `--uninstall` | `service/shim.go:16`                     |
 | `/opt/etc/ndm/netfilter.d/50-sign-craze`      | NDM hook: реаплай mangle-правил после rebuild iptables Keenetic     | `--install` | `--uninstall` | `service/netfilter_hook.go:19`           |
 
 Оба файла пишутся атомарно с проверкой SHA256 (идемпотентно). NDM hook реагирует только на `type=iptables/table=mangle` и `type=ipset`, проверяет PID-файл перед `--reapply`.

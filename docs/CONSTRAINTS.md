@@ -97,7 +97,7 @@ Single source of truth для инвариантов, нарушение кот�
 
 ```
 /opt/etc/sign-craze/          — конфигурация (state.json, config.json, nfqws2.conf, dpi-hostlist.txt, admin.creds)
-/opt/etc/init.d/S05signcraze  — init.d shim (автозапуск Entware)
+/opt/etc/init.d/S99signcraze  — init.d shim (автозапуск Entware)
 /opt/etc/ndm/netfilter.d/50-sign-craze — NDM hook (persistence iptables)
 
 /opt/sbin/sign-craze          — основной бинарь

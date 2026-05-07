@@ -110,8 +110,8 @@ sign-craze --diag            # 2. PASS/WARN/FAIL по 12 проверкам
 | Симптом | Вероятная причина | Команда проверки | Fix |
 | --------- | ------------------- | ----------------- | ----- |
 | После ребута sign-craze не запустился | init.d shim упал при ожидании маршрута (timeout) | `cat /opt/var/log/sign-craze/boot.log` | Если «timeout waiting default route»: увеличить `state.BootTimeoutSec` до `120` в `/opt/etc/sign-craze/state.json`, перезагрузить |
-| После ребута не запустился, boot.log отсутствует | USB примонтирован ПОСЛЕ запуска init.d (асинхронный mount Entware) | `ls /opt/etc/init.d/S05signcraze` | Известное ограничение (safety-fixes #12 PARTIAL). Проверить mount-opt Entware; `sign-craze --start` вручную |
-| Шим есть, но не исполняемый | Права сбились | `ls -la /opt/etc/init.d/S05signcraze` | `chmod +x /opt/etc/init.d/S05signcraze` |
+| После ребута не запустился, boot.log отсутствует | USB примонтирован ПОСЛЕ запуска init.d (асинхронный mount Entware) | `ls /opt/etc/init.d/S99signcraze` | Известное ограничение (safety-fixes #12 PARTIAL). Проверить mount-opt Entware; `sign-craze --start` вручную |
+| Шим есть, но не исполняемый | Права сбились | `ls -la /opt/etc/init.d/S99signcraze` | `chmod +x /opt/etc/init.d/S99signcraze` |
 | `state.json` повреждён — `--service-start` падает | Некорректная запись при сбое питания | `cat /opt/etc/sign-craze/state.json` | `sign-craze --uninstall && sign-craze --install && sign-craze --start` |
 
 ### Persistence (Keenetic policy)
@@ -168,7 +168,7 @@ ipset list 2>&1 | head -50 >> /tmp/diag.txt
 
 ### Web UI 9090 недоступен снаружи LAN
 
-Это by design. Sign-craze добавляет правило INPUT DROP в iptables для WAN-интерфейса на портах 9090/9091/9092 (chain `signcraze_local`). Локальная сеть имеет доступ без аутентификации.
+Это by design. Sign-craze добавляет правила в `filter/INPUT` с owner-комментарием для WAN-интерфейса на портах 9090/9091/9092. Локальная сеть имеет доступ без аутентификации.
 
 Если из LAN тоже не открывается — выполните следующее:
 

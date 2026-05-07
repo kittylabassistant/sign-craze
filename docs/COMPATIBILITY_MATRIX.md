@@ -83,7 +83,7 @@
 | Бинарь      | Мин. версия | GitHub-репозиторий                          | Путь установки          | Загружается при         |
 |-------------|-------------|---------------------------------------------|-------------------------|--------------------------|
 | `sing-box`  | **1.13.0**  | `github.com/SagerNet/sing-box`              | `/opt/sbin/sing-box`    | `--install`, `--update-core` |
-| `nfqws2`    | latest      | `github.com/bol-van/nfqws2-keenetic`        | `/opt/sbin/nfqws2`      | `--dpi on`               |
+| `nfqws2`    | latest      | `github.com/nfqws/nfqws2-keenetic`          | `/opt/sbin/nfqws2`      | `--dpi on`               |
 
 **sing-box 1.13** — минимальная версия: начиная с 1.13 DNS-сервер использует тип `local` (системный resolver); тип `udp` с `detour: direct` запрещён. Генератор конфига в `internal/singbox/config.go` опирается на это поведение.
 
@@ -95,12 +95,12 @@
 
 **Паттерны asset-файлов** при автозагрузке:
 
-| Arch     | sing-box asset                         | nfqws2 asset          |
-|----------|----------------------------------------|-----------------------|
-| `mipsle` | `linux-mipsle-softfloat.tar.gz`        | `mipsel.tar.gz`       |
-| `mips`   | `linux-mips-softfloat.tar.gz`          | `mips.tar.gz`         |
-| `arm7`   | `linux-armv7.tar.gz`                   | `armv7l.tar.gz`       |
-| `arm64`  | `linux-arm64.tar.gz`                   | `aarch64.tar.gz`      |
+| Arch     | sing-box asset                         | nfqws2 asset              |
+|----------|----------------------------------------|---------------------------|
+| `mipsle` | `linux-mipsle-softfloat.tar.gz`        | `mipsel-3.4.ipk`          |
+| `mips`   | `linux-mips-softfloat.tar.gz`          | `mips-3.4.ipk`            |
+| `arm7`   | `linux-armv7.tar.gz`                   | `armv7-3.2.ipk`           |
+| `arm64`  | `linux-arm64.tar.gz`                   | `aarch64-3.10.ipk`        |
 
 Источник: `internal/singbox/download.go`, `internal/dpi/download.go`. Загрузка использует ETag-кэширование. SHA256 верификация sing-box отключена (safety-fixes Issue #4).
 
@@ -108,7 +108,7 @@
 
 ## 6. Несовместимости
 
-- **systemd**: sign-craze не генерирует systemd unit-файлы. Используется только Entware init.d (`/opt/etc/init.d/S05signcraze`). На системах с systemd без Entware установка не поддерживается.
+- **systemd**: sign-craze не генерирует systemd unit-файлы. Используется только Entware init.d (`/opt/etc/init.d/S99signcraze`). На системах с systemd без Entware установка не поддерживается.
 - **nftables**: sign-craze использует `iptables-legacy`. Если активен `iptables-nft` (nf_tables backend), поведение MARK/CONNMARK может отличаться. Проверьте `iptables --version` — ожидается `legacy`.
 - **MIPS hardfloat**: бинарь из релиза собран с `GOMIPS=softfloat`. Запуск hardfloat-бинаря на роутере без FPU → `SIGILL`.
 - **OpenWrt без Entware**: sign-craze предполагает файловую структуру Entware (`/opt/sbin`, `/opt/etc/init.d`, `/opt/etc/ndm`). На чистом OpenWrt без Entware пути некорректны, NDM hook отсутствует.
@@ -149,7 +149,7 @@ Sign-craze поддерживает три взаимозаменяемых пр
 | XHTTP `mode=stream-up` | ❌ | ✅ | ✅ | Upload-only split |
 | XHTTP `mode=stream-one` | ❌ | ✅ | ✅ | Single stream |
 | XHTTP `mode=packet-up` | ❌ | ✅ | ✅ | Packet-based upload — обход активного DPI |
-| Encryption `mlkem768x25519plus` (PQ-VLESS) | ⚠️ | ✅ | ❌ | sing-box экспериментально, не валидируется в 1.12 |
+| Encryption `mlkem768x25519plus` (PQ-VLESS) | ⚠️ | ✅ | ❌ | sing-box экспериментально; в sing-box ≤ 1.12 не валидируется, в 1.13+ недоступно через Validate() |
 | uTLS Fingerprint | ✅ | ✅ | ✅ | chrome/firefox/safari/ios/random |
 | ECH (Encrypted ClientHello) | ⚠️ | ⚠️ | ⚠️ | Все три ядра в процессе внедрения 2026 |
 | Transport WebSocket | ✅ | ✅ | ✅ | |

@@ -133,7 +133,7 @@ go test -tags=integration -v -timeout 60s ./internal/firewall/...
 | 4 | Другое устройство (без policy) → прямой выход                                              | `todo.md:150`                     |
 | 5 | `--mode full --restart` → переход на legacy, ipset заполнен                                | `todo.md:151`, roadmap §9         |
 | 6 | `--uninstall` → policy удалена из RCI, `system configuration save` выполнен                | `todo.md:152`, roadmap §14        |
-| 7 | `reboot` → автостарт через `S05signcraze`, `--status` running                              | roadmap §12, safety-fixes #12     |
+| 7 | `reboot` → автостарт через `S99signcraze`, `--status` running                              | roadmap §12, safety-fixes #12     |
 | 8 | NDM rebuild iptables → hook `--reapply` восстанавливает `signcraze_policy`                 | roadmap §4                        |
 | 9 | `--diag` все PASS / только WARN при stopped                                                | roadmap §5, §26                   |
 |10 | `--ui on` → Routing Editor на 9092, Admin API на 9091 отвечают                             | roadmap §7, §24                   |

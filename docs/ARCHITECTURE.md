@@ -36,6 +36,10 @@ singbox         dpi             firewall
 
 | Пакет | Роль |
 |---|---|
+| `internal/singbox` | загрузка, установка, генерация конфига, версия sing-box |
+| `internal/core` | registry + абстрактный интерфейс `Core`; регистрирует ядра: sing-box, xray, mihomo |
+| `internal/core/xray` | адаптер ядра xray |
+| `internal/core/mihomo` | адаптер ядра mihomo |
 | `internal/service` | генерация init.d shim; интерфейс `Lifecycle`, связывающий singbox и nfqws2 |
 | `internal/geo` | загрузка SRS из sign-craze-dats; конвертация IP-листа → ipset |
 | `internal/web` | встроенный HTTP-сервер (Zashboard :9090 + admin REST API :9091 + Routing Editor :9092 + DPI targets API) |
@@ -53,7 +57,7 @@ cli/install.Run
   → locks.Acquire          (запрет параллельной установки)
   → singbox.Download       (GitHub releases, ETag-кэш, проверка SHA256)
   → singbox.Install        (бэкап текущего, untar, chmod, атомарное переименование)
-  → singbox.config.Render  (text/template → tproxy.json)
+  → singbox.config.Render  (text/template → config.json)
   → service.shim.Write     (генерация /opt/etc/init.d/S99signcraze)
   → firewall.modes.Apply   (цепочки iptables + ipset + mark-маршрутизация)
   → locks.Release
@@ -78,7 +82,7 @@ cli/service.Run
 | `9091` | Admin REST API sign-craze |
 | `9092` | Routing Editor SPA (Preact) |
 
-Все порты слушают на `0.0.0.0`. Iptables-правила в chain `signcraze_local` дропают входящий трафик на эти порты от WAN-интерфейса.
+Все порты слушают на `0.0.0.0`. Правила в `filter/INPUT` (owner-comment, idempotent) дропают входящий трафик на порт 9090 от WAN-интерфейса.
 
 ## Поток данных: `--ui on` (watchdog)
 
@@ -95,25 +99,26 @@ cli/startUI
 
 | Режим | sing-box | nfqws2 | iptables |
 |---|---|---|---|
-| `proxy` | да | нет | TPROXY/REDIRECT → sing-box |
-| `dpi` | нет | да | NFQUEUE → nfqws2 |
-| `hybrid` | да | да | per-domain: proxy-marked → TPROXY; dpi-marked → NFQUEUE |
+| `policy` (default) | да | опционально | fwmark 0xffffaaXX → MARK 0x53 → TUN |
+| `full` | да | опционально | ipset dst-match → MARK 0x53 → TUN |
+
+Legacy-имена `proxy`, `dpi`, `hybrid` принимаются для обратной совместимости и автоматически конвертируются.
 
 Приоритет цепочек в `mangle:PREROUTING`:
 
-1. `signcraze_dpi` (NFQUEUE, `--queue-bypass`) — обрабатывается первой
-2. `signcraze` (mark-маршрутизация для TPROXY) — обрабатывается второй
+1. `signcraze_dpi` (NFQUEUE, `--queue-bypass`) — обрабатывается первой (только full+DPI)
+2. `signcraze` / `signcraze_policy` (mark-маршрутизация) — обрабатывается второй
 
-Это гарантирует, что пакеты с меткой proxy не попадают в NFQUEUE.
+Цепочка `signcraze_policy_dpi` устанавливается в `mangle:POSTROUTING` (только policy+DPI).
 
 ## Идентификаторы
 
 | Элемент | Значение |
 |---|---|
-| Цепочки iptables | `signcraze`, `signcraze_full`, `signcraze_dpi` |
+| Цепочки iptables | `signcraze`, `signcraze_full`, `signcraze_dpi`, `signcraze_ports`, `signcraze_policy`, `signcraze_policy_dpi` |
 | ipset-наборы | `signcraze_ipv4`, `signcraze_ipv6` |
-| fwmark | `0x53` |
-| ID таблицы маршрутизации | `0x53` |
+| fwmark | `0x53` (= 83 dec) |
+| ID таблицы маршрутизации | `83` (decimal) |
 | Файл блокировки | `/opt/var/lock/sign-craze.lock` |
 | PID-файлы | `/opt/var/run/sign-craze-{singbox,nfqws2}.pid` |
 | init.d shim | `/opt/etc/init.d/S99signcraze` |

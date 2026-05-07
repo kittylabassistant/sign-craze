@@ -19,7 +19,7 @@
 | Geo-файлы (.srs)            | `/opt/var/lib/sign-craze/geo/`                |
 | Backups                     | `/opt/var/lib/sign-craze/backups/`            |
 | Логи                        | `/opt/var/log/sign-craze/`                    |
-| Init.d shim                 | `/opt/etc/init.d/S05signcraze`                |
+| Init.d shim                 | `/opt/etc/init.d/S99signcraze`                |
 | NDM hook                    | `/opt/etc/ndm/netfilter.d/50-sign-craze`      |
 | ipset-дамп                  | `/opt/share/sign-craze/ipset.dump`            |
 
@@ -66,7 +66,7 @@ sign-craze --reinstall
 ```sh
 sign-craze --status
 ls /opt/etc/ndm/netfilter.d/50-sign-craze
-ls /opt/etc/init.d/S05signcraze
+ls /opt/etc/init.d/S99signcraze
 ```
 
 ---
@@ -180,6 +180,29 @@ sign-craze --restart
 sign-craze --version
 ```
 
+### 5.4 Multi-core — управление прокси-ядром
+
+Sign-craze поддерживает несколько прокси-ядер: `sing-box` (по умолчанию), `xray`, `mihomo`.
+
+```sh
+sign-craze --core-list                    # список установленных ядер
+sign-craze --core sing-box                # переключить активное ядро (требует --restart)
+sign-craze --core xray
+sign-craze --core mihomo
+sign-craze --restart                      # применить смену ядра
+
+sign-craze --core-install xray            # скачать и установить ядро из GitHub Releases
+sign-craze --core-install mihomo
+```
+
+| Флаг | Описание |
+|------|----------|
+| `--core-list` | Показать все установленные ядра и текущее активное |
+| `--core <sing-box\|xray\|mihomo>` | Переключить активное ядро; требует `--restart` |
+| `--core-install <name>` | Скачать и установить ядро для текущей архитектуры |
+
+> Смена ядра не пересоздаёт конфиг автоматически — конфиг генерируется заново при следующем `--restart`.
+
 ---
 
 ## 6. Backup / Restore
@@ -192,6 +215,8 @@ sign-craze --backup
 ```
 
 Архивирует весь `/opt/etc/sign-craze/` (config.json, state.json, admin.creds). Geo-файлы и кэш не включаются — восстанавливаются через `--update-geo`.
+
+> `admin.creds` — reserved-файл; basic auth не применяется с v0.5.2, но файл создаётся `LoadOrCreateCreds` для совместимости.
 
 ### 6.2 Backup только config.json
 
@@ -233,6 +258,12 @@ sign-craze --restart    # применить
 ```sh
 sign-craze --dpi-strategy default
 sign-craze --dpi-strategy file:///opt/etc/sign-craze/nfqws2-custom.conf
+```
+
+Формат пути: `file://` + абсолютный путь (согласно справке `--dpi-strategy`).
+Пример: `file:///opt/etc/sign-craze/nfqws2-custom.conf` — три слеша: два от `file://` + один от абсолютного пути.
+
+```sh
 ```
 
 Обновить бинарь:

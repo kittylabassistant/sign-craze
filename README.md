@@ -28,7 +28,7 @@ Go-утилита для управления межсетевым экрано�
 ## Возможности
 
 - Управление sing-box: установка, запуск, остановка, обновление, откат
-- Три режима маршрутизации: `proxy` (tproxy), `dpi` (nfqws2 + NFQUEUE), `hybrid`
+- Два режима маршрутизации: `policy` — выборочная маркировка (default), `full` — весь LAN-трафик через прокси. DPI работает в обоих режимах через nfqws2 + NFQUEUE.
 - Атомарное применение правил iptables/ipset с гарантированным откатом
 - Гео-фильтрация через SRS rule-set (выборочная загрузка по SHA256)
 - Встроенный Web UI (только из LAN): Zashboard `:9090`, admin API `:9091`, Routing Editor `:9092` (vanilla Preact + htm SPA)
@@ -140,7 +140,7 @@ sign-craze --ui on
 - **9091** — admin REST API sign-craze (статус, конфиг, порты, исключения, DPI targets).
 - **9092** — Routing Editor SPA (визуальный редактор правил маршрутизации).
 
-Порты 9090/9091/9092 слушают на `0.0.0.0`; iptables-правила в chain `signcraze_local` дропают входящий трафик на эти порты от WAN-интерфейса. Из локальной сети доступ открыт без аутентификации.
+Порты 9090/9091/9092 слушают на `0.0.0.0`; правила в `filter/INPUT` (owner-comment + префикс) для блокировки Zashboard :9090 с WAN-интерфейса. Из локальной сети доступ открыт без аутентификации.
 
 Запуск: `sign-craze --ui on`.
 
@@ -160,8 +160,18 @@ sign-craze --status  / -s       Показать состояние сервис
 sign-craze --update  / -u       Обновить sign-craze
 sign-craze --update-geo / -g    Обновить гео-файлы (SRS rule-set)
 sign-craze --update-core        Обновить бинарь sing-box
+sign-craze --dpi-update         Переустановить актуальную версию nfqws2
+sign-craze --reinstall          Переустановить sign-craze поверх существующей (сохраняет state.json)
 
-sign-craze --mode proxy|dpi|hybrid   Переключить режим маршрутизации
+sign-craze --core-list          Список зарегистрированных ядер (sing-box/xray/mihomo)
+sign-craze --core <name>        Переключить активное ядро (требует --restart)
+sign-craze --core-install <name> Скачать и установить указанное ядро
+
+sign-craze --config-backup      Создать архив state.json + admin.creds в /opt/var/lib/sign-craze
+sign-craze --config-restore <путь> Восстановить конфиг из архива
+
+sign-craze --mode policy|full        Переключить режим маршрутизации
+                                     (Legacy-имена `proxy`/`dpi`/`hybrid` мигрируются в `policy` с предупреждением.)
 sign-craze --dpi on|off              Включить / выключить DPI-обход (по умолчанию off; первый `on` качает nfqws2)
 sign-craze --dpi-strategy <пресет>   Установить стратегию DPI
 sign-craze --dpi-targets <домены>    Selective DPI: desync только для указанных SNI (через запятую; clear — сбросить)
@@ -235,7 +245,7 @@ internal/cli  (диспетчер команд)
 | Phase 0 — подготовка | ✅ | go.mod, Makefile, CI, BEHAVIOR_SPEC.md, docs |
 | Phase 1 — scaffold | ✅ | cli, log, locks, exectx, errors, atomicfs, version, types |
 | Phase 2 — sing-box | ✅ | download, install, config template, service shim, lifecycle |
-| Phase 3 — firewall | ✅ | iptables/ipset, режимы tproxy/redirect/hybrid, Docker тесты |
+| Phase 3 — firewall | ✅ | iptables/ipset, режимы policy/full (TUN + ipset), Docker тесты |
 | Phase 4 — DPI/nfqws2 | ✅ | download, config, NFQUEUE lifecycle |
 | Phase 5 — гео-файлы | ✅ | SRS manifest, выборочная загрузка, ipset |
 | Phase 6 — Web UI | ✅ | HTTP-сервер, REST API, Routing Editor |
