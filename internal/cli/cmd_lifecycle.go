@@ -188,11 +188,62 @@ func doStop(ctx context.Context) error {
 
 func handleRestart(ctx context.Context, _ []string) error {
 	return withLock(ctx, func() error {
+		// UI-демон — отдельный процесс с собственным PID-файлом; doStop/doStart
+		// его не трогают. Без явного рестарта старый UI остаётся жить со старой
+		// in-memory копией бинаря (актуально после замены sign-craze на диске).
+		uiWasRunning := stopUIIfRunning(ctx)
+
 		if err := doStop(ctx); err != nil {
 			log.L().Warn("--restart: ошибка stop, продолжаем", "err", err)
 		}
-		return doStart(ctx)
+		if err := doStart(ctx); err != nil {
+			return err
+		}
+
+		if uiWasRunning {
+			if err := startUI(ctx); err != nil {
+				log.L().Warn("--restart: повторный запуск UI не удался", "err", err)
+			}
+		}
+		return nil
 	})
+}
+
+// uiLifecycleFn — фабрика UI lifecycle, переопределяемая в тестах для
+// inj fake без реального PID-файла и форка sign-craze --ui-daemon.
+var uiLifecycleFn = uiLifecycle
+
+// stopUIIfRunning останавливает фоновый UI-демон, если он был запущен.
+// Возвращает true если процесс был активен и его остановили — caller использует
+// флаг чтобы поднять UI обратно после рестарта основного сервиса.
+func stopUIIfRunning(ctx context.Context) bool {
+	lc, err := uiLifecycleFn()
+	if err != nil {
+		log.L().Warn("--restart: построение UI lifecycle", "err", err)
+		return false
+	}
+	st, err := lc.Status(ctx)
+	if err != nil {
+		log.L().Warn("--restart: чтение статуса UI", "err", err)
+		return false
+	}
+	if !st.Running {
+		return false
+	}
+	if err := lc.Stop(ctx); err != nil {
+		log.L().Warn("--restart: остановка UI не удалась", "err", err)
+		return false
+	}
+	return true
+}
+
+// startUI поднимает UI-демона повторно после рестарта.
+func startUI(ctx context.Context) error {
+	lc, err := uiLifecycleFn()
+	if err != nil {
+		return err
+	}
+	return lc.Start(ctx)
 }
 
 func handleServiceStart(ctx context.Context, _ []string) error {
