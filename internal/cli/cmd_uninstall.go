@@ -12,25 +12,13 @@ import (
 )
 
 func init() {
-	Register(Cmd{Long: "--uninstall", Help: "удалить sing-box и конфигурацию", Handler: handleUninstall})
-	Register(Cmd{Long: "--purge", Help: "удалить всё включая sign-craze, логи, geo", Handler: handlePurge})
+	Register(Cmd{Long: "--uninstall", Help: "полное удаление: sing-box, конфигурация, логи, sign-craze", Handler: handleUninstall})
 }
 
 func handleUninstall(ctx context.Context, _ []string) error {
 	return withLock(ctx, func() error {
 		removed := doUninstall(ctx, "--uninstall")
-		printRemoved("Удалено", removed)
-		fmt.Println("Бинарь sign-craze и логи сохранены — для полной очистки используйте --purge.")
-		return nil
-	})
-}
 
-func handlePurge(ctx context.Context, _ []string) error {
-	return withLock(ctx, func() error {
-		removed := doUninstall(ctx, "--purge")
-
-		// purge-extras: бинарь sign-craze + логи. /opt/var/lib/sign-craze
-		// уже снесён внутри doUninstall (включая cache/, geo/, backups/).
 		extras := map[string]string{
 			service.DefaultSignCrazeBin: "бинарь sign-craze",
 			"/opt/var/log/sign-craze":   "логи",
@@ -39,7 +27,7 @@ func handlePurge(ctx context.Context, _ []string) error {
 			if removeIfExists(path) {
 				removed = append(removed, label+" ("+path+")")
 			} else if _, err := os.Stat(path); err == nil {
-				log.L().Warn("--purge: удаление не удалось", "path", path)
+				log.L().Warn("--uninstall: удаление не удалось", "path", path)
 			}
 		}
 

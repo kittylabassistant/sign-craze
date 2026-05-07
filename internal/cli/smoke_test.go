@@ -14,7 +14,7 @@ var expectedCommands = []string{
 	"--status", "--version",
 	"--diag",
 	"--update", "--update-geo", "--update-core",
-	"--uninstall", "--purge",
+	"--uninstall",
 	"--dpi", "--dpi-strategy", "--dpi-update",
 	"--mode",
 	"--port-add", "--port-del", "--port-list",
