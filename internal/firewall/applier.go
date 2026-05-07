@@ -74,10 +74,13 @@ const IPSetExcludes = "signcraze_excludes"
 const TUNDeviceName = "signbox-tun"
 
 // TUNAttachTimeout — потолок ожидания TUN-интерфейса. На slow MIPS softfloat
-// sing-box cold-start может занимать 12-20s (загрузка geo, инициализация
-// outbounds, особенно после reboot без warmed page cache). На warm-start
-// обычно 0.6-2s. 30s — безопасный запас, не блокирующий быстрые случаи.
-const TUNAttachTimeout = 30 * time.Second
+// sing-box cold-start может занимать 12-20s в обычной нагрузке. После cold
+// reboot Keenetic (cache не прогрет, NDM поднимает интерфейсы параллельно,
+// kernel ещё подгружает netfilter-модули) реальное время до создания
+// signbox-tun наблюдается до 60s — наблюдалось 30s+ на reboot v0.5.13
+// 2026-05-07 → "интерфейс signbox-tun не появился за 30s". 90s — запас
+// для cold boot, на warm-start 0.6-2s — fast-path сработает мгновенно.
+const TUNAttachTimeout = 90 * time.Second
 
 // DefaultConfig возвращает конфигурацию по умолчанию согласно BEHAVIOR_SPEC §3.
 func DefaultConfig() Config {
