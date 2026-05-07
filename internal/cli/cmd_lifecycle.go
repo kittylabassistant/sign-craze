@@ -264,7 +264,51 @@ func handleServiceStart(ctx context.Context, _ []string) error {
 		log.L().Error("service-start: сеть недоступна", "err", err)
 		return err
 	}
-	return withLock(ctx, func() error { return doStart(ctx) })
+
+	// На холодном boot kernel может не успеть подгрузить xt_NFQUEUE до
+	// нашего вызова rc.unslung — `iptables -j NFQUEUE` падает с
+	// "No chain/target/match by that name". Retry с backoff: doStart
+	// идемпотентен (откатывает свой state при ошибке), а shim S99 идёт
+	// после S51dropbear → retry-цикл не зависит и не влияет на SSH 222.
+	const (
+		moduleTimeout = 60 * time.Second
+		moduleBackoff = 3 * time.Second
+	)
+	deadline := time.Now().Add(moduleTimeout)
+	var lastErr error
+	for attempt := 1; ; attempt++ {
+		err := withLock(ctx, func() error { return doStart(ctx) })
+		if err == nil {
+			return nil
+		}
+		if !isMissingNetfilterModuleErr(err) {
+			return err
+		}
+		lastErr = err
+		if !time.Now().Add(moduleBackoff).Before(deadline) {
+			break
+		}
+		log.L().Warn("service-start: netfilter module не готов, retry",
+			"attempt", attempt, "backoff", moduleBackoff, "err", err)
+		select {
+		case <-time.After(moduleBackoff):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return fmt.Errorf("service-start: netfilter module не появился за %s: %w", moduleTimeout, lastErr)
+}
+
+// isMissingNetfilterModuleErr различает случай не загруженного
+// netfilter-модуля (xt_NFQUEUE на cold boot Keenetic) от других ошибок
+// firewall apply. iptables печатает в stderr эту строку для отсутствующих
+// match/target — applier заворачивает stderr в `%w` через fmt.Errorf,
+// поэтому strings.Contains по полному сообщению ошибки надёжен.
+func isMissingNetfilterModuleErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "No chain/target/match by that name")
 }
 
 // ensureKeeneticPolicy гарантирует наличие IP-policy в Keenetic RCI.
