@@ -21,11 +21,11 @@ func TestDetect_RealCores(t *testing.T) {
 	}
 
 	cases := []struct {
-		name        string
-		url         string
-		wantRec     string
-		wantInAll   []string // хотя бы эти ядра должны быть в allCompatible
-		notInAll    []string // эти ядра НЕ должны быть в allCompatible
+		name      string
+		url       string
+		wantRec   string
+		wantInAll []string // хотя бы эти ядра должны быть в allCompatible
+		notInAll  []string // эти ядра НЕ должны быть в allCompatible
 	}{
 		{
 			name:      "plain_vless_all_compat",
