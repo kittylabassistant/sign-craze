@@ -100,6 +100,37 @@ cd signcraze-mipsle-bundle && ./install-offline.sh
 
 > Только сам бинарь sign-craze ставится offline. `sign-craze --install` всё равно тянет sing-box с GitHub. Для полностью изолированной установки — скачайте sing-box tarball отдельно и используйте `sign-craze --install-offline /tmp/sing-box-*.tar.gz`.
 
+## Quick Routing
+
+sign-craze управляет маршрутизацией через файл `/opt/etc/sign-craze/routing.json`. Редактирование — через встроенный Web UI на порту 9092 либо через REST API.
+
+### Порты управления
+
+| Порт | Что | Когда использовать |
+|------|-----|-------------------|
+| `:9090` | Zashboard (мониторинг) | Смотреть live трафик, переключать proxy-selectors |
+| `:9091` | Admin REST | Скрипты управления state, excludes, DPI |
+| `:9092` | **Routing Editor** | **Редактировать правила маршрутизации** |
+
+### Поднять Routing UI
+
+```bash
+sign-craze --ui on
+# Открыть http://<router-ip>:9092
+```
+
+### Готовые пресеты
+
+В UI на вкладке **Routing → "Пресеты ▾"**: `block-ads`, `ru-direct`, `blocked-vpn`, `discord-vpn`, `torrents-direct`, `block-bogon-udp`, `sign-craze-default`.
+
+После любых правок — нажать **Apply**, затем `sign-craze --restart`.
+
+### Документация
+
+- [docs/ROUTING.md](docs/ROUTING.md) — полная инструкция по routing
+- [docs/recipes/ru-direct-rest-proxy.md](docs/recipes/ru-direct-rest-proxy.md) — рецепт "РФ direct, остальное VPN"
+- [docs/recipes/](docs/recipes/) — все рецепты
+
 ## Web UI
 
 **Web UI** (только из LAN):

@@ -85,6 +85,12 @@ RAM: nfqws2 ~3 MB RSS, sing-box 20-30 MB, sign-craze + watchdog ~10 MB. Итог
 
 Discord voice использует UDP/QUIC без TLS SNI в открытом виде — фильтр по hostname не срабатывает. Для voice/video нужны другие техники (например, маршрутизация через прокси-outbound через geosite-discord rule в sing-box).
 
+## Routing
+
+### Как сделать чтобы РФ-сайты не шли через VPN?
+
+Открыть UI `:9092`, применить пресет `ru-direct` (добавляет geoip-ru → direct), затем добавить правило с rule_set `geosite-ru` и outbound=direct, в final поставить VPN-outbound, нажать Apply. После: `sign-craze --restart`. Подробно — [полный рецепт](../docs/recipes/ru-direct-rest-proxy.md).
+
 ## Web UI
 
 ### Как открыть веб-интерфейс?

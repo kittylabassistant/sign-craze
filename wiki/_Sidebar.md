@@ -2,6 +2,7 @@
 
 - [Home](Home)
 - [Installation](Installation)
+- [Routing](Routing)
 - [FAQ](FAQ)
 
 **Документация**
