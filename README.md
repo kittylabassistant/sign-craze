@@ -127,9 +127,10 @@ sign-craze --ui on
 
 ### Документация
 
-- [docs/ROUTING.md](docs/ROUTING.md) — полная инструкция по routing
-- [docs/recipes/ru-direct-rest-proxy.md](docs/recipes/ru-direct-rest-proxy.md) — рецепт "РФ direct, остальное VPN"
-- [docs/recipes/](docs/recipes/) — все рецепты
+- [wiki/Routing.md](wiki/Routing.md) — обзор routing pipeline
+- [wiki/Routing-Reference.md](wiki/Routing-Reference.md) — полная инструкция по routing.json и API
+- [wiki/Recipe-RU-Direct.md](wiki/Recipe-RU-Direct.md) — рецепт "РФ direct, остальное VPN"
+- [wiki/Recipes.md](wiki/Recipes.md) — индекс всех рецептов
 
 ## Web UI
 

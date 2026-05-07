@@ -3,6 +3,8 @@
 - [Home](Home)
 - [Installation](Installation)
 - [Routing](Routing)
+  - [Reference](Routing-Reference)
+  - [Recipes](Recipes)
 - [FAQ](FAQ)
 
 **Документация**

@@ -4,7 +4,7 @@
 
 | Рецепт | Цель |
 |--------|------|
-| [`ru-direct-rest-proxy.md`](ru-direct-rest-proxy.md) | РФ-домены и IP идут direct, всё остальное через VPN |
+| [`Recipe-RU-Direct.md`](Recipe-RU-Direct.md) | РФ-домены и IP идут direct, всё остальное через VPN |
 
 ## Структура рецепта
 

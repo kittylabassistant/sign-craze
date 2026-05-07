@@ -163,4 +163,4 @@ tail -f /opt/var/log/sign-craze/sign-craze.log | grep rule_set
 
 ## Recipes
 
-Детальный пример «RU-трафик через прямое соединение без SRS-пресетов» — см. [`docs/recipes/ru-direct-rest-proxy.md`](recipes/ru-direct-rest-proxy.md).
+Детальный пример «RU-трафик через прямое соединение без SRS-пресетов» — см. [Recipe-RU-Direct.md](Recipe-RU-Direct.md).

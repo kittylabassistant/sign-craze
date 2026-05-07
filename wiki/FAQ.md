@@ -89,7 +89,7 @@ Discord voice использует UDP/QUIC без TLS SNI в открытом �
 
 ### Как сделать чтобы РФ-сайты не шли через VPN?
 
-Открыть UI `:9092`, применить пресет `ru-direct` (добавляет geoip-ru → direct), затем добавить правило с rule_set `geosite-ru` и outbound=direct, в final поставить VPN-outbound, нажать Apply. После: `sign-craze --restart`. Подробно — [полный рецепт](../docs/recipes/ru-direct-rest-proxy.md).
+Открыть UI `:9092`, применить пресет `ru-direct` (добавляет geoip-ru → direct), затем добавить правило с rule_set `geosite-ru` и outbound=direct, в final поставить VPN-outbound, нажать Apply. После: `sign-craze --restart`. Подробно — [полный рецепт](Recipe-RU-Direct.md).
 
 ## Web UI
 

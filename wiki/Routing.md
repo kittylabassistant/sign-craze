@@ -34,7 +34,7 @@ sing-box (требуется sign-craze --restart)
 
 ## Быстрый рецепт: РФ-сайты напрямую, остальное через VPN
 
-В UI `:9092` применить пресет `ru-direct` (добавит geoip-ru → direct), затем вручную добавить rule_set `geosite-ru` и rule с `outbound=direct`, в секции final выбрать VPN-outbound, нажать Apply. После — выполнить `sign-craze --restart` в SSH. Полный пошаговый рецепт с примерами JSON — в [docs/recipes/ru-direct-rest-proxy.md](../docs/recipes/ru-direct-rest-proxy.md).
+В UI `:9092` применить пресет `ru-direct` (добавит geoip-ru → direct), затем вручную добавить rule_set `geosite-ru` и rule с `outbound=direct`, в секции final выбрать VPN-outbound, нажать Apply. После — выполнить `sign-craze --restart` в SSH. Полный пошаговый рецепт с примерами JSON — в [Recipe-RU-Direct.md](Recipe-RU-Direct.md).
 
 ## Встроенные пресеты
 
@@ -79,5 +79,5 @@ sign-craze --restart
 
 ## Где детальная документация
 
-- [docs/ROUTING.md](../docs/ROUTING.md) — полная инструкция по routing.json и API
-- [docs/recipes/](../docs/recipes/) — пошаговые рецепты для типовых сценариев
+- [Routing-Reference.md](Routing-Reference.md) — полная инструкция по routing.json и API
+- [Recipes.md](Recipes.md) — пошаговые рецепты для типовых сценариев
