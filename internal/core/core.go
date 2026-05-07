@@ -40,15 +40,12 @@ const (
 	GeoMRS
 )
 
-// Core — интерфейс прокси-ядра.
+// Core — общий интерфейс для всех прокси-ядер. Регистрация через registry.go.
+// Реализации: internal/core/singbox, internal/core/xray, internal/core/mihomo.
 //
 // Каждое ядро (sing-box, xray, mihomo) реализует Core и регистрируется в
 // registry. CLI-команды получают Core через registry.Get(name) — без прямой
 // зависимости на конкретное ядро.
-//
-// Интерфейс будет расширяться по мере реализации Phase B/C/D плана multi-core
-// (см. ~/.claude/plans/snuggly-floating-lobster.md). Минимальная поверхность
-// на Phase A.1: identity + paths + lifecycle + config validation + версия.
 type Core interface {
 	// Name — каноническое имя ядра ("sing-box", "xray", "mihomo").
 	// Совпадает с ключом в registry и значением state.Core.

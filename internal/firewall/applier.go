@@ -22,8 +22,9 @@ type Applier interface {
 	Apply(ctx context.Context, mode types.Mode) error
 
 	// AttachTUN ждёт появления TUN-интерфейса dev и устанавливает default-route
-	// в нашу таблицу маршрутизации. Должна вызываться из main после Start sing-box.
-	// Идемпотентна (ip route replace).
+	// в нашу таблицу маршрутизации. Вызывается из CLI (--start/--restart) после
+	// успешного старта ядра. Для xray и mihomo (TProxy mode) AttachTUN пропускается
+	// через SkipTUNCheck. Идемпотентна (ip route replace).
 	AttachTUN(ctx context.Context, dev string) error
 
 	// Remove удаляет все правила sign-craze (включая TUN-route). Идемпотентно.
@@ -73,9 +74,9 @@ type Config struct {
 // IPSetExcludes — имя ipset для bypass-исключений.
 const IPSetExcludes = "signcraze_excludes"
 
-// TUNDeviceName — имя TUN-интерфейса, создаваемого sing-box. Должно совпадать
-// с singbox.DefaultTUNInterfaceName (декларируется здесь для использования в
-// firewall-слое без зависимости от пакета singbox).
+// TUNDeviceName — имя TUN-интерфейса, создаваемого активным ядром (sing-box или
+// mihomo в TUN-режиме). Должно совпадать с singbox.DefaultTUNInterfaceName
+// (декларируется здесь для использования в firewall-слое без зависимости от пакета singbox).
 const TUNDeviceName = "signbox-tun"
 
 // TUNAttachTimeout — потолок ожидания TUN-интерфейса. На slow MIPS softfloat
@@ -211,7 +212,7 @@ func (a *applierImpl) deleteWAN9090Drop(ctx context.Context) {
 // Не создаёт ipset, не использует собственный fwmark для маркировки трафика.
 // Keenetic сам помечает пакеты устройств своим mark и создаёт ip rule.
 // Sign-craze добавляет TPROXY-правила с фильтром по этому mark и собственное
-// ip rule для loop-prevention исходящих от sing-box (SO_MARK=0x53).
+// ip rule для loop-prevention исходящих от активного ядра (SO_MARK=0x53).
 func (a *applierImpl) applyPolicyMode(ctx context.Context) error {
 	if a.cfg.PolicyMark == 0 {
 		return fmt.Errorf("firewall: ModePolicy требует PolicyMark != 0 (читать через ndm.GetPolicy)")

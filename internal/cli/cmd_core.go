@@ -30,9 +30,10 @@ func init() {
 }
 
 // handleCore — `--core [<name>]`: без аргумента показывает активное ядро,
-// с аргументом меняет state.Core. Полноценный runtime-switch (stop → swap →
-// regen config → start) появится в Phase B/C, когда есть второе ядро. Пока
-// разрешено сменить только на уже зарегистрированное и установленное ядро.
+// с аргументом меняет state.Core.
+// Runtime hot-swap (без --uninstall + --install) не реализован.
+// Для смены ядра: --uninstall → --install --core <name> → --restart.
+// Пока разрешено сменить только на уже зарегистрированное и установленное ядро.
 func handleCore(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		c := mustActiveCore()
@@ -61,14 +62,14 @@ func handleCore(ctx context.Context, args []string) error {
 		return nil
 	}
 
-	// Сейчас runtime-switch не реализован — нужны Phase B/C.
+	// Runtime hot-swap не реализован.
 	// Безопасная семантика: меняем state.Core только если бинарь целевого ядра
-	// уже установлен. Иначе явно отсылаем к --core-install (когда появится).
+	// уже установлен. Иначе явно отсылаем к --core-install.
 	if _, statErr := os.Stat(target.BinaryPath()); statErr != nil {
 		return fmt.Errorf(
 			"--core: ядро %q зарегистрировано, но бинарь не установлен в %s. "+
-				"Полноценный runtime-switch появится в Phase B/C; пока используйте "+
-				"--uninstall + --install --core %s",
+				"Runtime hot-swap (без --uninstall + --install) не реализован. "+
+				"Для смены ядра: --uninstall → --install --core %s → --restart",
 			name, target.BinaryPath(), name)
 	}
 

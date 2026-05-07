@@ -9,6 +9,6 @@
 // Версия: первая строка `mihomo -v` имеет формат
 // `Mihomo Meta vX.Y.Z {go-version} {go-os}/{go-arch} {build-time}`.
 //
-// Phase C этап: skeleton реализует только paths, version, lifecycle и register.
-// Render config (YAML), Clash API reverse-proxy — отдельными слайсами.
+// Пакет реализует core.Core для mihomo (Clash.Meta).
+// Lifecycle, скачивание, рендер YAML-конфига, Clash API reverse-proxy.
 package mihomo

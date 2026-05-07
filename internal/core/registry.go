@@ -93,8 +93,6 @@ func names() []string {
 }
 
 // resetForTest очищает реестр. Только для unit-тестов того же пакета.
-//
-//nolint:unused // используется в registry_test.go
 func resetForTest() {
 	regMu.Lock()
 	defer regMu.Unlock()

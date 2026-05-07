@@ -7,7 +7,6 @@
 // Версия: первая строка `xray version` имеет формат
 // `Xray X.Y.Z (Xray, Penetrates Everything.) Custom (...)`.
 //
-// Phase B этап: skeleton реализует только paths, version, lifecycle и
-// register. Download/Install/Render — отдельными слайсами по мере готовности
-// canonical Outbound types.
+// Пакет реализует core.Core для xray-core.
+// Скачивание, рендер JSON-конфига, lifecycle и canonical Outbound rendering.
 package xray

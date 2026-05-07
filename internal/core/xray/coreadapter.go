@@ -11,9 +11,9 @@ import (
 
 // coreImpl реализует core.Core для xray.
 //
-// Phase B skeleton: paths/lifecycle/version/check готовы, но Render и
-// Download/Install ещё не реализованы (B.1/B.2/Phase D). До их реализации
-// `--install --core xray` упадёт с ошибкой "не реализовано" в cmd_install.
+// Адаптер xray-core. Реализует core.Core: paths, version, lifecycle,
+// config render (JSON), download, install. Активируется через --core xray
+// или auto-detect по proxy URL (Vision UDP443 / PQ-VLESS).
 type coreImpl struct{}
 
 func (coreImpl) Name() string                    { return "xray" }

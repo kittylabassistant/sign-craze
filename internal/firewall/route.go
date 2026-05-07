@@ -77,11 +77,12 @@ func DeleteIPRule(ctx context.Context, runner exectx.Runner, fwmark uint32, tabl
 	return nil
 }
 
-// EnsureTUNRoute добавляет default-маршрут через TUN-интерфейс sing-box в указанную
-// таблицу. Идемпотентно через `ip route replace` (создаёт если нет, переустанавливает
-// если есть — без RTNETLINK errors на busybox-`ip` Keenetic).
+// EnsureTUNRoute добавляет default-маршрут через TUN-интерфейс активного ядра
+// (sing-box, либо mihomo в TUN-mode) в указанную таблицу. Идемпотентно через
+// `ip route replace` (создаёт если нет, переустанавливает если есть — без
+// RTNETLINK errors на busybox-`ip` Keenetic).
 //
-// Должен вызываться ПОСЛЕ старта sing-box и появления TUN-интерфейса
+// Должен вызываться ПОСЛЕ старта ядра, когда TUN-интерфейс уже создан
 // (см. WaitForInterface), иначе `ip route` падает «Cannot find device».
 func EnsureTUNRoute(ctx context.Context, runner exectx.Runner, dev string, table int) error {
 	args := []string{
@@ -120,13 +121,13 @@ func DeleteTUNRoute(ctx context.Context, runner exectx.Runner, dev string, table
 // ForceDeleteTUNDevice безусловно удаляет TUN-интерфейс dev через `ip tuntap del`.
 // Идемпотентно — отсутствующий интерфейс не считается ошибкой.
 //
-// Зачем: sing-box создаёт TUN при старте через TUNSETIFF на /dev/net/tun.
-// Если процесс sing-box убит SIGKILL раньше чем успел нормально закрыть fd,
+// Зачем: ядро создаёт TUN при старте через TUNSETIFF на /dev/net/tun.
+// Если процесс ядра убит SIGKILL раньше чем успел нормально закрыть fd,
 // или если ядро по какой-то причине не успевает зачистить netdev (наблюдалось
 // на slow MIPS Keenetic после AttachTUN-таймаута + sign-box Stop), интерфейс
 // остаётся "висеть" в kernel-таблице. Следующий sign-box при старте получает
 // `TUNSETIFF: device or resource busy` и падает FATAL до открытия лог-файла.
-// Этот хелпер вызывается перед стартом sing-box (cleanup) и после остановки
+// Этот хелпер вызывается перед стартом ядра (cleanup) и после остановки
 // (post-stop), гарантируя пустой netdev-namespace для signbox-tun.
 func ForceDeleteTUNDevice(ctx context.Context, runner exectx.Runner, dev string) {
 	if _, err := runner.Run(ctx, "ip", "tuntap", "del", "dev", dev, "mode", "tun"); err != nil {

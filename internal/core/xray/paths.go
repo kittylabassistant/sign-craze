@@ -6,7 +6,7 @@ const (
 	// DefaultConfigDir — каталог конфигов и состояния xray.
 	// Отделён от sing-box, чтобы оба ядра могли сосуществовать на одном
 	// устройстве. Структура: <dir>/config.json (xray), assets/ (geoip.dat,
-	// geosite.dat) — см. Phase B.x.
+	// geosite.dat).
 	DefaultConfigDir = "/opt/etc/sign-craze/xray"
 	// DefaultConfigPath — путь к config.json xray.
 	DefaultConfigPath = DefaultConfigDir + "/config.json"

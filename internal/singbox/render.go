@@ -12,9 +12,9 @@ import (
 // Два пути:
 //   - Canonical path (o.Protocol != ""): структурный рендер из canonical-полей
 //     Outbound.Protocol/Transport/TLS/Proto. Используется для всех outbound'ов,
-//     добавленных через parserURL Phase D.1+.
+//     добавленных через parserURL (v0.4.0+).
 //   - Legacy path (o.Protocol == ""): flatten Outbound.Settings как top-level поля.
-//     Используется для старых state.json до Phase D, где canonical не заполнен.
+//     Используется для старых state.json до v0.4.0, где canonical не заполнен.
 func renderOutboundJSON(o types.Outbound) (map[string]any, error) {
 	if o.Protocol != "" {
 		return renderCanonical(o)
