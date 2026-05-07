@@ -243,12 +243,12 @@ func InstallAssets(ipkPath, blobDir, luaDir string) error {
 	outerTar := tar.NewReader(outerGZ)
 	var dataTarBytes []byte
 	for {
-		hdr, err := outerTar.Next()
-		if errors.Is(err, io.EOF) {
+		hdr, hdrErr := outerTar.Next()
+		if errors.Is(hdrErr, io.EOF) {
 			break
 		}
-		if err != nil {
-			return fmt.Errorf("dpi assets: outer tar: %w", err)
+		if hdrErr != nil {
+			return fmt.Errorf("dpi assets: outer tar: %w", hdrErr)
 		}
 		if hdr.Name == "./data.tar.gz" || hdr.Name == "data.tar.gz" {
 			dataTarBytes, err = io.ReadAll(outerTar)

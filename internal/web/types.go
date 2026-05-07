@@ -89,4 +89,3 @@ func buildPresetsView() []DPIPreset {
 	}
 	return out
 }
-

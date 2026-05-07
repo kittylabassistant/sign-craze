@@ -83,8 +83,8 @@ func dpiEnable(ctx context.Context) error {
 
 	// Установка бинаря + blob-файлов, если отсутствуют.
 	if _, statErr := os.Stat(dpi.DefaultBinPath); statErr != nil {
-		if err := installNfqws2WithBlobs(ctx); err != nil {
-			return fmt.Errorf("--dpi on: %w", err)
+		if instErr := installNfqws2WithBlobs(ctx); instErr != nil {
+			return fmt.Errorf("--dpi on: %w", instErr)
 		}
 	}
 
