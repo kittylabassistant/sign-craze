@@ -124,4 +124,13 @@ type Core interface {
 	//
 	// Используется CLI (cmd_lifecycle.doStart) и web routing UI для preview.
 	RenderConfig(p types.CoreRenderParams) ([]byte, error)
+
+	// ValidateOutbound проверяет, поддерживает ли ядро данный outbound.
+	// Возвращает nil если совместимо, иначе ошибку с подсказкой про другое ядро.
+	//
+	// Используется auto-detect логикой (internal/core/detect.go) для выбора
+	// ядра по URL — каждое ядро инкапсулирует собственную матрицу совместимости
+	// (sing-box не поддерживает PQ-VLESS, xray не поддерживает TUIC/WG/hy2,
+	// mihomo не поддерживает Vision UDP443 и т.п.).
+	ValidateOutbound(ob types.Outbound) error
 }

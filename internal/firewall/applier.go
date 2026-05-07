@@ -63,6 +63,11 @@ type Config struct {
 	// Если задано, Apply добавляет INPUT DROP на порт 9090 (Zashboard) с WAN_IF,
 	// чтобы закрыть доступ из интернета. Remove удаляет это правило.
 	WANIface string
+
+	// SkipTUNCheck отключает pre-flight CheckTUNAvailable. Используется
+	// для xray/mihomo, которые работают через TProxy + fwmark и не создают
+	// TUN-устройство. Sing-box оставляет SkipTUNCheck=false (default).
+	SkipTUNCheck bool
 }
 
 // IPSetExcludes — имя ipset для bypass-исключений.
@@ -115,8 +120,11 @@ func (a *applierImpl) Apply(ctx context.Context, mode types.Mode) error {
 	log.L().Info("firewall: применение правил", "mode", mode)
 
 	// Pre-flight: kernel TUN — без него sing-box `tun` inbound не запустится.
-	if err := CheckTUNAvailable(); err != nil {
-		return fmt.Errorf("firewall: pre-flight: %w", err)
+	// Для xray/mihomo (TProxy mode) проверка пропускается через SkipTUNCheck.
+	if !a.cfg.SkipTUNCheck {
+		if err := CheckTUNAvailable(); err != nil {
+			return fmt.Errorf("firewall: pre-flight: %w", err)
+		}
 	}
 
 	// Pre-flight: проверить наличие match `set` в iptables (для ipset-маршрутизации

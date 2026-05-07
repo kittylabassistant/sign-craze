@@ -77,6 +77,16 @@ func (coreImpl) RenderConfig(rp types.CoreRenderParams) ([]byte, error) {
 	return Render(p)
 }
 
+func (coreImpl) ValidateOutbound(ob types.Outbound) error {
+	c := types.Canonical{
+		Protocol:  ob.Protocol,
+		Transport: ob.Transport,
+		TLS:       ob.TLS,
+		Proto:     ob.Proto,
+	}
+	return Validate(c)
+}
+
 func init() {
 	core.Register(coreImpl{})
 }

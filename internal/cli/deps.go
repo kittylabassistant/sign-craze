@@ -50,12 +50,17 @@ func newDPILifecycleFromState(st *state.State, iface string) service.Lifecycle {
 // newFirewallApplier строит Applier из state: пробрасывает ports/excludes/admin
 // + PolicyMark + DPIEnabled в Config.
 // AdminIPs мерджатся в Excludes — оба попадают в ipset signcraze_excludes.
+//
+// SkipTUNCheck определяется по активному ядру: sing-box работает через TUN
+// (pre-flight CheckTUNAvailable обязателен), xray/mihomo — через TProxy и
+// не создают TUN-устройство (проверка ложно фейлится в среде без TUN).
 func newFirewallApplier(s *state.State) (firewall.Applier, error) {
 	cfg := firewall.DefaultConfig()
 	cfg.Ports = append([]uint16(nil), s.Ports...)
 	cfg.AdminPorts = append([]uint16(nil), s.AdminPorts...)
 	cfg.PolicyMark = s.PolicyMark
 	cfg.DPIEnabled = s.DPIEnabled
+	cfg.SkipTUNCheck = s.Core != "" && s.Core != state.DefaultCore
 
 	excl, err := state.ParsedExcludes(s)
 	if err != nil {

@@ -85,6 +85,10 @@ func (coreImpl) RenderConfig(p types.CoreRenderParams) ([]byte, error) {
 	return Render(params)
 }
 
+func (coreImpl) ValidateOutbound(ob types.Outbound) error {
+	return Validate(ob)
+}
+
 func init() {
 	core.Register(coreImpl{})
 }

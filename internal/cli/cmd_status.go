@@ -21,7 +21,7 @@ func handleStatus(ctx context.Context, _ []string) error {
 
 	c := mustActiveCore()
 
-	sb, sbErr := newSingboxLifecycle().Status(ctx)
+	sb, sbErr := c.NewLifecycle().Status(ctx)
 	if sbErr != nil {
 		fmt.Fprintf(os.Stderr, "warn: статус %s: %v\n", c.Name(), sbErr)
 	}

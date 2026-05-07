@@ -44,9 +44,10 @@ func handleReapply(ctx context.Context, _ []string) error {
 		}
 	}()
 
-	sbStat, err := newSingboxLifecycle().Status(ctx)
-	if err != nil || !sbStat.Running {
-		log.L().Debug("--reapply: sing-box не запущен, пропуск")
+	c := mustActiveCore()
+	coreStat, err := c.NewLifecycle().Status(ctx)
+	if err != nil || !coreStat.Running {
+		log.L().Debug("--reapply: ядро не запущено, пропуск", "core", c.Name())
 		return nil
 	}
 

@@ -34,6 +34,7 @@ func (f *fakeCore) ParseVersion(line string) (string, error) { return line, nil 
 func (f *fakeCore) RenderConfig(_ types.CoreRenderParams) ([]byte, error) {
 	return []byte("fake"), nil
 }
+func (f *fakeCore) ValidateOutbound(_ types.Outbound) error { return nil }
 
 func TestRegisterAndGet(t *testing.T) {
 	resetForTest()

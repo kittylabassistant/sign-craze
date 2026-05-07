@@ -127,13 +127,44 @@ func handleReinstall(ctx context.Context, args []string) error {
 }
 
 func doInstall(ctx context.Context, mode installMode, offlineTar string, force bool, coreName string, proxyURL string, withDPI bool) error {
-	// Определяем целевое ядро. Пустое имя → sing-box (default).
+	// Auto-detect ядра по proxy URL если --core явно не указан.
+	// Multi-match → sing-box default + info-print. Конфликт явного --core с
+	// несовместимым URL обрабатывается ниже (после core.Get).
+	coreExplicit := coreName != ""
+	if !coreExplicit && proxyURL != "" {
+		if recommended, allCompat, ok := detectCoreFromProxyURL(proxyURL); ok {
+			if len(allCompat) > 1 {
+				fmt.Printf(
+					"URL совместим с: %s. Выбран %s (default). Для другого ядра: --core <name>\n",
+					strings.Join(allCompat, ", "), recommended,
+				)
+			} else {
+				fmt.Printf("URL требует ядро %s — будет установлено.\n", recommended)
+			}
+			coreName = recommended
+		}
+	}
 	if coreName == "" {
 		coreName = state.DefaultCore
 	}
 	activeC, err := core.Get(coreName)
 	if err != nil {
 		return fmt.Errorf("--install: %w", err)
+	}
+
+	// Conflict check: явный --core <X> + URL несовместим с X → ранний error.
+	// Без этого проблема всплывёт лишь на CheckConfig после скачивания тарбола.
+	if coreExplicit && proxyURL != "" {
+		if tempO, _, parseErr := parseProxyURLToOutbound(proxyURL); parseErr == nil {
+			if vErr := activeC.ValidateOutbound(tempO); vErr != nil {
+				_, allCompat := core.RecommendCore(tempO)
+				hint := "уберите --core (auto-detect подберёт ядро)"
+				if len(allCompat) > 0 {
+					hint = fmt.Sprintf("совместимые ядра: %s. Уберите --core или укажите одно из них", strings.Join(allCompat, ", "))
+				}
+				return fmt.Errorf("--install: URL несовместим с ядром %q: %w\nПодсказка: %s", coreName, vErr, hint)
+			}
+		}
 	}
 
 	// 0. Idempotency check: если уже установлено и не force — отказ
@@ -211,7 +242,7 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string, force b
 	var outbounds []types.Outbound
 	switch {
 	case proxyURL != "":
-		o, err := parseProxyURLToOutbound(proxyURL)
+		o, _, err := parseProxyURLToOutbound(proxyURL)
 		if err != nil {
 			return fmt.Errorf("--install --proxy: %w", err)
 		}
@@ -378,15 +409,32 @@ func setupDPIDefault(ctx context.Context, st *state.State) error {
 	return nil
 }
 
+// detectCoreFromProxyURL парсит URL и возвращает рекомендованное ядро +
+// список всех совместимых ядер. ok=false если URL невалиден или
+// canonical-парсинг не дал совместимых ядер — в этом случае caller
+// fallback'ит на state.DefaultCore.
+func detectCoreFromProxyURL(url string) (recommended string, allCompatible []string, ok bool) {
+	o, rec, err := parseProxyURLToOutbound(url)
+	if err != nil || rec == "" {
+		return "", nil, false
+	}
+	_, all := core.RecommendCore(o)
+	return rec, all, true
+}
+
 // parseProxyURLToOutbound — общий парсер URL для CLI-флага --proxy.
 // Тот же путь, что и в wizardURL: ParseCanonical с fallback на legacy Parse.
-func parseProxyURLToOutbound(url string) (types.Outbound, error) {
+//
+// Возвращает Outbound с встроенным canonical и имя рекомендованного ядра
+// для auto-detect. recommendedCore="" при невалидном URL или fallback-парсе
+// без canonical-данных.
+func parseProxyURLToOutbound(url string) (types.Outbound, string, error) {
 	o, canon, err := proxyparse.ParseCanonical(url)
 	if err != nil {
 		var legacyErr error
 		o, legacyErr = proxyparse.Parse(url)
 		if legacyErr != nil {
-			return types.Outbound{}, fmt.Errorf("парсинг URL: %w", err)
+			return types.Outbound{}, "", fmt.Errorf("парсинг URL: %w", err)
 		}
 	} else {
 		o.Protocol = canon.Protocol
@@ -395,9 +443,10 @@ func parseProxyURLToOutbound(url string) (types.Outbound, error) {
 		o.Proto = canon.Proto
 	}
 	if err := o.Validate(); err != nil {
-		return types.Outbound{}, fmt.Errorf("валидация: %w", err)
+		return types.Outbound{}, "", fmt.Errorf("валидация: %w", err)
 	}
-	return o, nil
+	recommended, _ := core.RecommendCore(o)
+	return o, recommended, nil
 }
 
 func checkOptMounted() error {

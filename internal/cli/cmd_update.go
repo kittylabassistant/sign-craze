@@ -21,7 +21,7 @@ import (
 func init() {
 	Register(Cmd{Short: "-u", Long: "--update", Help: "обновить sign-craze", Handler: handleUpdate})
 	Register(Cmd{Short: "-g", Long: "--update-geo", Help: "обновить geo-файлы", Handler: handleUpdateGeo})
-	Register(Cmd{Long: "--update-core", Help: "обновить только sing-box", Handler: handleUpdateCore})
+	Register(Cmd{Long: "--update-core", Help: "обновить активное прокси-ядро", Handler: handleUpdateCore})
 }
 
 func handleUpdate(ctx context.Context, _ []string) error {
@@ -121,54 +121,67 @@ func populateAndSaveIPSet(ctx context.Context, fileNames []string) error {
 
 func handleUpdateCore(ctx context.Context, _ []string) error {
 	return withLock(ctx, func() error {
+		c := mustActiveCore()
 		arch, err := types.DetectHostArch()
 		if err != nil {
 			return fmt.Errorf("--update-core: %w", err)
 		}
-		// Cache на /opt — на /tmp tmpfs Keenetic ~50MB, 12MB бинарь не влезает.
-		if mkErr := os.MkdirAll(singbox.DefaultCacheDir, 0o755); mkErr != nil {
+		// Cache на /opt — на /tmp tmpfs Keenetic ~50MB, ~12MB бинарь не влезает.
+		if mkErr := os.MkdirAll(c.CacheDir(), 0o755); mkErr != nil {
 			return fmt.Errorf("--update-core: mkdir cache: %w", mkErr)
 		}
-		fmt.Printf("Загрузка sing-box (arch=%s)...\n", arch)
-		res, err := singbox.Download(ctx, arch, singbox.DefaultCacheDir)
+		fmt.Printf("Загрузка %s (arch=%s)...\n", c.Name(), arch)
+		res, err := c.Download(ctx, arch, c.CacheDir())
 		if err != nil {
 			return fmt.Errorf("--update-core: %w", err)
 		}
 		if !res.Downloaded {
-			fmt.Println("sing-box уже актуален.")
+			fmt.Printf("%s уже актуален.\n", c.Name())
 			return nil
 		}
 
 		// Валидируем новый бинарь с текущим конфигом ДО замены.
-		st, err := loadState()
-		if err != nil {
-			return fmt.Errorf("--update-core: state: %w", err)
-		}
-		params := singbox.DefaultConfigParams()
-		params.Mode = st.Mode
-		params.Outbounds = st.Outbounds
-		if len(st.Outbounds) > 0 {
-			params.DefaultOutboundTag = st.Outbounds[0].Tag
+		// Sing-box использует специализированный PrepareAndValidate (атомарный
+		// swap во временный путь + sing-box check). Для xray/mihomo: общий путь
+		// Install → CheckConfig (бинарь уже валидирован Install).
+		if c.Name() == "sing-box" {
+			st, err := loadState()
+			if err != nil {
+				return fmt.Errorf("--update-core: state: %w", err)
+			}
+			params := singbox.DefaultConfigParams()
+			params.Mode = st.Mode
+			params.Outbounds = st.Outbounds
+			if len(st.Outbounds) > 0 {
+				params.DefaultOutboundTag = st.Outbounds[0].Tag
+			}
+
+			tempBin, err := singbox.PrepareAndValidate(ctx, newRunner(), singbox.DefaultCacheDir, res.Path, configPath(), params)
+			if err != nil {
+				return fmt.Errorf("--update-core: %w", err)
+			}
+			defer os.RemoveAll(filepath.Dir(tempBin))
+
+			// Стримим бинарь, чтобы не держать ~12MB в Go heap (см. cmd_install.go).
+			binFile, err := os.Open(tempBin)
+			if err != nil {
+				return fmt.Errorf("--update-core: открытие валидированного бинаря: %w", err)
+			}
+			_, err = atomicfs.BackupAndReplaceFromReader(singbox.DefaultBinPath, binFile, 0o755)
+			_ = binFile.Close()
+			if err != nil {
+				return fmt.Errorf("--update-core: установка бинаря: %w", err)
+			}
+		} else {
+			if err := c.Install(ctx, newRunner(), res.Path); err != nil {
+				return fmt.Errorf("--update-core: установка %s: %w", c.Name(), err)
+			}
+			if err := c.CheckConfig(ctx, newRunner(), c.ConfigPath()); err != nil {
+				return fmt.Errorf("--update-core: проверка конфига %s: %w", c.Name(), err)
+			}
 		}
 
-		tempBin, err := singbox.PrepareAndValidate(ctx, newRunner(), singbox.DefaultCacheDir, res.Path, configPath(), params)
-		if err != nil {
-			return fmt.Errorf("--update-core: %w", err)
-		}
-		defer os.RemoveAll(filepath.Dir(tempBin))
-
-		// Стримим бинарь, чтобы не держать ~12MB в Go heap (см. cmd_install.go).
-		binFile, err := os.Open(tempBin)
-		if err != nil {
-			return fmt.Errorf("--update-core: открытие валидированного бинаря: %w", err)
-		}
-		_, err = atomicfs.BackupAndReplaceFromReader(singbox.DefaultBinPath, binFile, 0o755)
-		_ = binFile.Close()
-		if err != nil {
-			return fmt.Errorf("--update-core: установка бинаря: %w", err)
-		}
-
-		fmt.Printf("sing-box обновлён до %s. Перезапустите сервис: sign-craze --restart\n", res.Version)
+		fmt.Printf("%s обновлён до %s. Перезапустите сервис: sign-craze --restart\n", c.Name(), res.Version)
 		return nil
 	})
 }

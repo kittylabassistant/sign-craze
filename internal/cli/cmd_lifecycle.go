@@ -14,7 +14,6 @@ import (
 	"github.com/kittylabassistant/sign-craze/internal/firewall"
 	"github.com/kittylabassistant/sign-craze/internal/log"
 	"github.com/kittylabassistant/sign-craze/internal/ndm"
-	"github.com/kittylabassistant/sign-craze/internal/singbox"
 	"github.com/kittylabassistant/sign-craze/internal/state"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
@@ -36,9 +35,11 @@ func doStart(ctx context.Context) error {
 		return fmt.Errorf("--start: %w", err)
 	}
 
-	// Pre-check установки.
-	if _, statErr := os.Stat(singbox.DefaultBinPath); statErr != nil {
-		return fmt.Errorf("--start: sing-box не установлен (запустите --install)")
+	c := mustActiveCore()
+
+	// Pre-check установки активного ядра.
+	if _, statErr := os.Stat(c.BinaryPath()); statErr != nil {
+		return fmt.Errorf("--start: %s не установлен (запустите --install)", c.Name())
 	}
 
 	// Рендеринг и запись конфига активного ядра.
@@ -50,7 +51,6 @@ func doStart(ctx context.Context) error {
 	//
 	// Для xray и mihomo используем новый путь: Core.RenderConfig(st) →
 	// fast-path bytes.Equal → atomicfs.WriteFileAtomic → CheckConfig.
-	c := mustActiveCore()
 	if c.Name() == "sing-box" {
 		if regenErr := ensureConfigFresh(ctx, st); regenErr != nil {
 			return fmt.Errorf("--start: regenerate config: %w", regenErr)
@@ -86,40 +86,49 @@ func doStart(ctx context.Context) error {
 		log.L().Warn("--start: восстановление ipset не удалось", "err", rstErr)
 	}
 
-	// Pre-cleanup: убрать сталый signbox-tun если остался от предыдущего
-	// failed --start (sing-box убит SIGKILL до закрытия TUN fd, kernel на slow
-	// MIPS не успевает зачистить netdev). Без этого следующий sing-box падает
-	// FATAL: TUNSETIFF: device or resource busy.
-	firewall.ForceDeleteTUNDevice(ctx, newRunner(), firewall.TUNDeviceName)
-
-	// Старт sing-box. sing-box создаёт TUN-интерфейс при инициализации
-	// tun-inbound, поэтому подключение route в TUN откладывается до AttachTUN.
-	sbLC := newSingboxLifecycle()
-	if startErr := sbLC.Start(ctx); startErr != nil {
-		if rmErr := applier.Remove(ctx); rmErr != nil {
-			log.L().Warn("--start: откат firewall не удался", "err", rmErr)
-		}
-		return fmt.Errorf("--start: sing-box: %w", startErr)
+	// Pre-cleanup TUN — только для sing-box (xray/mihomo не создают TUN).
+	// Убрать сталый signbox-tun если остался от предыдущего failed --start
+	// (sing-box убит SIGKILL до закрытия TUN fd, kernel на slow MIPS не успевает
+	// зачистить netdev). Без этого следующий sing-box падает FATAL: TUNSETIFF:
+	// device or resource busy.
+	if c.Name() == "sing-box" {
+		firewall.ForceDeleteTUNDevice(ctx, newRunner(), firewall.TUNDeviceName)
 	}
 
-	// Дождаться появления TUN-интерфейса и установить default-route в нашу таблицу.
-	if attachErr := applier.AttachTUN(ctx, firewall.TUNDeviceName); attachErr != nil {
-		// Подсветить причину: чаще всего sing-box упал или просто медленно
-		// инициализирует TUN. Tail sing-box.log даёт юзеру немедленный сигнал
-		// без необходимости лезть в /opt/var/log/sign-craze/ руками.
-		if tail := lastSingboxLogLines(20); tail != "" {
-			log.L().Warn("--start: последние строки sing-box.log", "tail", tail)
-		}
-		if stopErr := sbLC.Stop(ctx); stopErr != nil {
-			log.L().Warn("--start: остановка sing-box после ошибки AttachTUN", "err", stopErr)
-		}
-		// Post-stop cleanup: kernel на slow MIPS может не освободить netdev
-		// после kill — следующая попытка получит EBUSY.
-		firewall.ForceDeleteTUNDevice(ctx, newRunner(), firewall.TUNDeviceName)
+	// Старт активного ядра. Sing-box создаёт TUN-интерфейс при инициализации
+	// tun-inbound — подключение route в TUN откладывается до AttachTUN ниже.
+	// Xray/mihomo работают через TProxy + fwmark и не требуют TUN-attach.
+	coreLC := c.NewLifecycle()
+	if startErr := coreLC.Start(ctx); startErr != nil {
 		if rmErr := applier.Remove(ctx); rmErr != nil {
 			log.L().Warn("--start: откат firewall не удался", "err", rmErr)
 		}
-		return fmt.Errorf("--start: TUN attach: %w", attachErr)
+		return fmt.Errorf("--start: %s: %w", c.Name(), startErr)
+	}
+
+	// TUN attach — только для sing-box. Дождаться появления TUN-интерфейса и
+	// установить default-route в нашу таблицу.
+	if c.Name() == "sing-box" {
+		if attachErr := applier.AttachTUN(ctx, firewall.TUNDeviceName); attachErr != nil {
+			// Подсветить причину: чаще всего sing-box упал или просто медленно
+			// инициализирует TUN. Tail sing-box.log даёт юзеру немедленный сигнал
+			// без необходимости лезть в /opt/var/log/sign-craze/ руками.
+			if tail := lastSingboxLogLines(20); tail != "" {
+				log.L().Warn("--start: последние строки sing-box.log", "tail", tail)
+			}
+			if stopErr := coreLC.Stop(ctx); stopErr != nil {
+				log.L().Warn("--start: остановка sing-box после ошибки AttachTUN", "err", stopErr)
+			}
+			// Post-stop cleanup: kernel на slow MIPS может не освободить netdev
+			// после kill — следующая попытка получит EBUSY.
+			firewall.ForceDeleteTUNDevice(ctx, newRunner(), firewall.TUNDeviceName)
+			if rmErr := applier.Remove(ctx); rmErr != nil {
+				log.L().Warn("--start: откат firewall не удался", "err", rmErr)
+			}
+			return fmt.Errorf("--start: TUN attach: %w", attachErr)
+		}
+	} else {
+		log.L().Info("--start: TProxy режим, TUN attach пропущен", "core", c.Name())
 	}
 
 	// Опциональный старт nfqws2.
@@ -141,11 +150,11 @@ func doStart(ctx context.Context) error {
 		}
 	}
 
-	sbStat, statErr := sbLC.Status(ctx)
+	coreStat, statErr := coreLC.Status(ctx)
 	if statErr != nil {
-		log.L().Warn("--start: чтение статуса sing-box", "err", statErr)
+		log.L().Warn("--start: чтение статуса ядра", "core", c.Name(), "err", statErr)
 	}
-	fmt.Printf("Сервис запущен (sing-box pid=%d, режим=%s)\n", sbStat.PID, st.Mode)
+	fmt.Printf("Сервис запущен (%s pid=%d, режим=%s)\n", c.Name(), coreStat.PID, st.Mode)
 	return nil
 }
 
@@ -164,15 +173,19 @@ func doStop(ctx context.Context) error {
 		log.L().Debug("--stop: nfqws2 stop", "err", err)
 	}
 
-	sbLC := newSingboxLifecycle()
-	if err := sbLC.Stop(ctx); err != nil {
-		log.L().Debug("--stop: sing-box stop", "err", err)
+	c := mustActiveCore()
+	coreLC := c.NewLifecycle()
+	if err := coreLC.Stop(ctx); err != nil {
+		log.L().Debug("--stop: core stop", "core", c.Name(), "err", err)
 	}
 
-	// Принудительно зачистить TUN-интерфейс. На slow MIPS Keenetic kernel
-	// иногда не освобождает netdev сразу после kill sing-box — без этого
-	// следующий --start падает FATAL: TUNSETIFF: device or resource busy.
-	firewall.ForceDeleteTUNDevice(ctx, newRunner(), firewall.TUNDeviceName)
+	// Принудительно зачистить TUN-интерфейс — только для sing-box.
+	// На slow MIPS Keenetic kernel иногда не освобождает netdev сразу после
+	// kill sing-box — без этого следующий --start падает FATAL: TUNSETIFF:
+	// device or resource busy. Xray/mihomo не создают TUN-устройство.
+	if c.Name() == "sing-box" {
+		firewall.ForceDeleteTUNDevice(ctx, newRunner(), firewall.TUNDeviceName)
+	}
 
 	// Удалить firewall — даже если state нечитаем.
 	st, err := loadState()

@@ -13,7 +13,8 @@ func init() {
 }
 
 func handleDiag(ctx context.Context, _ []string) error {
-	deps := diag.DefaultDeps(newRunner(), newSingboxLifecycle(), newDPILifecycle())
+	c := mustActiveCore()
+	deps := diag.DefaultDeps(newRunner(), c.NewLifecycle(), newDPILifecycle())
 	results := diag.Run(ctx, diag.DefaultChecks(deps))
 
 	for _, r := range results {
