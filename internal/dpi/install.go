@@ -205,34 +205,38 @@ func extractBinaryToFile(tarPath, dstPath string, perm os.FileMode) error {
 	return nil
 }
 
-// InstallBlobs извлекает blob-файлы (quic_initial.bin, tls_clienthello.bin и
-// прочие *.bin из etc/nfqws2/blobs/) из .ipk пакета в dstDir.
+// InstallAssets извлекает из .ipk все runtime-ресурсы nfqws2:
+//   - blob-payload'ы (etc/nfqws2/blobs/*.bin → blobDir/*.bin)
+//   - lua-расширения (etc/nfqws2/lua/*.lua.gz → luaDir/*.lua, gunzip)
 //
-// Без blob-файлов стратегии --lua-desync=fake:blob=quic_initial / blob=tls_clienthello
-// не работают: lua-init nfqws2 загружает их через --blob-dir. Если файлов нет
-// — nfqws2 падает в init с ошибкой "blob not found".
+// Без lua-файлов функции стратегий типа `circular`, `multisplit`,
+// `hostfakesplit` не существуют — они определены в zapret-antidpi.lua.
+// Без blob-файлов стратегии `--lua-desync=fake:blob=...` падают с
+// "blob not found".
 //
 // Идемпотентно: перезаписывает существующие файлы атомарно.
-// Поддерживает только .ipk (для .tar.gz без специфичной структуры безопасно
-// возвращает nil — blobs не требуются для не-Entware дистрибутивов).
-func InstallBlobs(ipkPath, dstDir string) error {
+// Для .tar.gz без специфичной структуры — no-op.
+func InstallAssets(ipkPath, blobDir, luaDir string) error {
 	if !strings.HasSuffix(ipkPath, ".ipk") {
-		log.L().Debug("dpi: blob-распаковка пропущена (не .ipk)", "path", ipkPath)
+		log.L().Debug("dpi: assets-распаковка пропущена (не .ipk)", "path", ipkPath)
 		return nil
 	}
-	if err := os.MkdirAll(dstDir, 0o755); err != nil {
-		return fmt.Errorf("dpi blobs: mkdir %s: %w", dstDir, err)
+	if err := os.MkdirAll(blobDir, 0o755); err != nil {
+		return fmt.Errorf("dpi assets: mkdir %s: %w", blobDir, err)
+	}
+	if err := os.MkdirAll(luaDir, 0o755); err != nil {
+		return fmt.Errorf("dpi assets: mkdir %s: %w", luaDir, err)
 	}
 
 	f, err := os.Open(ipkPath)
 	if err != nil {
-		return fmt.Errorf("dpi blobs: открытие .ipk: %w", err)
+		return fmt.Errorf("dpi assets: открытие .ipk: %w", err)
 	}
 	defer f.Close()
 
 	outerGZ, err := gzip.NewReader(f)
 	if err != nil {
-		return fmt.Errorf("dpi blobs: outer gzip: %w", err)
+		return fmt.Errorf("dpi assets: outer gzip: %w", err)
 	}
 	defer outerGZ.Close()
 
@@ -244,59 +248,88 @@ func InstallBlobs(ipkPath, dstDir string) error {
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("dpi blobs: outer tar: %w", err)
+			return fmt.Errorf("dpi assets: outer tar: %w", err)
 		}
 		if hdr.Name == "./data.tar.gz" || hdr.Name == "data.tar.gz" {
 			dataTarBytes, err = io.ReadAll(outerTar)
 			if err != nil {
-				return fmt.Errorf("dpi blobs: чтение data.tar.gz: %w", err)
+				return fmt.Errorf("dpi assets: чтение data.tar.gz: %w", err)
 			}
 			break
 		}
 	}
 	if dataTarBytes == nil {
-		return fmt.Errorf("dpi blobs: data.tar.gz не найден в %s", ipkPath)
+		return fmt.Errorf("dpi assets: data.tar.gz не найден в %s", ipkPath)
 	}
 
 	innerGZ, err := gzip.NewReader(bytes.NewReader(dataTarBytes))
 	if err != nil {
-		return fmt.Errorf("dpi blobs: inner gzip: %w", err)
+		return fmt.Errorf("dpi assets: inner gzip: %w", err)
 	}
 	defer innerGZ.Close()
 
 	innerTar := tar.NewReader(innerGZ)
-	count := 0
+	blobCount, luaCount := 0, 0
 	for {
 		hdr, err := innerTar.Next()
 		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("dpi blobs: inner tar: %w", err)
+			return fmt.Errorf("dpi assets: inner tar: %w", err)
 		}
 		if hdr.Typeflag != tar.TypeReg {
 			continue
 		}
-		// Пропускаем path traversal: blob должен лежать ровно в etc/nfqws2/blobs/.
 		clean := filepath.Clean(hdr.Name)
-		if !strings.Contains(clean, "etc/nfqws2/blobs/") {
-			continue
-		}
 		base := filepath.Base(clean)
-		if !strings.HasSuffix(base, ".bin") {
-			continue
+
+		switch {
+		case strings.Contains(clean, "etc/nfqws2/blobs/") && strings.HasSuffix(base, ".bin"):
+			dstPath := filepath.Join(blobDir, base)
+			if err := atomicfs.WriteFileAtomicFromReader(dstPath, innerTar, 0o644); err != nil {
+				return fmt.Errorf("dpi assets: запись blob %s: %w", dstPath, err)
+			}
+			blobCount++
+			log.L().Debug("dpi blob извлечён", "name", base, "dst", dstPath)
+
+		case strings.Contains(clean, "etc/nfqws2/lua/") && strings.HasSuffix(base, ".lua.gz"):
+			// Распаковываем .lua.gz → .lua (gunzip).
+			gzData, err := io.ReadAll(innerTar)
+			if err != nil {
+				return fmt.Errorf("dpi assets: чтение %s: %w", base, err)
+			}
+			gz, err := gzip.NewReader(bytes.NewReader(gzData))
+			if err != nil {
+				return fmt.Errorf("dpi assets: %s gzip: %w", base, err)
+			}
+			luaData, err := io.ReadAll(gz)
+			_ = gz.Close()
+			if err != nil {
+				return fmt.Errorf("dpi assets: %s decompress: %w", base, err)
+			}
+			outName := strings.TrimSuffix(base, ".gz")
+			dstPath := filepath.Join(luaDir, outName)
+			if err := atomicfs.WriteFileAtomic(dstPath, luaData, 0o644); err != nil {
+				return fmt.Errorf("dpi assets: запись lua %s: %w", dstPath, err)
+			}
+			luaCount++
+			log.L().Debug("dpi lua извлечён", "name", outName, "dst", dstPath)
 		}
-		dstPath := filepath.Join(dstDir, base)
-		if err := atomicfs.WriteFileAtomicFromReader(dstPath, innerTar, 0o644); err != nil {
-			return fmt.Errorf("dpi blobs: запись %s: %w", dstPath, err)
-		}
-		count++
-		log.L().Debug("dpi blob извлечён", "name", base, "dst", dstPath)
 	}
-	if count == 0 {
-		log.L().Warn("dpi blobs: ни одного *.bin не найдено в .ipk", "path", ipkPath)
+	if blobCount == 0 && luaCount == 0 {
+		log.L().Warn("dpi assets: blobs/lua не найдены в .ipk", "path", ipkPath)
 	} else {
-		log.L().Info("dpi blobs распакованы", "count", count, "dir", dstDir)
+		log.L().Info("dpi assets распакованы", "blobs", blobCount, "lua", luaCount, "blobDir", blobDir, "luaDir", luaDir)
 	}
 	return nil
+}
+
+// InstallBlobs — обратно-совместимая обёртка. Распаковывает только blob-файлы.
+// Для полного набора ресурсов используйте InstallAssets.
+//
+// Deprecated: используйте InstallAssets с blobDir + luaDir.
+func InstallBlobs(ipkPath, blobDir string) error {
+	// Используем тот же blobDir и временный luaDir рядом — caller хочет blobs only.
+	return InstallAssets(ipkPath, blobDir, filepath.Join(filepath.Dir(blobDir), "lua"))
 }

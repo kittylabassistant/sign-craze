@@ -66,37 +66,48 @@ const PolicyTUNDeviceName = "signbox-tun"
 // PolicyDPIRules возвращает правила NFQUEUE для режима policy.
 // Применяются только когда DPIEnabled=true.
 //
-// Фильтр "-m mark --mark keenMark" гарантирует, что NFQUEUE срабатывает
-// ТОЛЬКО на трафике устройств, привязанных к policy в Keenetic.
+// **Архитектурно важно:** правила висят в POSTROUTING, НЕ в PREROUTING.
+// Причина — в режиме `policy` весь LAN-трафик с keenetic-mark переотмечается
+// в наш fwmark 0x53 → ip rule lookup → table 83 → signbox-tun. Sing-box
+// получает соединение и сам открывает исходящий ClientHello к ISP.
+// PREROUTING NFQUEUE десинхронизирует пакет от LAN-клиента, но sing-box
+// потом этот пакет НЕ пробрасывает — он формирует свой собственный поток
+// к ISP. nfqws2-десинхронизация теряется, ISP видит чистый ClientHello и
+// блокирует SNI=youtube.com / discord.com.
+//
+// Правильное место — POSTROUTING на исходящем интерфейсе, где пакет
+// уже после sing-box и реально уходит на провайдера. NFQUEUE здесь
+// перехватит ClientHello sing-box → nfqws2 desync → выпуск на ISP.
+//
+// Фильтр `--dport 443` ограничивает обработку TLS+QUIC трафика — основной
+// канал DPI-блокировок на mtgs/Москва. HTTP (80) обычно не блокируется
+// и не нуждается в desync.
+//
+// keenMark передаётся для совместимости с прежним signature, но в
+// POSTROUTING-схеме не используется (mark ставится в PREROUTING до того,
+// как пакет дойдёт до POSTROUTING; sing-box свои пакеты помечает 0x53).
 func PolicyDPIRules(keenMark uint32, nfqueueNum int) []RuleSpec {
-	if keenMark == 0 {
-		return nil
-	}
-	keen := fmt.Sprintf("0x%x", keenMark)
 	queue := fmt.Sprintf("%d", nfqueueNum)
+	_ = keenMark // зарезервирован для будущего фильтра по mark
 
 	return []RuleSpec{
 		{
 			Table: "mangle", Chain: PolicyDPIChainName,
 			Args: []string{
-				"-m", "mark", "--mark", keen,
-				"-p", "tcp",
+				"-p", "tcp", "--dport", "443",
 				"-j", "NFQUEUE", "--queue-num", queue, "--queue-bypass",
-				"-m", "comment", "--comment", "signcraze:dpi-tcp",
 			},
 		},
 		{
 			Table: "mangle", Chain: PolicyDPIChainName,
 			Args: []string{
-				"-m", "mark", "--mark", keen,
-				"-p", "udp",
+				"-p", "udp", "--dport", "443",
 				"-j", "NFQUEUE", "--queue-num", queue, "--queue-bypass",
-				"-m", "comment", "--comment", "signcraze:dpi-udp",
 			},
 		},
-		// Переход PREROUTING → signcraze_policy_dpi (вставляется ПЕРЕД signcraze_policy).
+		// Переход POSTROUTING → signcraze_policy_dpi.
 		{
-			Table: "mangle", Chain: "PREROUTING",
+			Table: "mangle", Chain: "POSTROUTING",
 			Args: []string{"-j", PolicyDPIChainName},
 		},
 	}

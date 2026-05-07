@@ -43,8 +43,9 @@ func TestBuildCmdline_СтруктураUpstream(t *testing.T) {
 	checks := []string{
 		"--user=nobody",
 		"--qnum=300",
-		"--lua-init",
-		"--blob-dir=" + DefaultBlobDir,
+		"--lua-init=@" + DefaultLuaDir + "/zapret-antidpi.lua",
+		"--blob=quic_initial:@" + DefaultBlobDir + "/quic_initial.bin",
+		"--blob=tls_clienthello:@" + DefaultBlobDir + "/tls_clienthello.bin",
 		"--filter-udp=443",
 		"--filter-l7=quic",
 		"--filter-tcp=443,80,1984,5222",

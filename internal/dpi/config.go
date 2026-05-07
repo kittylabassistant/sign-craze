@@ -21,6 +21,11 @@ var nfqws2ConfTmpl string
 // tls_clienthello.bin и т.п.). Распаковывается из .ipk во время Install.
 const DefaultBlobDir = "/opt/etc/sign-craze/blobs"
 
+// DefaultLuaDir — каталог для lua-расширений nfqws2 (zapret-lib.lua,
+// zapret-antidpi.lua, zapret-auto.lua). Без них стратегии circular,
+// multisplit, hostfakesplit недоступны (бинарь nfqws2 v0.9.5.x их не знает).
+const DefaultLuaDir = "/opt/etc/sign-craze/lua"
+
 // DefaultQueueNum — номер NFQUEUE по умолчанию. 300 совпадает с upstream
 // nfqws2-keenetic, чтобы избежать конфликта если оператор параллельно ставил
 // nfqws2-keenetic вручную через Entware.
@@ -58,8 +63,20 @@ type ConfigParams struct {
 
 // Дефолтные стратегии из github.com/nfqws/nfqws2-keenetic v1.1.5 (MIT).
 // Покрывают YouTube (TLS+QUIC) и Discord (UDP voice/STUN + TLS).
+//
+// BaseArgs использует синтаксис upstream:
+//   - `--lua-init=@<path>` (с символом '@', означает «читать из файла»)
+//   - `--blob=<name>:@<path>` — связывает blob-имя с конкретным файлом
+//
+// Без lua-init функции стратегий circular/multisplit/hostfakesplit не
+// существуют в bundled nfqws2 v0.9.5.x. Без --blob=name:@path аргументы
+// `--lua-desync=fake:blob=quic_initial` падают с "blob not found".
 const (
-	defaultBaseArgs = "--lua-init --blob-dir=" + DefaultBlobDir
+	defaultBaseArgs = "--lua-init=@" + DefaultLuaDir + "/zapret-lib.lua " +
+		"--lua-init=@" + DefaultLuaDir + "/zapret-antidpi.lua " +
+		"--lua-init=@" + DefaultLuaDir + "/zapret-auto.lua " +
+		"--blob=quic_initial:@" + DefaultBlobDir + "/quic_initial.bin " +
+		"--blob=tls_clienthello:@" + DefaultBlobDir + "/tls_clienthello.bin"
 
 	defaultArgsQUIC = "--filter-udp=443 --filter-l7=quic " +
 		"--payload=quic_initial " +

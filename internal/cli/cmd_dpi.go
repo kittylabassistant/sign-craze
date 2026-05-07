@@ -67,10 +67,10 @@ func installNfqws2WithBlobs(ctx context.Context) error {
 	if instErr := dpi.Install(res.Path, dpi.DefaultBinPath); instErr != nil {
 		return fmt.Errorf("install: %w", instErr)
 	}
-	if blobErr := dpi.InstallBlobs(res.Path, dpi.DefaultBlobDir); blobErr != nil {
-		// Не фатально — без blob'ов часть стратегий не работает, но fallback
+	if assetErr := dpi.InstallAssets(res.Path, dpi.DefaultBlobDir, dpi.DefaultLuaDir); assetErr != nil {
+		// Не фатально — без lua/blob'ов часть стратегий не работает, но fallback
 		// (без --lua-desync=fake:blob=...) может функционировать.
-		return fmt.Errorf("install blobs: %w", blobErr)
+		return fmt.Errorf("install assets: %w", assetErr)
 	}
 	return nil
 }
@@ -240,17 +240,22 @@ func handleDPIUpdate(ctx context.Context, _ []string) error {
 		if err != nil {
 			return fmt.Errorf("--dpi-update: %w", err)
 		}
-		if !res.Downloaded {
-			fmt.Println("nfqws2 уже актуален.")
-			return nil
+		// Бинарь устанавливаем только если свежее. Assets (lua/blobs)
+		// перепроверяем всегда — пользователь мог удалить директории
+		// или мы добавили новые требования (lua-расширения в v0.x → v1.x).
+		if res.Downloaded {
+			if err := dpi.Install(res.Path, dpi.DefaultBinPath); err != nil {
+				return fmt.Errorf("--dpi-update: %w", err)
+			}
 		}
-		if err := dpi.Install(res.Path, dpi.DefaultBinPath); err != nil {
-			return fmt.Errorf("--dpi-update: %w", err)
+		if err := dpi.InstallAssets(res.Path, dpi.DefaultBlobDir, dpi.DefaultLuaDir); err != nil {
+			return fmt.Errorf("--dpi-update: install assets: %w", err)
 		}
-		if err := dpi.InstallBlobs(res.Path, dpi.DefaultBlobDir); err != nil {
-			return fmt.Errorf("--dpi-update: install blobs: %w", err)
+		if res.Downloaded {
+			fmt.Printf("nfqws2 обновлён до %s.\n", res.Version)
+		} else {
+			fmt.Printf("nfqws2 актуален (%s); ресурсы (lua, blobs) перепроверены.\n", res.Version)
 		}
-		fmt.Printf("nfqws2 обновлён до %s.\n", res.Version)
 		return nil
 	})
 }

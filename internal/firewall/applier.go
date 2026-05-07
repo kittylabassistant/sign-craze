@@ -362,8 +362,7 @@ func (a *applierImpl) Remove(ctx context.Context) error {
 	// --comment). Все наши правила в системной PREROUTING — это
 	// jumps на signcraze_*; перечислены явно.
 	preroutingJumps := []string{
-		modes.PolicyDPIChainName, // signcraze_policy_dpi
-		modes.PolicyChainName,    // signcraze_policy
+		modes.PolicyChainName, // signcraze_policy
 		"signcraze_dpi",
 		"signcraze_ports",
 		"signcraze_full",
@@ -373,6 +372,12 @@ func (a *applierImpl) Remove(ctx context.Context) error {
 		if err := a.ipt.DeleteJumpAll(ctx, "mangle", "PREROUTING", target); err != nil {
 			log.L().Warn("firewall: ошибка удаления PREROUTING jump", "target", target, "err", err)
 		}
+	}
+
+	// signcraze_policy_dpi висит в POSTROUTING (см. PolicyDPIRules комментарий).
+	// Cleanup отдельно — иначе DeleteChain ниже падает на «chain referenced».
+	if err := a.ipt.DeleteJumpAll(ctx, "mangle", "POSTROUTING", modes.PolicyDPIChainName); err != nil {
+		log.L().Warn("firewall: ошибка удаления POSTROUTING jump", "target", modes.PolicyDPIChainName, "err", err)
 	}
 
 	// 2. Удалить наши user-chains (flush очищает их содержимое — все наши
