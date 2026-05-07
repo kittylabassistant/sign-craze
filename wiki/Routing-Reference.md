@@ -16,7 +16,7 @@ routing.json
 
 | Файл | Путь |
 | --- | --- |
-| Routing config | `/opt/etc/sign-craze/routing.json` (schema\_version=1, `internal/routing/store.go:22`) |
+| Routing config | `/opt/etc/sign-craze/routing.json` (JSON-поле `"version": 1`, Go-константа `SchemaVersion`, `internal/routing/store.go:25`) |
 | Sing-box config | `/opt/etc/sign-craze/config.json` (`internal/singbox/coreadapter.go:25`) |
 
 Порты:
@@ -88,7 +88,7 @@ POST   /api/apply                            → {"needs_restart": true}
 
 После добавления тег `my-list` доступен в поле `rule_set` любого правила.
 
-**Persistence:** изменения сохраняются в `/opt/etc/sign-craze/routing.json`. Файлы с `schema_version=0` (отсутствующее поле) мигрируют в `schema_version=1` автоматически при чтении — вручную исправлять не нужно.
+**Persistence:** изменения сохраняются в `/opt/etc/sign-craze/routing.json`. Файлы с `"version": 0` (отсутствующее поле) мигрируют в `"version": 1` автоматически при чтении — вручную исправлять не нужно.
 
 **Disable:** в `state.json` выставить `"routing_ui_enabled": false`.
 

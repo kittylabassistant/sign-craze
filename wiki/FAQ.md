@@ -31,7 +31,7 @@ grep watchdog /opt/var/log/sign-craze/sign-craze.log | tail -10
 
 ### Работает ли DPI/nfqws2 из коробки?
 
-Нет. После `--install` / `--install-auto` запущен только `sing-box` (режим `proxy`), `nfqws2` **не скачан**, NFQUEUE-правила в iptables не добавлены, `state.json` хранит `dpi_enabled=false`. DPI-обход — opt-in.
+Нет. После `--install` / `--install-auto` запущен только `sing-box` (режим `policy`), `nfqws2` **не скачан**, NFQUEUE-правила в iptables не добавлены, `state.json` хранит `dpi_enabled=false`. DPI-обход — opt-in.
 
 Минимум для активации:
 
@@ -95,13 +95,13 @@ Discord voice использует UDP/QUIC без TLS SNI в открытом �
 
 ### Как открыть веб-интерфейс?
 
-Откройте в браузере `http://<ROUTER_IP>:9090/` из локальной сети. Это MetaCubeXD — Clash-совместимый dashboard, который показывает реальное дерево прокси, живые счётчики трафика, активные соединения и логи в реальном времени. Данные берутся напрямую из sing-box через Clash API реверс-прокси (sign-craze проксирует `/proxies`, `/connections`, `/traffic`, `/logs` и пр. на внутренний порт sing-box `9094`). Стриминговые эндпоинты (`/traffic`, `/logs`, `/connections`) передаются без буферизации. Предварительно запустите: `sign-craze --ui on`.
+Откройте в браузере `http://<ROUTER_IP>:9090/` из локальной сети. Это Zashboard — Clash-совместимый dashboard, который показывает реальное дерево прокси, живые счётчики трафика, активные соединения и логи в реальном времени. Данные берутся напрямую из sing-box через Clash API реверс-прокси (sign-craze проксирует `/proxies`, `/connections`, `/traffic`, `/logs` и пр. на внутренний порт sing-box `9094`). Стриминговые эндпоинты (`/traffic`, `/logs`, `/connections`) передаются без буферизации. Предварительно запустите: `sign-craze --ui on`.
 
-Выбор активного прокси в MetaCubeXD сохраняется после рестарта sing-box (`store_mode=true` в конфиге).
+Выбор активного прокси сохраняется через `experimental.cache_file.path` (`/opt/var/lib/sign-craze/cache.db`); поле `store_mode` удалено в sing-box ≥ 1.10.
 
 ### Какие порты открывает sign-craze?
 
-- `9090` — MetaCubeXD (Clash-совместимый dashboard, управление прокси, мониторинг трафика)
+- `9090` — Zashboard (Clash-совместимый dashboard, управление прокси, мониторинг трафика)
 - `9091` — admin REST API (статус, конфиг, порты, исключения, DPI targets)
 - `9092` — Routing Editor SPA (правила маршрутизации, geosite/geoip пресеты)
 
@@ -111,7 +111,7 @@ Discord voice использует UDP/QUIC без TLS SNI в открытом �
 
 ### Почему 9090 не открывается из интернета?
 
-Это by design. Sign-craze добавляет правило INPUT DROP в iptables для WAN-интерфейса на портах 9090/9091/9092 (chain `signcraze_local`). Локальная сеть имеет доступ. Если из LAN тоже не открывается — проверьте `iptables -nvL INPUT`, убедитесь что ваш интерфейс не определён как WAN ошибочно (см. `sign-craze --diag`).
+Это by design. Sign-craze добавляет правила в `filter/INPUT` (owner-comment + префикс) — DROP TCP/UDP 9090 с WAN-интерфейса. Локальная сеть имеет доступ. Если из LAN тоже не открывается — проверьте `iptables -nvL INPUT`, убедитесь что ваш интерфейс не определён как WAN ошибочно (см. `sign-craze --diag`).
 
 ## Установка / обновление
 
@@ -141,6 +141,18 @@ sign-craze --restart
 ```
 
 `--update` скачивает последний релиз с GitHub, проверяет SHA256, атомарно заменяет `/opt/sbin/sign-craze`. Конфиг и state не трогает.
+
+### Как sign-craze выбирает прокси-ядро?
+
+При `--install --proxy <URL>` sign-craze анализирует схему URL и выбирает
+подходящее ядро автоматически:
+- `vmess://`, `vless://`, `trojan://`, `ss://`, `ssr://` — sing-box (default).
+- PQ-VLESS / Vision UDP443 — xray (более полная поддержка).
+- Clash YAML / специфичные outbound'ы — mihomo.
+
+Явный выбор: `--install --proxy <URL> --core <sing-box|xray|mihomo>`.
+Список ядер: `sign-craze --core-list`. Смена ядра в установленной системе:
+`--uninstall` → `--install --core <name>`.
 
 ---
 

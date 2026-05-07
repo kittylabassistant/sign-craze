@@ -321,7 +321,7 @@ sign-craze --version
 Ожидаемый вывод:
 
 ```
-sign-craze v0.1.0 (commit abc1234, built 2026-04-29)
+sign-craze v0.5.16 (commit abc1234, built 2026-04-29)
 sing-box: not installed
 ```
 
@@ -370,7 +370,7 @@ sign-craze --restart
 sign-craze --install-auto
 ```
 
-Использует параметры по умолчанию: режим `proxy`, outbound берётся из переменной окружения `SIGN_CRAZE_OUTBOUND` или из конфига роутера.
+Использует параметры по умолчанию: режим `policy`, outbound — заглушка `direct` (для реального outbound передай `--proxy <URL>` отдельной командой).
 
 ### 6.3. Из локального бинаря (offline)
 
@@ -422,7 +422,7 @@ sign-craze --start
 
 Применит iptables/ipset правила и запустит sing-box (и nfqws2 в режимах `dpi`/`hybrid`).
 
-> **DPI отключён по умолчанию.** После `sign-craze --install` (без `--with-dpi`) режим — `proxy`, `nfqws2` не скачан и не запускается, NFQUEUE-правила не добавляются. Для активации DPI:
+> **DPI отключён по умолчанию.** После `sign-craze --install` (без `--with-dpi`) режим — `policy`, `nfqws2` не скачан и не запускается, NFQUEUE-правила не добавляются. Для активации DPI:
 >
 > - **Из коробки**: `sign-craze --install --with-dpi` (см. [6.4](#64-с-dpi-обходом-из-коробки---with-dpi)).
 > - **На существующей установке**: `sign-craze --dpi on && sign-craze --restart` (см. раздел [9a](#9a-selective-dpi-bypass-опционально)).
@@ -436,14 +436,10 @@ sign-craze --status
 Ожидаемый вывод:
 
 ```
-sign-craze:  v0.1.0
-sing-box:    running, pid=1234, uptime=3s, version=1.10.0
-nfqws2:      stopped (mode=proxy)
-mode:        proxy
-firewall:    applied (tproxy port=7895, fwmark=0x53)
-ports:       80, 443
-excludes:    192.168.0.0/16, 10.0.0.0/8
-ui:          off
+sing-box: running (PID 12345)
+nfqws2: running (PID 12346)
+режим: policy
+версия: 0.5.16
 ```
 
 ---
@@ -456,7 +452,7 @@ sign-craze --ui on
 
 Откроются три HTTP-сервиса (только из LAN):
 
-- `http://<router-ip>:9090/` — **MetaCubeXD** (Clash-совместимый dashboard). Показывает реальное дерево прокси, живые счётчики трафика, активные соединения и логи в реальном времени — стриминговые эндпоинты (`/traffic`, `/logs`, `/connections`) передаются без буферизации. Данные приходят через Clash API реверс-прокси на sing-box (порт `9094`, внутренний). Выбор активного прокси сохраняется после рестарта sing-box.
+- `http://<router-ip>:9090/` — **Zashboard** (Clash-совместимый dashboard). Показывает реальное дерево прокси, живые счётчики трафика, активные соединения и логи в реальном времени — стриминговые эндпоинты (`/traffic`, `/logs`, `/connections`) передаются без буферизации. Данные приходят через Clash API реверс-прокси на sing-box (порт `9094`, внутренний). Выбор активного прокси сохраняется после рестарта sing-box.
 - `http://<router-ip>:9091/api/status` — **admin REST API** (статус, конфиг, порты, исключения, DPI targets).
 - `http://<router-ip>:9092` — **Routing Editor SPA** (визуальный редактор inbounds/outbounds/rules, пресеты). При первом запуске автоматически инициализируется из текущих `state.outbounds` — сконфигурированный прокси появляется сразу. Outbound в таблице отображается с адресом сервера и портом.
 

@@ -14,7 +14,7 @@
   Получить его tag:
 
   ```sh
-  ssh -p 222 root@172.16.0.1 'jq -r ".outbounds[].tag" /opt/etc/sign-craze/routing.json'
+  ssh -p 222 root@172.16.0.1 'jq -r ".outbounds[].tag" /opt/etc/sign-craze/state.json'
   ```
 
 - Сделать backup текущего конфига:
@@ -112,7 +112,7 @@ ssh -p 222 root@172.16.0.1 'sign-craze --restart && sign-craze --status'
 ### B.1 Получить VPN tag
 
 ```sh
-ssh -p 222 root@172.16.0.1 'jq -r ".outbounds[].tag" /opt/etc/sign-craze/routing.json'
+ssh -p 222 root@172.16.0.1 'jq -r ".outbounds[].tag" /opt/etc/sign-craze/state.json'
 ```
 
 ### B.2 Применить пресет ru-direct через REST
