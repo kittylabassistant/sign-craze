@@ -1,0 +1,112 @@
+name: Совместимость с моделью / прошивкой
+description: Sign-craze не работает или работает частично на конкретной модели Keenetic / версии KeeneticOS / архитектуре
+title: "compat: <модель Keenetic> <версия OS>"
+labels: ["compatibility", "triage"]
+assignees:
+  - kittylabassistant
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Шаблон для случая «у меня железо/прошивка, на которой sign-craze
+        ведёт себя не так». Если это явный баг с воспроизведением — лучше
+        откройте обычный bug-report. Этот шаблон — про несовместимость как
+        таковую, чтобы пополнить
+        [`docs/COMPATIBILITY_MATRIX.md`](https://github.com/kittylabassistant/sign-craze/blob/main/docs/COMPATIBILITY_MATRIX.md).
+
+  - type: checkboxes
+    id: prereqs
+    attributes:
+      label: Перед отправкой
+      options:
+        - label: Проверил существующие compat-issue, дубликата нет
+          required: true
+        - label: Сверился с COMPATIBILITY_MATRIX.md
+          required: true
+        - label: Согласен с [Кодексом поведения](https://github.com/kittylabassistant/sign-craze/blob/main/CODE_OF_CONDUCT.md)
+          required: true
+
+  - type: input
+    id: model
+    attributes:
+      label: Модель роутера и ревизия
+      placeholder: "Keenetic Giga (KN-1010), rev. B"
+    validations:
+      required: true
+
+  - type: input
+    id: keeneticos
+    attributes:
+      label: Версия KeeneticOS
+      placeholder: "5.0.4"
+    validations:
+      required: true
+
+  - type: input
+    id: arch
+    attributes:
+      label: Архитектура (uname -m)
+      placeholder: "mips / mipsel / armv7l / aarch64"
+    validations:
+      required: true
+
+  - type: input
+    id: ram
+    attributes:
+      label: Оперативная память
+      description: Web UI роутера → "О системе" → "Доступная память"
+      placeholder: "128 МБ / 256 МБ"
+    validations:
+      required: true
+
+  - type: input
+    id: entware
+    attributes:
+      label: Entware
+      description: Куда установлен и какая версия (`opkg --version`)
+      placeholder: "USB-флешка ext4, Entware от <дата>"
+    validations:
+      required: true
+
+  - type: input
+    id: signcraze_version
+    attributes:
+      label: Версия sign-craze
+      placeholder: "0.5.16"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: status
+    attributes:
+      label: Что не работает
+      multiple: true
+      options:
+        - install / install-auto падает
+        - sign-box не стартует
+        - nfqws2 не запускается
+        - firewall-правила не применяются
+        - routing не работает (трафик не идёт через прокси)
+        - web UI недоступен
+        - после reboot конфигурация теряется
+        - другое (уточнить ниже)
+    validations:
+      required: true
+
+  - type: textarea
+    id: details
+    attributes:
+      label: Описание поведения
+      description: Что именно ломается. Логи, сообщения об ошибках. Без секретов.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Workaround
+      description: Если нашли способ обойти — расскажите. Войдёт в COMPATIBILITY_MATRIX как known-good.
+    validations:
+      required: false

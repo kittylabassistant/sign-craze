@@ -1,0 +1,19 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Уязвимость безопасности
+    url: https://github.com/kittylabassistant/sign-craze/security/advisories/new
+    about: |
+      Не открывайте публичный issue. Сообщайте через GitHub Security
+      Advisories — канал шифрованный, виден только мейнтейнеру. Подробности —
+      в SECURITY.md.
+  - name: Вопрос или обсуждение
+    url: https://github.com/kittylabassistant/sign-craze/discussions
+    about: |
+      Вопрос по установке, настройке или поведению — в Discussions. Issues
+      используем только для багов и feature request'ов с готовым acceptance
+      criteria.
+  - name: Wiki проекта
+    url: https://github.com/kittylabassistant/sign-craze/wiki
+    about: |
+      FAQ, troubleshooting, рецепты routing'а, описание режимов. Перед
+      открытием issue — проверьте wiki и CHANGELOG.

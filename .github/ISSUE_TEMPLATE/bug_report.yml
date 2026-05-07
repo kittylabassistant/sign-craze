@@ -1,0 +1,209 @@
+name: Баг-репорт
+description: Сообщить о воспроизводимом баге sign-craze
+title: "bug: <короткое описание>"
+labels: ["bug", "triage"]
+assignees:
+  - kittylabassistant
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Спасибо, что нашли время сообщить о проблеме. Чем точнее воспроизведение,
+        тем быстрее фикс. Перед заполнением:
+
+        - Проверьте, что бага нет в [открытых issue](https://github.com/kittylabassistant/sign-craze/issues)
+          и [CHANGELOG.md](https://github.com/kittylabassistant/sign-craze/blob/main/CHANGELOG.md).
+        - **Не вставляйте секреты:** WAN IP, MAC, токены провайдеров,
+          outbound URL из `proxy.json`, IP клиентов LAN. Замените на
+          `<redacted>`.
+        - Уязвимость безопасности — **не сюда**, см.
+          [SECURITY.md](https://github.com/kittylabassistant/sign-craze/blob/main/SECURITY.md).
+
+  - type: checkboxes
+    id: prereqs
+    attributes:
+      label: Перед отправкой
+      options:
+        - label: Проверил существующие issue, дубликата нет
+          required: true
+        - label: Проблема воспроизводится на актуальной версии (`sign-craze --version`)
+          required: true
+        - label: Логи и команды очищены от секретов
+          required: true
+        - label: Согласен с [Кодексом поведения](https://github.com/kittylabassistant/sign-craze/blob/main/CODE_OF_CONDUCT.md)
+          required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Версия sign-craze
+      description: Вывод `sign-craze --version`
+      placeholder: "0.5.16"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: arch
+    attributes:
+      label: Архитектура
+      options:
+        - mipsle (большинство Keenetic)
+        - mips
+        - arm7
+        - arm64
+        - другое (уточнить ниже)
+    validations:
+      required: true
+
+  - type: input
+    id: keenetic_model
+    attributes:
+      label: Модель роутера
+      description: Например, `Keenetic Giga (KN-1010)` или `Keenetic Hopper (KN-3810)`
+      placeholder: "Keenetic <модель> (KN-XXXX)"
+    validations:
+      required: true
+
+  - type: input
+    id: keeneticos
+    attributes:
+      label: Версия KeeneticOS
+      description: Web UI роутера → "О системе"
+      placeholder: "4.2.x / 5.0.x"
+    validations:
+      required: true
+
+  - type: input
+    id: entware
+    attributes:
+      label: Entware и режим установки
+      description: Куда поставлен Entware (USB/внутренняя память) и как устанавливался sign-craze (`install.sh` / `install-offline.sh` / ручной `--install-auto`)
+      placeholder: "Entware на USB; install.sh из релиза"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: core
+    attributes:
+      label: Прокси-ядро
+      description: Какое ядро используется (см. `sign-craze --status`)
+      options:
+        - sing-box
+        - xray-core
+        - mihomo
+        - не используется (только firewall/DPI)
+        - не знаю
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Режим работы
+      options:
+        - policy (только маркированные хосты через прокси)
+        - full (весь LAN через прокси)
+        - bypass (sign-craze отключён, правил нет)
+        - не знаю / другое
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Затронутый компонент
+      multiple: true
+      options:
+        - cli
+        - install / upgrade / uninstall
+        - firewall (iptables/ipset)
+        - routing (fwmark / ip rule / table)
+        - sing-box config / шаблоны
+        - xray / mihomo
+        - DPI (nfqws2)
+        - web UI :9090 (Zashboard)
+        - web UI :9091 (admin REST API)
+        - web UI :9092 (Routing Editor)
+        - geo (geoip / geosite)
+        - watchdog / автостарт после reboot
+        - logging / diag / support-bundle
+        - другое (уточнить ниже)
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Команда / шаги воспроизведения
+      description: Минимальная последовательность. Скопируйте точно как вводили (без секретов).
+      render: shell
+      placeholder: |
+        # 1. Свежая установка
+        sign-craze --install-auto
+        # 2. Включить policy
+        sign-craze --policy --start
+        # 3. Добавить хост
+        sign-craze --add-host example.com
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Ожидаемое поведение
+      placeholder: "После --add-host трафик к example.com должен идти через signbox-tun (table 83)."
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Фактическое поведение
+      description: Что произошло. Сообщения об ошибках цитируйте дословно.
+      placeholder: |
+        Команда вернула exit code 1 с сообщением:
+        Error: ipset add signcraze_proxy_v4: Set cannot be created: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: diag
+    attributes:
+      label: Вывод --diag
+      description: |
+        `sign-craze --diag` собирает состояние firewall/routing/cores. Вставьте
+        релевантные секции. Длинные простыни — gist'ом или прикреплённым файлом.
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Логи
+      description: |
+        `/opt/var/log/sign-craze/*.log` за период инцидента.
+        Перед вставкой — отредактируйте: `<wan-ip>`, `<mac>`, `<token>`,
+        `<lan-ip>`, выньте URL outbound из `proxy.json`.
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Что пробовали
+      description: Какие шаги уже сделаны (перезагрузка, переустановка, откат версии, ручная правка правил). Помогает не повторять триаж.
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Дополнительный контекст
+      description: |
+        Скриншоты web UI, конфликты с XKeen / другими утилитами, кастомные
+        правила Keenetic, нестандартный network layout, что угодно ещё.
+    validations:
+      required: false

@@ -1,0 +1,49 @@
+name: Документация
+description: Ошибка, неточность или пробел в README / wiki / docs/
+title: "docs: <короткое описание>"
+labels: ["documentation", "triage"]
+assignees:
+  - kittylabassistant
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Опечатки и мелкие правки — лучше сразу PR (быстрее, чем issue → fix).
+        Этот шаблон — для случаев, когда документация вводит в заблуждение,
+        противоречит коду или отсутствует там, где нужна.
+
+  - type: input
+    id: location
+    attributes:
+      label: Где
+      description: Путь в репо (например, `docs/OPERATIONS.md`) или URL wiki / README-секции
+      placeholder: "docs/OPERATIONS.md / wiki/Routing"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Что не так
+      description: Цитата проблемного фрагмента + объяснение, что вводит в заблуждение или чего не хватает.
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Предложение
+      description: Как должно быть. Можно черновиком текста.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: pr
+    attributes:
+      label: Готовы прислать PR
+      options:
+        - "Да"
+        - "Только репорт"
+    validations:
+      required: true

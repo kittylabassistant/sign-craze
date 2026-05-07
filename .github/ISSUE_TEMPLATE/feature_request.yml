@@ -1,0 +1,116 @@
+name: Feature request
+description: Предложить улучшение или новую возможность
+title: "feat: <короткое описание>"
+labels: ["enhancement", "triage"]
+assignees:
+  - kittylabassistant
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Перед заполнением:
+
+        - Проверьте [Discussions](https://github.com/kittylabassistant/sign-craze/discussions)
+          и открытые [issue](https://github.com/kittylabassistant/sign-craze/issues) — возможно, идея уже обсуждается.
+        - Идею имеет смысл оформить, когда есть реальный use-case, а не «было бы круто, если бы».
+        - Учитывайте [Ограничения проекта](https://github.com/kittylabassistant/sign-craze/blob/main/CONTRIBUTING.md#ограничения-проекта):
+          MIPS/ARM, ≤ 4 МБ бинарь, без CGO, без systemd/nftables, root-утилита,
+          поведение Linux/iptables/sing-box.
+
+  - type: checkboxes
+    id: prereqs
+    attributes:
+      label: Перед отправкой
+      options:
+        - label: Проверил существующие issue и Discussions, дубликата нет
+          required: true
+        - label: Идея совместима с ограничениями проекта (см. ссылку выше)
+          required: true
+        - label: Согласен с [Кодексом поведения](https://github.com/kittylabassistant/sign-craze/blob/main/CODE_OF_CONDUCT.md)
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Какую проблему решает
+      description: Реальный use-case. Не «фича ради фичи». Кто, когда, в каких условиях упирается в текущее поведение.
+      placeholder: |
+        При смене провайдера прокси приходится вручную редактировать proxy.json
+        и перезапускать sing-box. Хотелось бы команду `sign-craze --proxy switch <name>`,
+        которая атомарно подменяет outbound и валидирует конфиг до restart'а.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Предлагаемое решение
+      description: Как это должно выглядеть с точки зрения CLI/UI/конфига.
+      placeholder: |
+        - Новая subcommand `sign-craze --proxy switch <name>`
+        - Перед restart'ом — `sing-box check` на новый конфиг
+        - Если check падает — откат, ненулевой exit code, сообщение в stderr
+    validations:
+      required: true
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Затронутая подсистема
+      multiple: true
+      options:
+        - cli
+        - install / upgrade / uninstall
+        - firewall (iptables/ipset)
+        - routing (fwmark / ip rule / table)
+        - sing-box / xray / mihomo
+        - DPI (nfqws2)
+        - web UI :9090 / :9091 / :9092
+        - geo (geoip / geosite)
+        - watchdog / autostart
+        - logging / diag / observability
+        - документация / wiki
+        - CI / релизный pipeline
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Альтернативы
+      description: Что рассматривали, почему не подошло. Workaround'ы, существующие команды, костыли.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: breaking
+    attributes:
+      label: Ломает ли совместимость
+      options:
+        - Нет (новое поведение / новая команда)
+        - Возможно (меняется CLI/конфиг)
+        - Да (требуется миграция)
+        - Не знаю
+    validations:
+      required: true
+
+  - type: dropdown
+    id: pr
+    attributes:
+      label: Готовы прислать PR
+      description: Не обязательно, но влияет на приоритет.
+      options:
+        - "Да, готов реализовать"
+        - "Готов помочь с тестированием"
+        - "Только идея"
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Дополнительно
+      description: Ссылки на похожие фичи в других проектах, скриншоты mock-ап, логи, что угодно.
+    validations:
+      required: false
