@@ -119,7 +119,7 @@
         "protocol": "dns"
       },
       {
-        "action": "block",
+        "action": "reject",
         "network": "udp",
         "port": [
           135,
@@ -129,13 +129,13 @@
         ]
       },
       {
-        "action": "block",
+        "action": "reject",
         "rule_set": [
           "geosite-category-ads-all"
         ]
       },
       {
-        "action": "block",
+        "action": "reject",
         "invert": true,
         "network": "udp",
         "port": [

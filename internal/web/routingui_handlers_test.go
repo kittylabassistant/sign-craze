@@ -14,12 +14,17 @@ import (
 )
 
 // makeTestServerWithRouting — Server с настроенным RoutingUI deps на временный routing.json.
+// DefaultOutboundTag возвращает фиксированный "vless-test" — пресеты с {vpn}-placeholder
+// успешно резолвятся в детерминированный тег без зависимости от state.
 func makeTestServerWithRouting(t *testing.T) (*Server, string, string) {
 	t.Helper()
 	s, password := makeTestServer(t)
 	dir := t.TempDir()
 	routingPath := filepath.Join(dir, "routing.json")
-	s.cfg.RoutingUI = &RoutingUIDeps{RoutingPath: routingPath}
+	s.cfg.RoutingUI = &RoutingUIDeps{
+		RoutingPath:        routingPath,
+		DefaultOutboundTag: func() string { return "vless-test" },
+	}
 	return s, password, routingPath
 }
 
@@ -180,7 +185,7 @@ func TestPresets_List(t *testing.T) {
 		t.Fatalf("GET /api/presets: %d", rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"block-ads", "ru-direct", "blocked-vpn", "discord-vpn", "torrents-direct", "block-bogon-udp"} {
+	for _, want := range []string{"sign-craze-default", "block-ads", "ru-direct", "blocked-vpn", "discord-vpn", "torrents-direct", "block-bogon-udp"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("preset %q отсутствует в response", want)
 		}
@@ -221,6 +226,108 @@ func TestPresets_Apply_NotFound(t *testing.T) {
 	rec := do(s, authReq("POST", "/api/presets/nonexistent/apply", pw, nil))
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("ожидался 404, получен %d", rec.Code)
+	}
+}
+
+// TestPresets_Apply_VPNPlaceholder_ResolvedToDefaultOutbound проверяет, что
+// пресеты с {vpn}-placeholder получают актуальный тег VPN-outbound.
+func TestPresets_Apply_VPNPlaceholder_ResolvedToDefaultOutbound(t *testing.T) {
+	s, pw, _ := makeTestServerWithRouting(t)
+
+	rec := do(s, authReq("POST", "/api/presets/discord-vpn/apply", pw, nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("apply discord-vpn: %d body=%s", rec.Code, rec.Body.String())
+	}
+	rec = do(s, authReq("GET", "/api/rules", pw, nil))
+	var rules []types.RouteRule
+	_ = json.Unmarshal(rec.Body.Bytes(), &rules)
+	if len(rules) != 1 || rules[0].Outbound != "vless-test" {
+		t.Errorf("ожидалось 1 правило с outbound=vless-test, получено %+v", rules)
+	}
+}
+
+// TestPresets_Apply_VPNRequired_NoOutbound_412 проверяет, что без VPN-outbound
+// preset с {vpn}-placeholder возвращает 412 Precondition Failed.
+func TestPresets_Apply_VPNRequired_NoOutbound_412(t *testing.T) {
+	s, pw, _ := makeTestServerWithRouting(t)
+	// Снимаем DefaultOutboundTag — имитируем отсутствие VPN-outbound.
+	s.cfg.RoutingUI.DefaultOutboundTag = func() string { return "" }
+
+	rec := do(s, authReq("POST", "/api/presets/blocked-vpn/apply", pw, nil))
+	if rec.Code != http.StatusPreconditionFailed {
+		t.Errorf("ожидался 412 без VPN-outbound, получен %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestPresets_Apply_SignCrazeDefault_FullFlow проверяет, что preset
+// sign-craze-default корректно применяется: 4 правила, 3 rule_set, final=direct.
+func TestPresets_Apply_SignCrazeDefault_FullFlow(t *testing.T) {
+	s, pw, _ := makeTestServerWithRouting(t)
+
+	rec := do(s, authReq("POST", "/api/presets/sign-craze-default/apply", pw, nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("apply sign-craze-default: %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(s, authReq("GET", "/api/state", pw, nil))
+	var state struct {
+		Config types.RoutingConfig `json:"config"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &state)
+
+	if state.Config.Final != "direct" {
+		t.Errorf("Final: ожидался %q, получен %q", "direct", state.Config.Final)
+	}
+	if len(state.Config.Rules) != 4 {
+		t.Fatalf("ожидалось 4 правила, получено %d", len(state.Config.Rules))
+	}
+	// Проверка резолва {vpn} → vless-test в blocked-rule.
+	var blocked *types.RouteRule
+	for i, r := range state.Config.Rules {
+		for _, rs := range r.RuleSet {
+			if rs == "refilter-blocked-domains" {
+				blocked = &state.Config.Rules[i]
+			}
+		}
+	}
+	if blocked == nil {
+		t.Fatal("правило refilter-blocked-domains не найдено")
+	}
+	if blocked.Outbound != "vless-test" {
+		t.Errorf("blocked.Outbound: ожидался vless-test, получен %q", blocked.Outbound)
+	}
+	if len(state.Config.RuleSets) != 3 {
+		t.Errorf("ожидалось 3 rule_set, получено %d", len(state.Config.RuleSets))
+	}
+}
+
+// TestPresets_Apply_Final_DoesNotOverwriteExplicit проверяет, что Final пресета
+// не перезаписывает уже выставленный оператором Final.
+func TestPresets_Apply_Final_DoesNotOverwriteExplicit(t *testing.T) {
+	s, pw, _ := makeTestServerWithRouting(t)
+
+	// Установим Final="vless-test" вручную через сохранённый routing.json.
+	cfg := types.RoutingConfig{
+		Version:   1,
+		Outbounds: []types.Outbound{{Tag: "vless-test", Type: "direct"}},
+		Final:     "vless-test",
+	}
+	if err := s.saveRoutingConfig(&cfg); err != nil {
+		t.Fatalf("saveRoutingConfig: %v", err)
+	}
+
+	rec := do(s, authReq("POST", "/api/presets/sign-craze-default/apply", pw, nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("apply: %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(s, authReq("GET", "/api/state", pw, nil))
+	var st struct {
+		Config types.RoutingConfig `json:"config"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &st)
+	if st.Config.Final != "vless-test" {
+		t.Errorf("Final был перезаписан: ожидался vless-test, получен %q", st.Config.Final)
 	}
 }
 

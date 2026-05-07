@@ -48,6 +48,55 @@ func marshalRule(v any) (string, error) {
 	return string(b), nil
 }
 
+// normalizeRouteRule приводит RouteRule к формату, понятному sing-box ≥1.11.
+// Преобразует legacy `action: "block"` → `"reject"` (sing-box убрал поддержку
+// "block" в route.rules — оно вызывает FATAL "unknown rule action: block").
+// Сохранён для обратной совместимости с уже записанными routing.json.
+func normalizeRouteRule(r types.RouteRule) types.RouteRule {
+	if r.Action == "block" {
+		r.Action = "reject"
+	}
+	return r
+}
+
+// normalizeInbound приводит Inbound.Settings к формату sing-box ≥1.12.
+// inet4_address/inet6_address удалены, заменены на единое поле address []string.
+// Без миграции sing-box 1.12+ падает FATAL "legacy tun address fields are deprecated".
+// Применяется к копии Settings — исходный объект не мутируется.
+func normalizeInbound(in types.Inbound) types.Inbound {
+	if in.Type != "tun" || len(in.Settings) == 0 {
+		return in
+	}
+	settings := make(map[string]any, len(in.Settings))
+	var legacy []string
+	for k, v := range in.Settings {
+		switch k {
+		case "inet4_address", "inet6_address":
+			if s, ok := v.(string); ok && s != "" {
+				legacy = append(legacy, s)
+			}
+		default:
+			settings[k] = v
+		}
+	}
+	if len(legacy) > 0 {
+		if existing, ok := settings["address"]; ok {
+			if arr, ok := existing.([]string); ok {
+				legacy = append(arr, legacy...)
+			} else if arr, ok := existing.([]any); ok {
+				for _, x := range arr {
+					if s, ok := x.(string); ok {
+						legacy = append(legacy, s)
+					}
+				}
+			}
+		}
+		settings["address"] = legacy
+	}
+	in.Settings = settings
+	return in
+}
+
 // buildEffectiveModel строит effectiveModel из ConfigParams, объединяя
 // legacy-путь (Routing/Outbounds) и новый путь (RoutingConfig).
 func buildEffectiveModel(p ConfigParams) (effectiveModel, error) {
@@ -61,7 +110,11 @@ func buildEffectiveModel(p ConfigParams) (effectiveModel, error) {
 	// определяем тег базового inbound для base rules
 	var baseInbound string
 	if p.RoutingConfig != nil && len(p.RoutingConfig.Inbounds) > 0 {
-		m.Inbounds = p.RoutingConfig.Inbounds
+		normalized := make([]types.Inbound, len(p.RoutingConfig.Inbounds))
+		for i, in := range p.RoutingConfig.Inbounds {
+			normalized[i] = normalizeInbound(in)
+		}
+		m.Inbounds = normalized
 		baseInbound = p.RoutingConfig.Inbounds[0].Tag
 	} else {
 		baseInbound = "tun-in"
@@ -86,7 +139,7 @@ func buildEffectiveModel(p ConfigParams) (effectiveModel, error) {
 		m.Outbounds = p.RoutingConfig.Outbounds
 		m.HasDirect = outboundsHaveDirect(m.Outbounds)
 		for _, r := range p.RoutingConfig.Rules {
-			s, err := marshalRule(r)
+			s, err := marshalRule(normalizeRouteRule(r))
 			if err != nil {
 				return m, fmt.Errorf("marshal user rule: %w", err)
 			}

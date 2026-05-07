@@ -81,7 +81,7 @@ var defaultTunInbound = types.Inbound{
 	Type: "tun",
 	Settings: map[string]any{
 		"interface_name": "signbox-tun",
-		"inet4_address":  "172.19.0.1/30",
+		"address":        []string{"172.19.0.1/30"},
 		"auto_route":     true,
 		"stack":          "system",
 	},
