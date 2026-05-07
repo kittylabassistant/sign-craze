@@ -1,9 +1,16 @@
 # Конфиг nfqws2. Сгенерировано sign-craze. Не редактировать вручную.
-# Источник параметров: README nfqws2-keenetic (MIT).
+# Источник стратегий: github.com/nfqws/nfqws2-keenetic v1.1.5 (MIT).
+# sign-craze собирает командную строку nfqws2 из этих переменных в коде —
+# bash-source НЕ требуется. Файл оставлен для оператора (диагностика, audit).
+
 ISP_INTERFACE={{ .ISPInterface }}
 NFQWS_QUEUE_NUM={{ .QueueNum }}
 POLICY_NAME={{ .PolicyName }}
+BLOB_DIR={{ .BlobDir }}
 NFQWS_HOSTLIST="{{ if .HostlistPath }}{{ .HostlistPath }}{{ end }}"
-NFQWS_ARGS="{{ .Args }}{{ if .HostlistPath }} --hostlist={{ .HostlistPath }}{{ end }}"
-NFQWS_ARGS_QUIC="{{ .ArgsQUIC }}{{ if .HostlistPath }} --hostlist={{ .HostlistPath }}{{ end }}"
-NFQWS_ARGS_UDP="{{ .ArgsUDP }}{{ if .HostlistPath }} --hostlist={{ .HostlistPath }}{{ end }}"
+
+NFQWS_BASE_ARGS="{{ .BaseArgs }}"
+NFQWS_ARGS="{{ .Args }}"
+NFQWS_ARGS_QUIC="{{ .ArgsQUIC }}"
+NFQWS_ARGS_UDP="{{ .ArgsUDP }}"
+NFQWS_EXTRA_ARGS="{{ .ExtraArgs }}{{ if .HostlistPath }} --hostlist={{ .HostlistPath }}{{ end }}"

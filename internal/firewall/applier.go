@@ -46,7 +46,7 @@ type Config struct {
 	Table      int            // 83
 	Priority   int            // 32765
 	Port       uint16         // 7895
-	NFQueueNum int            // 200
+	NFQueueNum int            // 300 (совпадает с upstream nfqws2-keenetic)
 	Ports      []uint16       // дополнительные порты для маркировки в signcraze_ports
 	Excludes   []netip.Prefix // CIDR-исключения (RETURN из signcraze)
 	AdminPorts []uint16       // SSH/web admin порты для bypass (пусто = выкл)
@@ -86,7 +86,7 @@ func DefaultConfig() Config {
 		Table:      83,
 		Priority:   32765,
 		Port:       7895,
-		NFQueueNum: 200,
+		NFQueueNum: 300,
 	}
 }
 

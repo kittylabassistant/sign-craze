@@ -82,6 +82,7 @@ func PolicyDPIRules(keenMark uint32, nfqueueNum int) []RuleSpec {
 				"-m", "mark", "--mark", keen,
 				"-p", "tcp",
 				"-j", "NFQUEUE", "--queue-num", queue, "--queue-bypass",
+				"-m", "comment", "--comment", "signcraze:dpi-tcp",
 			},
 		},
 		{
@@ -90,6 +91,7 @@ func PolicyDPIRules(keenMark uint32, nfqueueNum int) []RuleSpec {
 				"-m", "mark", "--mark", keen,
 				"-p", "udp",
 				"-j", "NFQUEUE", "--queue-num", queue, "--queue-bypass",
+				"-m", "comment", "--comment", "signcraze:dpi-udp",
 			},
 		},
 		// Переход PREROUTING → signcraze_policy_dpi (вставляется ПЕРЕД signcraze_policy).

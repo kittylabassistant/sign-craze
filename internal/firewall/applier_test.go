@@ -253,7 +253,7 @@ func TestApplier_DefaultConfig_ЗначенияИзСпецификации(t *t
 	if cfg.Port != 7895 {
 		t.Errorf("Port = %d, ожидался 7895", cfg.Port)
 	}
-	if cfg.NFQueueNum != 200 {
-		t.Errorf("NFQueueNum = %d, ожидался 200", cfg.NFQueueNum)
+	if cfg.NFQueueNum != 300 {
+		t.Errorf("NFQueueNum = %d, ожидался 300", cfg.NFQueueNum)
 	}
 }

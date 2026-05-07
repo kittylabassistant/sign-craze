@@ -204,3 +204,99 @@ func extractBinaryToFile(tarPath, dstPath string, perm os.FileMode) error {
 	}
 	return nil
 }
+
+// InstallBlobs извлекает blob-файлы (quic_initial.bin, tls_clienthello.bin и
+// прочие *.bin из etc/nfqws2/blobs/) из .ipk пакета в dstDir.
+//
+// Без blob-файлов стратегии --lua-desync=fake:blob=quic_initial / blob=tls_clienthello
+// не работают: lua-init nfqws2 загружает их через --blob-dir. Если файлов нет
+// — nfqws2 падает в init с ошибкой "blob not found".
+//
+// Идемпотентно: перезаписывает существующие файлы атомарно.
+// Поддерживает только .ipk (для .tar.gz без специфичной структуры безопасно
+// возвращает nil — blobs не требуются для не-Entware дистрибутивов).
+func InstallBlobs(ipkPath, dstDir string) error {
+	if !strings.HasSuffix(ipkPath, ".ipk") {
+		log.L().Debug("dpi: blob-распаковка пропущена (не .ipk)", "path", ipkPath)
+		return nil
+	}
+	if err := os.MkdirAll(dstDir, 0o755); err != nil {
+		return fmt.Errorf("dpi blobs: mkdir %s: %w", dstDir, err)
+	}
+
+	f, err := os.Open(ipkPath)
+	if err != nil {
+		return fmt.Errorf("dpi blobs: открытие .ipk: %w", err)
+	}
+	defer f.Close()
+
+	outerGZ, err := gzip.NewReader(f)
+	if err != nil {
+		return fmt.Errorf("dpi blobs: outer gzip: %w", err)
+	}
+	defer outerGZ.Close()
+
+	outerTar := tar.NewReader(outerGZ)
+	var dataTarBytes []byte
+	for {
+		hdr, err := outerTar.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("dpi blobs: outer tar: %w", err)
+		}
+		if hdr.Name == "./data.tar.gz" || hdr.Name == "data.tar.gz" {
+			dataTarBytes, err = io.ReadAll(outerTar)
+			if err != nil {
+				return fmt.Errorf("dpi blobs: чтение data.tar.gz: %w", err)
+			}
+			break
+		}
+	}
+	if dataTarBytes == nil {
+		return fmt.Errorf("dpi blobs: data.tar.gz не найден в %s", ipkPath)
+	}
+
+	innerGZ, err := gzip.NewReader(bytes.NewReader(dataTarBytes))
+	if err != nil {
+		return fmt.Errorf("dpi blobs: inner gzip: %w", err)
+	}
+	defer innerGZ.Close()
+
+	innerTar := tar.NewReader(innerGZ)
+	count := 0
+	for {
+		hdr, err := innerTar.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("dpi blobs: inner tar: %w", err)
+		}
+		if hdr.Typeflag != tar.TypeReg {
+			continue
+		}
+		// Пропускаем path traversal: blob должен лежать ровно в etc/nfqws2/blobs/.
+		clean := filepath.Clean(hdr.Name)
+		if !strings.Contains(clean, "etc/nfqws2/blobs/") {
+			continue
+		}
+		base := filepath.Base(clean)
+		if !strings.HasSuffix(base, ".bin") {
+			continue
+		}
+		dstPath := filepath.Join(dstDir, base)
+		if err := atomicfs.WriteFileAtomicFromReader(dstPath, innerTar, 0o644); err != nil {
+			return fmt.Errorf("dpi blobs: запись %s: %w", dstPath, err)
+		}
+		count++
+		log.L().Debug("dpi blob извлечён", "name", base, "dst", dstPath)
+	}
+	if count == 0 {
+		log.L().Warn("dpi blobs: ни одного *.bin не найдено в .ipk", "path", ipkPath)
+	} else {
+		log.L().Info("dpi blobs распакованы", "count", count, "dir", dstDir)
+	}
+	return nil
+}

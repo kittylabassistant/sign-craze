@@ -378,6 +378,40 @@ sign-craze --install-auto
 sign-craze --install-offline /tmp/sing-box-1.10.0-linux-mipsle.tar.gz
 ```
 
+### 6.4. С DPI-обходом из коробки (`--with-dpi`)
+
+```sh
+sign-craze --install --with-dpi
+sign-craze --start
+```
+
+Что произойдёт:
+
+1. Стандартный `--install` (sing-box, init.d shim, netfilter.d hook).
+2. Скачивается `nfqws2-keenetic` v1.1.5+ (`.ipk` для текущей arch) с GitHub.
+3. Распаковывается бинарь `nfqws2` → `/opt/sbin/nfqws2`.
+4. Распаковываются blob-payload'ы (`quic_initial.bin`, `tls_clienthello.bin`)
+   → `/opt/etc/sign-craze/blobs/`.
+5. `state.DPIEnabled=true`, `state.DPITargets` = preset `discord-youtube`
+   (17 доменов: discord.com, discord.gg, …, youtube.com, googlevideo.com, …).
+6. Генерируется `/opt/etc/sign-craze/nfqws2.conf` со стратегиями upstream
+   (TLS+QUIC для YouTube, UDP-stun/voice для Discord).
+7. После `--start` nfqws2 поднимается со связкой:
+
+   ```
+   nfqws2 --user=nobody --qnum=300 --lua-init --blob-dir=…
+          <UDP discord/stun стратегия> --new
+          <QUIC YouTube стратегия> --new
+          <TLS YouTube/general> --hostlist=/opt/etc/sign-craze/dpi-hostlist.txt
+   ```
+
+Для другого набора доменов: `sign-craze --dpi-targets <список>` (через запятую).
+Для отключения: `sign-craze --dpi off && sign-craze --restart`.
+
+Источник стратегий: github.com/nfqws/nfqws2-keenetic (MIT).
+Все стратегии встроены в sign-craze и могут быть переопределены через
+`--dpi-strategy "<NFQWS_ARGS строка>"` (override TCP/TLS блока).
+
 ---
 
 ## 7. Запуск
@@ -388,7 +422,10 @@ sign-craze --start
 
 Применит iptables/ipset правила и запустит sing-box (и nfqws2 в режимах `dpi`/`hybrid`).
 
-> **DPI отключён по умолчанию.** После `--install` режим — `proxy`, `nfqws2` не скачан и не запускается, NFQUEUE-правила не добавляются. Для активации DPI: `sign-craze --dpi on && sign-craze --restart` (см. раздел [9a](#9a-selective-dpi-bypass-опционально) и [FAQ](FAQ#работает-ли-dpinfqws2-из-коробки)).
+> **DPI отключён по умолчанию.** После `sign-craze --install` (без `--with-dpi`) режим — `proxy`, `nfqws2` не скачан и не запускается, NFQUEUE-правила не добавляются. Для активации DPI:
+>
+> - **Из коробки**: `sign-craze --install --with-dpi` (см. [6.4](#64-с-dpi-обходом-из-коробки---with-dpi)).
+> - **На существующей установке**: `sign-craze --dpi on && sign-craze --restart` (см. раздел [9a](#9a-selective-dpi-bypass-опционально)).
 
 Проверка статуса:
 
@@ -560,15 +597,9 @@ cat /opt/var/run/sign-craze-singbox.pid
 
 ```sh
 sign-craze --stop
-sign-craze --uninstall    # сохраняет конфиг
+sign-craze --uninstall    # полное удаление
 sign-craze --install      # переустановка
 sign-craze --start
-```
-
-Полная очистка (включая конфиги и логи):
-
-```sh
-sign-craze --purge
 ```
 
 ### 12.5. Куда обращаться

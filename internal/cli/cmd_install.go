@@ -12,6 +12,7 @@ import (
 
 	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
 	"github.com/kittylabassistant/sign-craze/internal/core"
+	"github.com/kittylabassistant/sign-craze/internal/dpi"
 	"github.com/kittylabassistant/sign-craze/internal/log"
 	"github.com/kittylabassistant/sign-craze/internal/proxyparse"
 	"github.com/kittylabassistant/sign-craze/internal/service"
@@ -56,6 +57,21 @@ func parseInstallCoreFlag(args []string) (coreName string, rest []string) {
 	return
 }
 
+// parseWithDPIFlag вытягивает булев флаг --with-dpi из args.
+// При наличии: устанавливаем nfqws2 + blobs, включаем DPI с preset
+// "discord-youtube" (out-of-box работа YouTube + Discord без ручных шагов).
+func parseWithDPIFlag(args []string) (withDPI bool, rest []string) {
+	rest = make([]string, 0, len(args))
+	for _, a := range args {
+		if a == "--with-dpi" {
+			withDPI = true
+			continue
+		}
+		rest = append(rest, a)
+	}
+	return
+}
+
 // parseProxyFlag вытягивает --proxy <URL> / --proxy=<URL> из args.
 // URL без --proxy остаётся в rest (для install-offline он трактуется как путь к tarball).
 func parseProxyFlag(args []string) (proxyURL string, rest []string) {
@@ -77,36 +93,40 @@ func parseProxyFlag(args []string) (proxyURL string, rest []string) {
 
 func handleInstall(ctx context.Context, args []string) error {
 	coreName, rest := parseInstallCoreFlag(args)
-	proxyURL, _ := parseProxyFlag(rest)
-	return withLock(ctx, func() error { return doInstall(ctx, installInteractive, "", false, coreName, proxyURL) })
+	proxyURL, rest := parseProxyFlag(rest)
+	withDPI, _ := parseWithDPIFlag(rest)
+	return withLock(ctx, func() error { return doInstall(ctx, installInteractive, "", false, coreName, proxyURL, withDPI) })
 }
 
 func handleInstallAuto(ctx context.Context, args []string) error {
 	coreName, rest := parseInstallCoreFlag(args)
-	proxyURL, _ := parseProxyFlag(rest)
-	return withLock(ctx, func() error { return doInstall(ctx, installAuto, "", false, coreName, proxyURL) })
+	proxyURL, rest := parseProxyFlag(rest)
+	withDPI, _ := parseWithDPIFlag(rest)
+	return withLock(ctx, func() error { return doInstall(ctx, installAuto, "", false, coreName, proxyURL, withDPI) })
 }
 
 func handleInstallOffline(ctx context.Context, args []string) error {
 	coreName, rest := parseInstallCoreFlag(args)
 	proxyURL, rest := parseProxyFlag(rest)
+	withDPI, rest := parseWithDPIFlag(rest)
 	if len(rest) == 0 {
 		return fmt.Errorf("--install-offline: требуется путь к tarball")
 	}
-	return withLock(ctx, func() error { return doInstall(ctx, installOffline, rest[0], false, coreName, proxyURL) })
+	return withLock(ctx, func() error { return doInstall(ctx, installOffline, rest[0], false, coreName, proxyURL, withDPI) })
 }
 
 func handleReinstall(ctx context.Context, args []string) error {
 	_, rest := parseInstallCoreFlag(args)
-	proxyURL, _ := parseProxyFlag(rest)
+	proxyURL, rest := parseProxyFlag(rest)
+	withDPI, _ := parseWithDPIFlag(rest)
 	mode := installAuto
 	if proxyURL != "" {
 		mode = installInteractive
 	}
-	return withLock(ctx, func() error { return doInstall(ctx, mode, "", true, "", proxyURL) })
+	return withLock(ctx, func() error { return doInstall(ctx, mode, "", true, "", proxyURL, withDPI) })
 }
 
-func doInstall(ctx context.Context, mode installMode, offlineTar string, force bool, coreName string, proxyURL string) error {
+func doInstall(ctx context.Context, mode installMode, offlineTar string, force bool, coreName string, proxyURL string, withDPI bool) error {
 	// Определяем целевое ядро. Пустое имя → sing-box (default).
 	if coreName == "" {
 		coreName = state.DefaultCore
@@ -281,6 +301,15 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string, force b
 		}
 	}
 
+	// 7.5 Опционально: установить nfqws2 + blobs + включить DPI с preset
+	// discord-youtube. По завершении --start уже стартует nfqws2 с
+	// рабочей стратегией для YouTube + Discord без ручных шагов.
+	if withDPI {
+		if err := setupDPIDefault(ctx, st); err != nil {
+			return fmt.Errorf("--install --with-dpi: %w", err)
+		}
+	}
+
 	// 8. Создать init.d shim.
 	if err := service.WriteShim(service.DefaultShimPath, service.ShimParams{BinPath: service.DefaultSignCrazeBin}); err != nil {
 		return fmt.Errorf("--install: init.d shim: %w", err)
@@ -304,10 +333,47 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string, force b
 		fmt.Println("ВНИМАНИЕ: outbound настроен как 'direct' — проксирования нет.")
 		fmt.Println("Передайте URL через --proxy <URL> или зайдите в admin UI на :9091.")
 	}
+	if withDPI {
+		fmt.Println("DPI включён: nfqws2 + preset discord-youtube. После --start заработает обход YT/Discord.")
+	}
 	if force {
 		fmt.Println("Перезапуск сервиса: sign-craze --restart")
 	} else {
 		fmt.Println("Запуск сервиса: sign-craze --start")
+	}
+	return nil
+}
+
+// setupDPIDefault выполняет шаги --with-dpi: загрузка nfqws2 + blobs из
+// upstream nfqws2-keenetic, заполнение DPITargets из preset "discord-youtube",
+// генерация nfqws2.conf + hostlist, сохранение state с DPIEnabled=true.
+//
+// На момент вызова state уже сохранён (шаг 5 doInstall) — здесь мы только
+// читаем его обратно, дополняем DPI-полями и пересохраняем.
+func setupDPIDefault(ctx context.Context, st *state.State) error {
+	if err := installNfqws2WithBlobs(ctx); err != nil {
+		return err
+	}
+
+	preset := dpi.FindPreset("discord-youtube")
+	if preset == nil {
+		return fmt.Errorf("preset discord-youtube не найден")
+	}
+	st.DPIEnabled = true
+	st.DPITargets = append([]string(nil), preset.Targets...)
+
+	iface, err := detectISPInterface(ctx)
+	if err != nil {
+		// Не фатально: на момент install ISP-маршрут может ещё не быть установлен
+		// (например, до подключения WAN). Конфиг будет сгенерирован при --start.
+		log.L().Warn("--with-dpi: ISP-интерфейс не определён, конфиг nfqws2 будет создан при --start", "err", err)
+	} else {
+		if err := writeDPIConfig(iface, st); err != nil {
+			return fmt.Errorf("nfqws2.conf: %w", err)
+		}
+	}
+	if err := state.Save(state.DefaultPath, st); err != nil {
+		return fmt.Errorf("state: %w", err)
 	}
 	return nil
 }

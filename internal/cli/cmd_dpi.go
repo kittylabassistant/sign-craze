@@ -34,43 +34,67 @@ func handleDPI(ctx context.Context, args []string) error {
 	}
 }
 
+// detectISPInterface определяет ISP-интерфейс через `ip route show default`.
+// Общая утилита для всех DPI-функций, которые рендерят nfqws2.conf.
+func detectISPInterface(ctx context.Context) (string, error) {
+	routeRes, err := newRunner().Run(ctx, "ip", "route", "show", "default")
+	if err != nil {
+		return "", fmt.Errorf("ip route: %w", err)
+	}
+	iface, err := dpi.DetectISPInterface(string(routeRes.Stdout))
+	if err != nil {
+		return "", fmt.Errorf("ISP-интерфейс: %w", err)
+	}
+	return iface, nil
+}
+
+// installNfqws2WithBlobs скачивает .ipk пакет nfqws2-keenetic, устанавливает
+// бинарь и распаковывает blob-файлы (quic_initial.bin, tls_clienthello.bin).
+// Используется в dpiEnable и в --install --with-dpi.
+func installNfqws2WithBlobs(ctx context.Context) error {
+	arch, err := types.DetectHostArch()
+	if err != nil {
+		return fmt.Errorf("arch: %w", err)
+	}
+	if mkErr := os.MkdirAll(singbox.DefaultCacheDir, 0o755); mkErr != nil {
+		return fmt.Errorf("mkdir cache: %w", mkErr)
+	}
+	fmt.Printf("Загрузка nfqws2 (arch=%s)...\n", arch)
+	res, dlErr := dpi.Download(ctx, arch, singbox.DefaultCacheDir)
+	if dlErr != nil {
+		return fmt.Errorf("download: %w", dlErr)
+	}
+	if instErr := dpi.Install(res.Path, dpi.DefaultBinPath); instErr != nil {
+		return fmt.Errorf("install: %w", instErr)
+	}
+	if blobErr := dpi.InstallBlobs(res.Path, dpi.DefaultBlobDir); blobErr != nil {
+		// Не фатально — без blob'ов часть стратегий не работает, но fallback
+		// (без --lua-desync=fake:blob=...) может функционировать.
+		return fmt.Errorf("install blobs: %w", blobErr)
+	}
+	return nil
+}
+
 func dpiEnable(ctx context.Context) error {
 	st, err := loadState()
 	if err != nil {
 		return err
 	}
 
-	// Установка бинаря, если отсутствует.
+	// Установка бинаря + blob-файлов, если отсутствуют.
 	if _, statErr := os.Stat(dpi.DefaultBinPath); statErr != nil {
-		arch, archErr := types.DetectHostArch()
-		if archErr != nil {
-			return fmt.Errorf("--dpi on: %w", archErr)
-		}
-		if mkErr := os.MkdirAll(singbox.DefaultCacheDir, 0o755); mkErr != nil {
-			return fmt.Errorf("--dpi on: mkdir cache: %w", mkErr)
-		}
-		fmt.Printf("Загрузка nfqws2 (arch=%s)...\n", arch)
-		res, dlErr := dpi.Download(ctx, arch, singbox.DefaultCacheDir)
-		if dlErr != nil {
-			return fmt.Errorf("--dpi on: download: %w", dlErr)
-		}
-		if instErr := dpi.Install(res.Path, dpi.DefaultBinPath); instErr != nil {
-			return fmt.Errorf("--dpi on: install: %w", instErr)
+		if err := installNfqws2WithBlobs(ctx); err != nil {
+			return fmt.Errorf("--dpi on: %w", err)
 		}
 	}
 
-	// Определить ISP-интерфейс.
-	routeRes, err := newRunner().Run(ctx, "ip", "route", "show", "default")
+	iface, err := detectISPInterface(ctx)
 	if err != nil {
-		return fmt.Errorf("--dpi on: ip route: %w", err)
-	}
-	iface, err := dpi.DetectISPInterface(string(routeRes.Stdout))
-	if err != nil {
-		return fmt.Errorf("--dpi on: ISP-интерфейс: %w", err)
+		return fmt.Errorf("--dpi on: %w", err)
 	}
 
 	// Сгенерировать nfqws2.conf (+ hostlist если targets заданы).
-	if err := writeDPIConfig(iface, st.DPITargets); err != nil {
+	if err := writeDPIConfig(iface, st); err != nil {
 		return fmt.Errorf("--dpi on: %w", err)
 	}
 
@@ -82,30 +106,19 @@ func dpiEnable(ctx context.Context) error {
 	return nil
 }
 
-// ensureDPIConfigFresh регенерирует nfqws2.conf и hostlist из текущего state.
-// Безопасно вызывать на каждом --start: атомарная запись + idempotency.
-// Используется из cmd_lifecycle.go перед стартом nfqws2.
-func ensureDPIConfigFresh(ctx context.Context, st *state.State) error {
-	routeRes, err := newRunner().Run(ctx, "ip", "route", "show", "default")
-	if err != nil {
-		return fmt.Errorf("ip route: %w", err)
-	}
-	iface, err := dpi.DetectISPInterface(string(routeRes.Stdout))
-	if err != nil {
-		return fmt.Errorf("ISP-интерфейс: %w", err)
-	}
-	return writeDPIConfig(iface, st.DPITargets)
-}
-
-// writeDPIConfig пишет nfqws2.conf и (опционально) dpi-hostlist.txt.
-// targets пусто → флаг --hostlist не добавляется в args (desync для всего).
-// targets непусто → hostlist пишется атомарно, путь в params, флаг добавляется.
-func writeDPIConfig(iface string, targets []string) error {
+// writeDPIConfig пишет nfqws2.conf и (опционально) dpi-hostlist.txt из state.
+// st.DPIStrategy непустой → override NFQWS_ARGS (TCP/TLS-блок).
+// st.DPITargets непустой → hostlist пишется атомарно, --hostlist=<path> добавляется.
+// st.DPITargets пустой → флаг --hostlist не добавляется (desync для всего трафика).
+func writeDPIConfig(iface string, st *state.State) error {
 	params := dpi.DefaultConfigParams()
 	params.ISPInterface = iface
-	if len(targets) > 0 {
+	if st != nil && st.DPIStrategy != "" {
+		params.Args = st.DPIStrategy
+	}
+	if st != nil && len(st.DPITargets) > 0 {
 		params.HostlistPath = dpi.DefaultHostlistPath
-		if err := dpi.WriteHostlist(dpi.DefaultHostlistPath, targets); err != nil {
+		if err := dpi.WriteHostlist(dpi.DefaultHostlistPath, st.DPITargets); err != nil {
 			return fmt.Errorf("hostlist: %w", err)
 		}
 	}
@@ -143,6 +156,7 @@ func handleDPIStrategy(ctx context.Context, args []string) error {
 			return err
 		}
 		fmt.Printf("DPI-стратегия установлена: %s\n", strategy)
+		fmt.Println("Перезапустите сервис: sign-craze --restart")
 		return nil
 	})
 }
@@ -176,15 +190,11 @@ func handleDPITargets(ctx context.Context, args []string) error {
 		// Регенерация конфига имеет смысл только если DPI уже включён.
 		// Иначе конфиг будет создан при следующем `--dpi on` с актуальными targets.
 		if st.DPIEnabled {
-			routeRes, rErr := newRunner().Run(ctx, "ip", "route", "show", "default")
-			if rErr != nil {
-				return fmt.Errorf("--dpi-targets: ip route: %w", rErr)
-			}
-			iface, ifErr := dpi.DetectISPInterface(string(routeRes.Stdout))
+			iface, ifErr := detectISPInterface(ctx)
 			if ifErr != nil {
-				return fmt.Errorf("--dpi-targets: ISP-интерфейс: %w", ifErr)
+				return fmt.Errorf("--dpi-targets: %w", ifErr)
 			}
-			if err := writeDPIConfig(iface, targets); err != nil {
+			if err := writeDPIConfig(iface, st); err != nil {
 				return fmt.Errorf("--dpi-targets: %w", err)
 			}
 		}
@@ -236,6 +246,9 @@ func handleDPIUpdate(ctx context.Context, _ []string) error {
 		}
 		if err := dpi.Install(res.Path, dpi.DefaultBinPath); err != nil {
 			return fmt.Errorf("--dpi-update: %w", err)
+		}
+		if err := dpi.InstallBlobs(res.Path, dpi.DefaultBlobDir); err != nil {
+			return fmt.Errorf("--dpi-update: install blobs: %w", err)
 		}
 		fmt.Printf("nfqws2 обновлён до %s.\n", res.Version)
 		return nil

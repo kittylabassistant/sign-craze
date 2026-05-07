@@ -10,6 +10,8 @@ func HybridRules(fwmark uint32, nfqueueNum int) []RuleSpec {
 	queue := fmt.Sprintf("%d", nfqueueNum)
 
 	// NFQUEUE-правила добавляются в signcraze_dpi (до mark-маршрутизации).
+	// Comment-теги нужны для cleanup'а и идентификации правил sign-craze
+	// при ручной диагностике через `iptables -t mangle -L -nv`.
 	dpiRules := []RuleSpec{
 		// TCP трафик без нашей метки → NFQUEUE (nfqws2 обрабатывает).
 		{
@@ -18,6 +20,7 @@ func HybridRules(fwmark uint32, nfqueueNum int) []RuleSpec {
 				"-m", "mark", "!", "--mark", mark,
 				"-p", "tcp",
 				"-j", "NFQUEUE", "--queue-num", queue, "--queue-bypass",
+				"-m", "comment", "--comment", "signcraze:dpi-tcp",
 			},
 		},
 		// UDP трафик без нашей метки → NFQUEUE.
@@ -27,6 +30,7 @@ func HybridRules(fwmark uint32, nfqueueNum int) []RuleSpec {
 				"-m", "mark", "!", "--mark", mark,
 				"-p", "udp",
 				"-j", "NFQUEUE", "--queue-num", queue, "--queue-bypass",
+				"-m", "comment", "--comment", "signcraze:dpi-udp",
 			},
 		},
 	}

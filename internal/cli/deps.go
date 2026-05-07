@@ -27,7 +27,25 @@ func newRunner() exectx.Runner { return exectx.OS }
 func newSingboxLifecycle() service.Lifecycle { return singbox.DefaultLifecycle() }
 
 // newDPILifecycle возвращает Lifecycle nfqws2 с дефолтными путями.
+// Используется для Stop/Status/Diag — операции по PIDFile, cmdline не критичен.
+// Для запуска (Start) использовать newDPILifecycleFromState — cmdline должен
+// учитывать state.DPIStrategy и hostlist.
 func newDPILifecycle() service.Lifecycle { return dpi.DefaultLifecycle() }
+
+// newDPILifecycleFromState возвращает Lifecycle nfqws2 с cmdline, собранным из
+// текущего state. Если state.DPIStrategy непустой — он переопределяет
+// NFQWS_ARGS (TCP/TLS-блок). DPITargets подключается через --hostlist=.
+func newDPILifecycleFromState(st *state.State, iface string) service.Lifecycle {
+	params := dpi.DefaultConfigParams()
+	params.ISPInterface = iface
+	if st != nil && st.DPIStrategy != "" {
+		params.Args = st.DPIStrategy
+	}
+	if st != nil && len(st.DPITargets) > 0 {
+		params.HostlistPath = dpi.DefaultHostlistPath
+	}
+	return dpi.NewLifecycle(dpi.DefaultBinPath, params, dpi.DefaultPIDFile)
+}
 
 // newFirewallApplier строит Applier из state: пробрасывает ports/excludes/admin
 // + PolicyMark + DPIEnabled в Config.

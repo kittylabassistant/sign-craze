@@ -77,7 +77,7 @@ sign-craze --start
 
 > [!NOTE]
 > `sing-box` загружается с GitHub Releases во время `--install` и **не входит** в sign-craze.
-> `nfqws2` загружается **только при первом `sign-craze --dpi on`** — DPI-обход отключён по умолчанию (opt-in). См. [wiki/FAQ → «Работает ли DPI/nfqws2 из коробки»](https://github.com/kittylabassistant/sign-craze/wiki/FAQ#работает-ли-dpinfqws2-из-коробки).
+> `nfqws2` загружается **только при первом `sign-craze --dpi on`** или при `sign-craze --install --with-dpi` — DPI-обход отключён по умолчанию (opt-in). Флаг `--with-dpi` устанавливает nfqws2 + blob-файлы и сразу включает DPI с preset `discord-youtube` (out-of-box работа YouTube + Discord). См. [wiki/FAQ → «Работает ли DPI/nfqws2 из коробки»](https://github.com/kittylabassistant/sign-craze/wiki/FAQ#работает-ли-dpinfqws2-из-коробки).
 
 ### Offline-установка (роутер без доступа к GitHub)
 
@@ -118,6 +118,7 @@ cd signcraze-mipsle-bundle && ./install-offline.sh
 sign-craze --install            Установить sing-box + правила iptables
 sign-craze --install-auto       Установить без интерактивных подсказок
 sign-craze --install-offline <путь>  Установить из локального бинаря
+sign-craze --install --with-dpi      Установить + включить nfqws2 с preset discord-youtube
 
 sign-craze --start              Применить правила + запустить sing-box
 sign-craze --stop               Остановить + убрать правила iptables
@@ -147,8 +148,7 @@ sign-craze --ui on|off          Включить / выключить Web UI (п
 sign-craze --backup  / -b       Создать резервную копию конфигурации
 sign-craze --restore <путь>     Восстановить из резервной копии
 sign-craze --diag    / -D       Диагностика (PASS/WARN/FAIL по каждому пункту)
-sign-craze --uninstall          Удалить sing-box и правила, сохранить конфиги
-sign-craze --purge              Полное удаление включая конфиги и логи
+sign-craze --uninstall          Полное удаление: sing-box, конфиги, логи, бинарь sign-craze
 sign-craze --version / -v       Показать версии sign-craze и sing-box
 ```
 

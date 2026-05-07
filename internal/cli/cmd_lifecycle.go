@@ -127,12 +127,17 @@ func doStart(ctx context.Context) error {
 		// Регенерация nfqws2.conf + hostlist на каждом старте: гарантирует
 		// что конфиг отражает актуальный st.DPITargets даже если юзер изменил
 		// targets без --restart, или конфиг был удалён вручную.
-		if regenErr := ensureDPIConfigFresh(ctx, st); regenErr != nil {
-			log.L().Warn("--start: регенерация nfqws2.conf не удалась", "err", regenErr)
-		}
-		dpiLC := newDPILifecycle()
-		if dpiErr := dpiLC.Start(ctx); dpiErr != nil {
-			log.L().Warn("--start: nfqws2 не стартовал, продолжаем без DPI", "err", dpiErr)
+		iface, ifaceErr := detectISPInterface(ctx)
+		if ifaceErr != nil {
+			log.L().Warn("--start: ISP-интерфейс не определён, nfqws2 не стартует", "err", ifaceErr)
+		} else {
+			if regenErr := writeDPIConfig(iface, st); regenErr != nil {
+				log.L().Warn("--start: регенерация nfqws2.conf не удалась", "err", regenErr)
+			}
+			dpiLC := newDPILifecycleFromState(st, iface)
+			if dpiErr := dpiLC.Start(ctx); dpiErr != nil {
+				log.L().Warn("--start: nfqws2 не стартовал, продолжаем без DPI", "err", dpiErr)
+			}
 		}
 	}
 

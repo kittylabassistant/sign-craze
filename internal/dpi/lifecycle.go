@@ -11,22 +11,23 @@ const (
 
 // NewLifecycle создаёт Lifecycle для процесса nfqws2.
 // binPath — путь к бинарю (обычно DefaultBinPath).
-// configPath — путь к nfqws2.conf (обычно DefaultConfigPath).
+// params — параметры стратегии. Командная строка формируется через
+// ConfigParams.BuildCmdline() — бинарь nfqws2 НЕ читает .conf-файл сам,
+// upstream nfqws2-keenetic source-ит его в init.d-обёртке. Мы делаем то же
+// самое в Go, чтобы избежать зависимости от shell на роутере.
 // pidFile — путь к PID-файлу (обычно DefaultPIDFile).
-func NewLifecycle(binPath, configPath, pidFile string) service.Lifecycle {
+func NewLifecycle(binPath string, params ConfigParams, pidFile string) service.Lifecycle {
 	return service.NewLifecycle(service.ProcessConfig{
 		Name:    "nfqws2",
 		BinPath: binPath,
-		// nfqws2 читает конфиг через переменные окружения из conf-файла;
-		// запускается скриптом-обёрткой из пакета nfqws2-keenetic,
-		// который источает конфиг и передаёт NFQWS_ARGS нфикусу.
-		// Прямой запуск бинаря требует аргументов из конфига.
-		Args:    []string{"--config", configPath},
+		Args:    params.BuildCmdline(),
 		PIDFile: pidFile,
 	})
 }
 
-// DefaultLifecycle создаёт Lifecycle с путями по умолчанию.
+// DefaultLifecycle создаёт Lifecycle с путями и параметрами по умолчанию.
+// Используется в местах где state ещё не загружен — caller должен
+// предпочитать NewLifecycle с актуальными параметрами из state.
 func DefaultLifecycle() service.Lifecycle {
-	return NewLifecycle(DefaultBinPath, DefaultConfigPath, DefaultPIDFile)
+	return NewLifecycle(DefaultBinPath, DefaultConfigParams(), DefaultPIDFile)
 }
