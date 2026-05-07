@@ -63,6 +63,25 @@ func PolicyRules(keenMark, loopMark uint32) []RuleSpec {
 // Должно совпадать с firewall.TUNDeviceName / singbox.DefaultTUNInterfaceName.
 const PolicyTUNDeviceName = "signbox-tun"
 
+// PolicyDPITCPPorts — TCP-порты, обрабатываемые nfqws2 в режиме policy.
+// Каждый элемент — single port или range (`80` / `2053:2096`), на одно
+// правило iptables. xt_multiport отсутствует в стоковом ядре Keenetic 4.9,
+// поэтому используется multiple `--dport` правил вместо `-m multiport`.
+//
+//   - 80          — HTTP (некоторые ISP блокируют по Host: header)
+//   - 443         — HTTPS/TLS (основной канал YT/Discord/Google блокировок)
+//   - 2053:2096   — Cloudflare альтернативные TLS-порты (Discord media, CDN)
+//   - 8443        — альтернативный HTTPS, используется Discord и рядом
+//     сервисов для обхода базовых блокировок 443
+var PolicyDPITCPPorts = []string{"80", "443", "2053:2096", "8443"}
+
+// PolicyDPIUDPPorts — UDP-порты, обрабатываемые nfqws2 в режиме policy.
+//
+//   - 443           — QUIC/HTTP3 (YouTube, Google CDN)
+//   - 19200:19400   — Discord RTP (голосовые каналы)
+//   - 50000:50100   — Discord voice P2P / WebRTC ICE
+var PolicyDPIUDPPorts = []string{"443", "19200:19400", "50000:50100"}
+
 // PolicyDPIRules возвращает правила NFQUEUE для режима policy.
 // Применяются только когда DPIEnabled=true.
 //
@@ -79,36 +98,40 @@ const PolicyTUNDeviceName = "signbox-tun"
 // уже после sing-box и реально уходит на провайдера. NFQUEUE здесь
 // перехватит ClientHello sing-box → nfqws2 desync → выпуск на ISP.
 //
-// Фильтр `--dport 443` ограничивает обработку TLS+QUIC трафика — основной
-// канал DPI-блокировок на mtgs/Москва. HTTP (80) обычно не блокируется
-// и не нуждается в desync.
+// Списки портов (PolicyDPITCPPorts/UDPPorts) покрывают основные каналы
+// DPI-блокировок (TLS+QUIC) и Discord voice. На каждый элемент — отдельное
+// правило `--dport` (xt_multiport не загружен в Keenetic 4.9 ядре).
 //
 // keenMark передаётся для совместимости с прежним signature, но в
-// POSTROUTING-схеме не используется (mark ставится в PREROUTING до того,
-// как пакет дойдёт до POSTROUTING; sing-box свои пакеты помечает 0x53).
+// POSTROUTING-схеме не используется (sing-box свои пакеты помечает 0x53,
+// LAN-mark теряется при TPROXY-перехвате до POSTROUTING).
 func PolicyDPIRules(keenMark uint32, nfqueueNum int) []RuleSpec {
 	queue := fmt.Sprintf("%d", nfqueueNum)
 	_ = keenMark // зарезервирован для будущего фильтра по mark
 
-	return []RuleSpec{
-		{
+	rules := make([]RuleSpec, 0, len(PolicyDPITCPPorts)+len(PolicyDPIUDPPorts)+1)
+	for _, port := range PolicyDPITCPPorts {
+		rules = append(rules, RuleSpec{
 			Table: "mangle", Chain: PolicyDPIChainName,
 			Args: []string{
-				"-p", "tcp", "--dport", "443",
+				"-p", "tcp", "--dport", port,
 				"-j", "NFQUEUE", "--queue-num", queue, "--queue-bypass",
 			},
-		},
-		{
-			Table: "mangle", Chain: PolicyDPIChainName,
-			Args: []string{
-				"-p", "udp", "--dport", "443",
-				"-j", "NFQUEUE", "--queue-num", queue, "--queue-bypass",
-			},
-		},
-		// Переход POSTROUTING → signcraze_policy_dpi.
-		{
-			Table: "mangle", Chain: "POSTROUTING",
-			Args: []string{"-j", PolicyDPIChainName},
-		},
+		})
 	}
+	for _, port := range PolicyDPIUDPPorts {
+		rules = append(rules, RuleSpec{
+			Table: "mangle", Chain: PolicyDPIChainName,
+			Args: []string{
+				"-p", "udp", "--dport", port,
+				"-j", "NFQUEUE", "--queue-num", queue, "--queue-bypass",
+			},
+		})
+	}
+	// Переход POSTROUTING → signcraze_policy_dpi (один раз, в конце).
+	rules = append(rules, RuleSpec{
+		Table: "mangle", Chain: "POSTROUTING",
+		Args: []string{"-j", PolicyDPIChainName},
+	})
+	return rules
 }
