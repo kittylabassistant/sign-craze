@@ -217,7 +217,7 @@ internal/cli  (диспетчер команд)
 /opt/etc/sign-craze/config.json           — конфигурация sing-box
 /opt/etc/sign-craze/nfqws2.conf           — конфигурация nfqws2 (если DPI включён)
 /opt/etc/sign-craze/dpi-hostlist.txt      — список SNI-целей для Selective DPI (если задан)
-/opt/etc/init.d/S05signcraze              — init.d shim (автозапуск)
+/opt/etc/init.d/S99signcraze              — init.d shim (автозапуск)
 /opt/var/lib/sign-craze/                  — состояние (гео-файлы, бэкапы)
 /opt/var/log/sign-craze/                  — логи с ротацией
 /opt/var/run/sign-craze-singbox.pid       — PID sing-box

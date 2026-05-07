@@ -46,8 +46,8 @@ echo "${diag_out}" | grep -qi "FAIL" \
     && fail "--diag содержит FAIL:\n${diag_out}"
 
 # ---------- проверка init-shim ----------
-log "Проверяем init-shim /opt/etc/init.d/S05signcraze..."
-ssh_cmd "test -f /opt/etc/init.d/S05signcraze" \
-    || fail "init-shim /opt/etc/init.d/S05signcraze отсутствует"
+log "Проверяем init-shim /opt/etc/init.d/S99signcraze..."
+ssh_cmd "test -f /opt/etc/init.d/S99signcraze" \
+    || fail "init-shim /opt/etc/init.d/S99signcraze отсутствует"
 
 pass

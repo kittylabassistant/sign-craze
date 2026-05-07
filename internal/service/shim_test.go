@@ -106,7 +106,7 @@ func TestRenderShim_HasWatchdogIntegration(t *testing.T) {
 
 func TestWriteShim_CreatesFile(t *testing.T) {
 	dir := t.TempDir()
-	shimPath := filepath.Join(dir, "S05signcraze")
+	shimPath := filepath.Join(dir, "S99signcraze")
 
 	if err := WriteShim(shimPath, ShimParams{BinPath: "/opt/sbin/sign-craze"}); err != nil {
 		t.Fatalf("WriteShim: %v", err)
@@ -123,7 +123,7 @@ func TestWriteShim_CreatesFile(t *testing.T) {
 
 func TestWriteShim_Idempotent(t *testing.T) {
 	dir := t.TempDir()
-	shimPath := filepath.Join(dir, "S05signcraze")
+	shimPath := filepath.Join(dir, "S99signcraze")
 	p := ShimParams{BinPath: "/opt/sbin/sign-craze"}
 
 	if err := WriteShim(shimPath, p); err != nil {

@@ -31,9 +31,9 @@ ssh_cmd "test ! -f /opt/sbin/sign-craze" \
     || fail "/opt/sbin/sign-craze всё ещё существует"
 
 # ---------- проверяем отсутствие init-shim ----------
-log "Проверяем отсутствие /opt/etc/init.d/S05signcraze..."
-ssh_cmd "test ! -f /opt/etc/init.d/S05signcraze" \
-    || fail "/opt/etc/init.d/S05signcraze всё ещё существует"
+log "Проверяем отсутствие /opt/etc/init.d/S99signcraze..."
+ssh_cmd "test ! -f /opt/etc/init.d/S99signcraze" \
+    || fail "/opt/etc/init.d/S99signcraze всё ещё существует"
 
 # ---------- проверяем удаление policy из RCI ----------
 log "Проверяем отсутствие policy description=sign-craze в RCI..."

@@ -13,7 +13,12 @@ import (
 
 const (
 	// DefaultShimPath — путь к init.d shim на роутере.
-	DefaultShimPath = "/opt/etc/init.d/S05signcraze"
+	// S99 (а не S05) выбран намеренно: rc.unslung исполняет init.d-скрипты
+	// в лексикографическом порядке, и любой `set -eu`-fail в shim прерывает
+	// последовательность. На S05 это блокировало запуск S51dropbear → SSH 222
+	// становился недоступен после reboot (инцидент 2026-05-07). На S99 shim
+	// запускается ПОСЛЕ S51dropbear → даже падение sign-craze не убивает SSH.
+	DefaultShimPath = "/opt/etc/init.d/S99signcraze"
 	// DefaultBinPath — путь к бинарю sign-craze на роутере.
 	DefaultSignCrazeBin = "/opt/sbin/sign-craze"
 	// DefaultWatchdogPIDPath — PID-файл standalone firewall watchdog daemon.

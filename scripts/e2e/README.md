@@ -54,7 +54,7 @@ KEENETIC_HOST=192.168.1.1 ./scripts/e2e/03-dpi-hostlist.sh
 | `01-install.sh`     | SCP + `--install-auto`, `--status`, `--diag`, init.d  |
 | `02-policy.sh`      | `--mode policy`, RCI policy=sign-craze, iptables MARK  |
 | `03-dpi-hostlist.sh`| `--dpi on`, `--dpi-targets`, hostlist, nfqws2 PID     |
-| `04-reboot.sh`      | Перезагрузка, автостарт через S05signcraze             |
+| `04-reboot.sh`      | Перезагрузка, автостарт через S99signcraze             |
 | `99-uninstall.sh`   | `--uninstall`, проверка полной очистки файлов и RCI   |
 
 ## Ожидаемый вывод при успехе

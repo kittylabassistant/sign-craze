@@ -54,7 +54,7 @@ cli/install.Run
   → singbox.Download       (GitHub releases, ETag-кэш, проверка SHA256)
   → singbox.Install        (бэкап текущего, untar, chmod, атомарное переименование)
   → singbox.config.Render  (text/template → tproxy.json)
-  → service.shim.Write     (генерация /opt/etc/init.d/S05signcraze)
+  → service.shim.Write     (генерация /opt/etc/init.d/S99signcraze)
   → firewall.modes.Apply   (цепочки iptables + ipset + mark-маршрутизация)
   → locks.Release
 ```
@@ -116,7 +116,7 @@ cli/startUI
 | ID таблицы маршрутизации | `0x53` |
 | Файл блокировки | `/opt/var/lock/sign-craze.lock` |
 | PID-файлы | `/opt/var/run/sign-craze-{singbox,nfqws2}.pid` |
-| init.d shim | `/opt/etc/init.d/S05signcraze` |
+| init.d shim | `/opt/etc/init.d/S99signcraze` |
 | Корень конфигов | `/opt/etc/sign-craze/` |
 | DPI hostlist | `/opt/etc/sign-craze/dpi-hostlist.txt` |
 | Директория состояния | `/opt/var/lib/sign-craze/` |

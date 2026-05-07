@@ -74,7 +74,7 @@ Go-утилита для управления межсетевым экрано�
 /opt/etc/sign-craze/nfqws2.conf            — конфиг nfqws2 (если DPI включён)
 /opt/etc/sign-craze/dpi-hostlist.txt       — список доменов для selective DPI desync
 /opt/etc/sign-craze/admin.creds            — bcrypt-хэш для Web UI
-/opt/etc/init.d/S05signcraze               — init.d shim (автозапуск sing-box + watchdog)
+/opt/etc/init.d/S99signcraze               — init.d shim (автозапуск sing-box + watchdog)
 /opt/etc/ndm/netfilter.d/50-sign-craze     — NDM hook: реапплай правил после rebuild
 /opt/var/lib/sign-craze/geo/               — гео-файлы (*.srs)
 /opt/var/lib/sign-craze/backups/           — снимки tar.gz

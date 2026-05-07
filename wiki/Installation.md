@@ -359,7 +359,7 @@ sign-craze --restart
 - Сгенерируется `/opt/etc/sign-craze/config.json` (TUN inbound `signbox-tun`, fwmark `0x53` для loop-prevention)
 - В режиме `policy` — будет создана IP Policy `sign-craze` через RCI Keenetic
 - При включении DPI (`--dpi on`) — скачается `nfqws2` и сгенерируется `/opt/etc/sign-craze/nfqws2.conf`
-- Создастся init.d shim `/opt/etc/init.d/S05signcraze` (автозапуск sing-box + firewall watchdog)
+- Создастся init.d shim `/opt/etc/init.d/S99signcraze` (автозапуск sing-box + firewall watchdog)
 - Создастся NDM netfilter.d hook `/opt/etc/ndm/netfilter.d/50-sign-craze` (реапплай правил после rebuild)
 
 > **Защита от SSH-lockout и LAN-трафик**: SSH-порты роутера (`22` Entware/dropbear, `222` Keenetic admin) и локальные сети (RFC1918 + loopback + multicast + link-local) автоматически исключены из проксирования через ipset `signcraze_excludes` и RETURN-правила в mangle. Дополнительной настройки не требуется. Для кастомизации (другие порты, bypass публичных IP) править поля `admin_ports` и `admin_ips` в `/opt/etc/sign-craze/state.json` и перезапустить sign-craze.
@@ -536,7 +536,7 @@ ping -c 5 1.1.1.1
 
 ## 11. Автозапуск после ребута
 
-Уже настроен через `/opt/etc/init.d/S05signcraze` (создан в [шаге 6](#6-конфигурация-sign-craze)). Init.d shim делает на boot:
+Уже настроен через `/opt/etc/init.d/S99signcraze` (создан в [шаге 6](#6-конфигурация-sign-craze)). Init.d shim делает на boot:
 
 1. `sign-craze --service-start` — поднимает sing-box + nfqws2 + применяет firewall.
 2. `sign-craze --service-watchdog &` — standalone watchdog процесс в фоне (PID в `/opt/var/run/sign-craze-watchdog.pid`). Каждые 30 сек проверяет критичные правила (`-i/o signbox-tun -j ACCEPT` и PREROUTING jump на `signcraze_policy`/`signcraze`). Если ndm их стёр — реапплаит за ~100ms. Это закрывает сценарий «через несколько часов sign-craze перестаёт проксировать».
