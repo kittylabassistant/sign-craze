@@ -5,6 +5,13 @@
 
 ---
 
+## [0.6.6] — 2026-05-08
+
+### Fixed
+- **TCP MSS clamp на FORWARD к/от signbox-tun**: ServerHello + ServerCertificate (10–16 KB cert chain) не доставлялись LAN-клиентам при HTTPS-хендшейке через прокси. Причина: MTU signbox-tun = 1280, LAN-клиенты согласуют MSS=1460 (MTU 1500) — крупные сегменты от удалённого сервера не вмещались в TUN; IP-фрагментация ломалась, клиент получал «TLS handshake timeout» сразу после ClientHello. ICMP PMTUD на Keenetic LAN ненадёжен. Решение: два правила `mangle/FORWARD` с `--clamp-mss-to-pmtu` — симметрично для SYN-сегментов на `-o signbox-tun` и `-i signbox-tun`. После clamp'а клиенты согласуют MSS=1220, ServerCertificate приходит без фрагментации. Фикс в `internal/firewall/modes/policy.go` (два дополнительных RuleSpec в `PolicyRules()`). Проверено на Keenetic 4.9 mipsle: счётчик `iptables FORWARD signbox-tun *` (out) растёт с 0 до 232 пакетов/мин, RPi4 → `curl https://1.1.1.1` отрабатывает.
+
+---
+
 ## [0.6.5] — 2026-05-08
 
 ### Fixed

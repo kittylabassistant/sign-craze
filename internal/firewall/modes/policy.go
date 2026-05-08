@@ -56,6 +56,30 @@ func PolicyRules(keenMark, loopMark uint32) []RuleSpec {
 			Table: "filter", Chain: "FORWARD",
 			Args: []string{"-i", PolicyTUNDeviceName, "-j", "ACCEPT"},
 		},
+		// MSS clamping: TUN-интерфейс sing-box имеет MTU 1280 (см.
+		// singbox.template.json), а LAN-клиенты согласовывают MSS 1460 (на
+		// MTU 1500). Большие сегменты от удалённого сервера (TLS Server Hello
+		// + Certificate chain) не пролезают в TUN — пакеты дропаются, клиенту
+		// видно "TLS handshake timeout" сразу после Client Hello. Path MTU
+		// Discovery через ICMP редко работает на LAN-сегменте Keenetic,
+		// поэтому требуется явный TCPMSS clamp на FORWARD к/от TUN.
+		// Симметрично -i и -o: clamp применяется к SYN от LAN→TUN и от TUN→LAN.
+		{
+			Table: "mangle", Chain: "FORWARD",
+			Args: []string{
+				"-o", PolicyTUNDeviceName,
+				"-p", "tcp", "--tcp-flags", "SYN,RST", "SYN",
+				"-j", "TCPMSS", "--clamp-mss-to-pmtu",
+			},
+		},
+		{
+			Table: "mangle", Chain: "FORWARD",
+			Args: []string{
+				"-i", PolicyTUNDeviceName,
+				"-p", "tcp", "--tcp-flags", "SYN,RST", "SYN",
+				"-j", "TCPMSS", "--clamp-mss-to-pmtu",
+			},
+		},
 	}
 }
 
