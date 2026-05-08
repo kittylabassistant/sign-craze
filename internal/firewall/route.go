@@ -143,6 +143,41 @@ func ForceDeleteTUNDevice(ctx context.Context, runner exectx.Runner, dev string)
 	log.L().Debug("firewall: TUN device удалён", "dev", dev)
 }
 
+// EnsureLocalRoute добавляет маршрут `local 0.0.0.0/0 dev lo table <table>`
+// через `ip route replace`. Необходим для TPROXY-режима: без него ядро не может
+// доставить TPROXY-пакет в сокет sing-box (EHOSTUNREACH на lookup таблицы).
+// Идемпотентно через `ip route replace`.
+func EnsureLocalRoute(ctx context.Context, runner exectx.Runner, table int) error {
+	args := []string{
+		"route", "replace",
+		"local", "0.0.0.0/0",
+		"dev", "lo",
+		"table", fmt.Sprintf("%d", table),
+	}
+	if _, err := runner.Run(ctx, "ip", args...); err != nil {
+		return fmt.Errorf("firewall: добавление local route в таблицу %d: %w", table, err)
+	}
+	log.L().Debug("firewall: local route добавлен/обновлён", "table", table)
+	return nil
+}
+
+// DeleteLocalRoute удаляет маршрут `local 0.0.0.0/0 dev lo table <table>`. Идемпотентно.
+func DeleteLocalRoute(ctx context.Context, runner exectx.Runner, table int) error {
+	args := []string{
+		"route", "del",
+		"local", "0.0.0.0/0",
+		"dev", "lo",
+		"table", fmt.Sprintf("%d", table),
+	}
+	if _, err := runner.Run(ctx, "ip", args...); err != nil {
+		// Отсутствие маршрута — штатный idempotent-кейс, не ошибка.
+		log.L().Debug("firewall: удаление local route (возможно отсутствует)", "table", table, "err", err)
+		return nil
+	}
+	log.L().Debug("firewall: local route удалён", "table", table)
+	return nil
+}
+
 // EnsureLinkUp поднимает link state интерфейса dev (`ip link set <dev> up`).
 // Идемпотентно — повторный вызов на уже UP-интерфейсе не считается ошибкой
 // (kernel молча возвращает успех).

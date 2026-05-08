@@ -246,6 +246,142 @@ func TestRender_HijackDNSScopedToTUN(t *testing.T) {
 	}
 }
 
+// TestRender_TProxyInbound — при InboundMode="tproxy" рендер должен содержать
+// `redirect` inbound (xt_TPROXY на Keenetic 4.9 отсутствует, fallback в REDIRECT),
+// listen=127.0.0.1, корректный listen_port, без TUN-inbound и без deprecated sniff.
+func TestRender_TProxyInbound(t *testing.T) {
+	p := DefaultConfigParams()
+	p.InboundMode = "tproxy"
+	p.Outbounds = []types.Outbound{
+		{Tag: "out", Type: "socks", Server: "1.1.1.1", Port: 1080},
+	}
+	p.DefaultOutboundTag = "out"
+
+	data, err := Render(p)
+	if err != nil {
+		t.Fatalf("Render(InboundMode=tproxy): %v", err)
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+
+	inbounds, ok := parsed["inbounds"].([]any)
+	if !ok || len(inbounds) != 1 {
+		t.Fatalf("ожидался 1 inbound, получено %d", len(inbounds))
+	}
+
+	ib0 := inbounds[0].(map[string]any)
+	if ib0["type"] != "redirect" {
+		t.Errorf("inbounds[0].type = %v, ожидалось redirect", ib0["type"])
+	}
+	if ib0["tag"] != DefaultTProxyTag {
+		t.Errorf("inbounds[0].tag = %v, ожидалось %q", ib0["tag"], DefaultTProxyTag)
+	}
+	if port, ok := ib0["listen_port"].(float64); !ok || uint16(port) != DefaultTProxyPort {
+		t.Errorf("inbounds[0].listen_port = %v, ожидалось %d", ib0["listen_port"], DefaultTProxyPort)
+	}
+	if listen, ok := ib0["listen"].(string); !ok || listen != "0.0.0.0" {
+		t.Errorf("inbounds[0].listen = %v, ожидалось \"0.0.0.0\"", ib0["listen"])
+	}
+	if _, ok := ib0["sniff"]; ok {
+		t.Error("inbound содержит deprecated поле sniff (должно быть в route.rules)")
+	}
+}
+
+// TestRender_TProxyInbound_TCP_UDP — REDIRECT inbound только TCP (UDP не
+// поддерживается через REDIRECT, sing-box `redirect` inbound TCP-only).
+func TestRender_TProxyInbound_TCP_UDP(t *testing.T) {
+	p := DefaultConfigParams()
+	p.InboundMode = "tproxy"
+	p.Outbounds = []types.Outbound{
+		{Tag: "out", Type: "socks", Server: "1.1.1.1", Port: 1080},
+	}
+
+	data, err := Render(p)
+	if err != nil {
+		t.Fatalf("Render(InboundMode=tproxy): %v", err)
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+
+	inbounds := parsed["inbounds"].([]any)
+	if len(inbounds) != 1 {
+		t.Fatalf("ожидался 1 inbound (REDIRECT TCP), получено %d", len(inbounds))
+	}
+
+	ib0 := inbounds[0].(map[string]any)
+	if ib0["type"] != "redirect" {
+		t.Errorf("type = %v, ожидалось redirect", ib0["type"])
+	}
+	if _, ok := ib0["sniff"]; ok {
+		t.Error("inbound содержит deprecated поле sniff")
+	}
+}
+
+// TestRender_TProxyInbound_BackwardCompat — при InboundMode="" (пусто) или "tun"
+// должен рендериться стандартный TUN inbound (backward compat).
+func TestRender_TProxyInbound_BackwardCompat(t *testing.T) {
+	for _, mode := range []string{"", "tun"} {
+		t.Run("InboundMode="+mode, func(t *testing.T) {
+			p := DefaultConfigParams()
+			p.InboundMode = mode
+			p.Outbounds = []types.Outbound{
+				{Tag: "out", Type: "socks", Server: "1.1.1.1", Port: 1080},
+			}
+
+			data, err := Render(p)
+			if err != nil {
+				t.Fatalf("Render(InboundMode=%q): %v", mode, err)
+			}
+
+			var parsed map[string]any
+			if err := json.Unmarshal(data, &parsed); err != nil {
+				t.Fatalf("json.Unmarshal: %v", err)
+			}
+
+			inbounds := parsed["inbounds"].([]any)
+			if len(inbounds) == 0 {
+				t.Fatal("inbounds пуст")
+			}
+			ib0 := inbounds[0].(map[string]any)
+			if ib0["type"] != "tun" {
+				t.Errorf("InboundMode=%q: inbounds[0].type = %v, ожидалось tun", mode, ib0["type"])
+			}
+		})
+	}
+}
+
+// TestRender_TProxyInbound_CustomPort — при TProxyPort != 0 используется кастомный порт.
+func TestRender_TProxyInbound_CustomPort(t *testing.T) {
+	p := DefaultConfigParams()
+	p.InboundMode = "tproxy"
+	p.TProxyPort = 8080
+	p.Outbounds = []types.Outbound{
+		{Tag: "out", Type: "socks", Server: "1.1.1.1", Port: 1080},
+	}
+
+	data, err := Render(p)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+
+	inbounds := parsed["inbounds"].([]any)
+	ib0 := inbounds[0].(map[string]any)
+	if port, ok := ib0["listen_port"].(float64); !ok || int(port) != 8080 {
+		t.Errorf("listen_port = %v, ожидалось 8080", ib0["listen_port"])
+	}
+}
+
 func TestBuildRuleSets_NoDuplicates(t *testing.T) {
 	r := types.RoutingRules{
 		GeoSiteProxy:  []string{"cat-a", "cat-b"},

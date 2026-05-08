@@ -5,6 +5,16 @@
 
 ---
 
+## [0.7.0] — 2026-05-08
+
+### Added
+- **`state.Inbound: "tun" | "tproxy"`** (default `"tproxy"`): поле в состоянии определяет режим inbound sing-box. Флаг `--inbound` доступен во всех `--install*`-командах. Migration: пустое значение автоматически приводится к `"tproxy"`.
+
+### Fixed
+- **Переход с TUN inbound на REDIRECT inbound для прокси LAN-трафика**: TUN+gvisor-стек делал userspace-SNAT клиентского src → TUN gateway (`172.19.0.1`), sing-box видел `inbound connection from 172.19.0.1:PORT` вместо реального IP клиента. Ответы от прокси возвращались router-локально (`dst=172.19.0.1`) и до клиента не доходили — счётчик `iptables FORWARD signbox-tun *` (out) был 0. `xt_TPROXY` на Keenetic 4.9 отсутствует, поэтому выбран fallback в REDIRECT (DNAT в local stack). Sing-box `redirect` inbound на `0.0.0.0:7895`; iptables `nat/PREROUTING -j signcraze_policy` с `REDIRECT --to-port 7895`. Через `SO_ORIGINAL_DST` извлекается оригинальный dst, src клиента preserved. Включено `net.ipv4.conf.all.route_localnet=1` для прохождения REDIRECT'ed пакетов, INPUT ACCEPT на порт sing-box. Проверено: RPi4 → `curl https://1.1.1.1` проходит полный TLS handshake (Certificate, CERT verify, Finished, HTTP 200), conntrack показывает 14 sent / 12 reply пакетов вместо `[UNREPLIED]`. Ограничение: REDIRECT работает только TCP — UDP трафик идёт мимо прокси (`redirect` inbound TCP-only).
+
+---
+
 ## [0.6.6] — 2026-05-08
 
 ### Fixed

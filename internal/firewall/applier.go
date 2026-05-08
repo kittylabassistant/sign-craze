@@ -73,6 +73,14 @@ type Config struct {
 	// для xray/mihomo, которые работают через TProxy + fwmark и не создают
 	// TUN-устройство. Sing-box оставляет SkipTUNCheck=false (default).
 	SkipTUNCheck bool
+
+	// UseTProxy переключает режим sing-box с TUN-inbound на TPROXY-inbound.
+	// Когда true:
+	//   - pre-flight CheckTUNAvailable пропускается;
+	//   - applyPolicyMode использует PolicyTProxyRules + EnsureLocalRoute;
+	//   - AttachTUN становится no-op;
+	//   - Remove вызывает DeleteLocalRoute вместо DeleteTUNRoute.
+	UseTProxy bool
 }
 
 // IPSetExcludes — имя ipset для bypass-исключений.
@@ -125,8 +133,8 @@ func (a *applierImpl) Apply(ctx context.Context, mode types.Mode) error {
 	log.L().Info("firewall: применение правил", "mode", mode)
 
 	// Pre-flight: kernel TUN — без него sing-box `tun` inbound не запустится.
-	// Для xray/mihomo (TProxy mode) проверка пропускается через SkipTUNCheck.
-	if !a.cfg.SkipTUNCheck {
+	// Для xray/mihomo (TProxy mode) и sing-box TPROXY-mode проверка пропускается.
+	if !a.cfg.SkipTUNCheck && !a.cfg.UseTProxy {
 		if err := CheckTUNAvailable(); err != nil {
 			return fmt.Errorf("firewall: pre-flight: %w", err)
 		}
@@ -246,13 +254,19 @@ func (a *applierImpl) applyPolicyMode(ctx context.Context) error {
 		return err
 	}
 
-	// 2. Цепочки signcraze_policy и (опционально) signcraze_policy_dpi.
-	chains := []string{modes.PolicyChainName}
-	if a.cfg.DPIEnabled {
-		chains = append(chains, modes.PolicyDPIChainName)
+	// 2. Цепочки signcraze_policy:
+	//    - в `nat` для REDIRECT-mode (UseTProxy)
+	//    - в `mangle` для TUN-mode (legacy)
+	// signcraze_policy_dpi всегда в mangle (NFQUEUE для nfqws2).
+	policyTable := "mangle"
+	if a.cfg.UseTProxy {
+		policyTable = "nat"
 	}
-	for _, chain := range chains {
-		if err := a.ipt.EnsureChain(ctx, "mangle", chain); err != nil {
+	if err := a.ipt.EnsureChain(ctx, policyTable, modes.PolicyChainName); err != nil {
+		return err
+	}
+	if a.cfg.DPIEnabled {
+		if err := a.ipt.EnsureChain(ctx, "mangle", modes.PolicyDPIChainName); err != nil {
 			return err
 		}
 	}
@@ -267,11 +281,38 @@ func (a *applierImpl) applyPolicyMode(ctx context.Context) error {
 		}
 	}
 
-	// 4. MARK-правила: помечаем Keenetic-policy трафик нашим fwmark для
-	// последующего подъёма в таблицу с default через TUN.
-	for _, spec := range modes.PolicyRules(a.cfg.PolicyMark, a.cfg.FWMark) {
-		if err := a.ipt.EnsureRule(ctx, spec.Table, spec.Chain, spec.Args...); err != nil {
+	// 4. Правила маркировки / перенаправления трафика Keenetic-policy.
+	if a.cfg.UseTProxy {
+		// REDIRECT-mode (Keenetic xt_TPROXY отсутствует): DNAT в local
+		// router-IP:Port, sing-box `redirect` inbound принимает на 0.0.0.0.
+		for _, spec := range modes.PolicyTProxyRules(a.cfg.PolicyMark, a.cfg.FWMark, a.cfg.Port) {
+			if err := a.ipt.EnsureRule(ctx, spec.Table, spec.Chain, spec.Args...); err != nil {
+				return err
+			}
+		}
+		// REDIRECT в loopback требует route_localnet=1 на input-интерфейсе,
+		// иначе kernel дропает packet с не-loopback src и dst=127.0.0.0/8
+		// как martian. Sing-box listen 0.0.0.0 принимает на router IP,
+		// но REDIRECT для transparent кейсов всё равно ожидает
+		// route_localnet. Включаем "all" — глобально разрешает.
+		if err := enableRouteLocalnet(); err != nil {
+			log.L().Warn("firewall: route_localnet enable", "err", err)
+		}
+		// INPUT ACCEPT для sing-box listening port: NDM filter INPUT
+		// policy=DROP, все non-ESTABLISHED packets без явного ACCEPT
+		// дропаются. ctstate DNAT не всегда матчит REDIRECT-ed SYN'ы.
+		if err := a.ipt.EnsureRule(ctx, "filter", "INPUT",
+			"-p", "tcp", "--dport", fmt.Sprintf("%d", a.cfg.Port),
+			"-j", "ACCEPT",
+		); err != nil {
 			return err
+		}
+	} else {
+		// TUN-mode (legacy): помечаем трафик fwmark для подъёма в таблицу через TUN.
+		for _, spec := range modes.PolicyRules(a.cfg.PolicyMark, a.cfg.FWMark) {
+			if err := a.ipt.EnsureRule(ctx, spec.Table, spec.Chain, spec.Args...); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -358,7 +399,13 @@ func (a *applierImpl) Reconcile(ctx context.Context, mode types.Mode) error {
 // AttachTUN ждёт появления TUN-интерфейса (созданного sing-box) и устанавливает
 // default-route в нашу таблицу маршрутизации. Должна вызываться из CLI после
 // успешного старта sing-box.
+// В режиме TPROXY (UseTProxy=true) — no-op: sing-box не создаёт TUN-интерфейс,
+// маршрутизация построена на local route + TPROXY правилах.
 func (a *applierImpl) AttachTUN(ctx context.Context, dev string) error {
+	if a.cfg.UseTProxy {
+		log.L().Debug("firewall: AttachTUN пропущен (TPROXY-режим)")
+		return nil
+	}
 	if err := WaitForInterface(ctx, a.runner, dev, TUNAttachTimeout); err != nil {
 		return fmt.Errorf("firewall: ожидание TUN-интерфейса: %w", err)
 	}
@@ -408,6 +455,12 @@ func (a *applierImpl) Remove(ctx context.Context) error {
 		}
 	}
 
+	// signcraze_policy в REDIRECT-режиме висит в nat:PREROUTING (DNAT).
+	// Удаляем jump из nat независимо от UseTProxy — idempotent.
+	if err := a.ipt.DeleteJumpAll(ctx, "nat", "PREROUTING", modes.PolicyChainName); err != nil {
+		log.L().Warn("firewall: ошибка удаления nat PREROUTING jump", "target", modes.PolicyChainName, "err", err)
+	}
+
 	// signcraze_policy_dpi висит в POSTROUTING (см. PolicyDPIRules комментарий).
 	// Cleanup отдельно — иначе DeleteChain ниже падает на «chain referenced».
 	if err := a.ipt.DeleteJumpAll(ctx, "mangle", "POSTROUTING", modes.PolicyDPIChainName); err != nil {
@@ -430,10 +483,20 @@ func (a *applierImpl) Remove(ctx context.Context) error {
 			log.L().Warn("firewall: ошибка удаления цепочки", "chain", chain, "err", err)
 		}
 	}
+	// signcraze_policy в nat (REDIRECT-режим) — удаляем отдельно.
+	if err := a.ipt.FlushAndDeleteChain(ctx, "nat", modes.PolicyChainName); err != nil {
+		log.L().Warn("firewall: ошибка удаления nat цепочки", "chain", modes.PolicyChainName, "err", err)
+	}
 
-	// 3. Удалить TUN-route и ip rule.
-	if err := DeleteTUNRoute(ctx, a.runner, TUNDeviceName, a.cfg.Table); err != nil {
-		log.L().Warn("firewall: ошибка удаления TUN route", "err", err)
+	// 3. Удалить route и ip rule. В TPROXY-режиме удаляем local route вместо TUN route.
+	if a.cfg.UseTProxy {
+		if err := DeleteLocalRoute(ctx, a.runner, a.cfg.Table); err != nil {
+			log.L().Warn("firewall: ошибка удаления local route", "err", err)
+		}
+	} else {
+		if err := DeleteTUNRoute(ctx, a.runner, TUNDeviceName, a.cfg.Table); err != nil {
+			log.L().Warn("firewall: ошибка удаления TUN route", "err", err)
+		}
 	}
 	if err := DeleteIPRule(ctx, a.runner, a.cfg.FWMark, a.cfg.Table); err != nil {
 		log.L().Warn("firewall: ошибка удаления ip rule", "err", err)

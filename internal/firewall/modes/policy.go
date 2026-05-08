@@ -87,6 +87,46 @@ func PolicyRules(keenMark, loopMark uint32) []RuleSpec {
 // Должно совпадать с firewall.TUNDeviceName / singbox.DefaultTUNInterfaceName.
 const PolicyTUNDeviceName = "signbox-tun"
 
+// PolicyTProxyRules возвращает правила iptables для режима ModePolicy +
+// REDIRECT inbound. Имя оставлено для совместимости с applier.go, но
+// механизм — REDIRECT (DNAT в local stack), потому что xt_TPROXY отсутствует
+// в kernel Keenetic 4.9.
+//
+// Пакеты Keenetic-policy → REDIRECT → 127.0.0.1:tproxyPort → sing-box
+// `redirect` inbound принимает соединение, через SO_ORIGINAL_DST извлекает
+// оригинальный dst клиента. Src LAN-клиента сохраняется (DNAT меняет dst).
+//
+// REDIRECT работает только для TCP. UDP трафик идёт напрямую (sing-box
+// `redirect` inbound TCP-only). Для UDP-проксирования нужен другой механизм
+// (TUN или TPROXY — последний недоступен на Keenetic 4.9).
+//
+// Правила в `nat:PREROUTING` (DNAT — не mangle).
+func PolicyTProxyRules(keenMark, loopMark uint32, tproxyPort uint16) []RuleSpec {
+	if keenMark == 0 {
+		return nil
+	}
+	keen := fmt.Sprintf("0x%x", keenMark)
+	port := fmt.Sprintf("%d", tproxyPort)
+	_ = loopMark // REDIRECT не использует mark; зарезервирован для loop-prevention
+
+	return []RuleSpec{
+		// TCP REDIRECT: DNAT keenetic-policy TCP в local 127.0.0.1:port.
+		{
+			Table: "nat", Chain: PolicyChainName,
+			Args: []string{
+				"-m", "mark", "--mark", keen,
+				"-p", "tcp",
+				"-j", "REDIRECT", "--to-port", port,
+			},
+		},
+		// Переход nat:PREROUTING → signcraze_policy.
+		{
+			Table: "nat", Chain: "PREROUTING",
+			Args: []string{"-j", PolicyChainName},
+		},
+	}
+}
+
 // PolicyDPITCPPorts — TCP-порты, обрабатываемые nfqws2 в режиме policy.
 // Каждый элемент — single port или range (`80` / `2053:2096`), на одно
 // правило iptables. xt_multiport отсутствует в стоковом ядре Keenetic 4.9,

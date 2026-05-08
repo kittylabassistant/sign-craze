@@ -148,3 +148,18 @@ func writeSysctl(path, value string) error {
 	}
 	return os.WriteFile(path, []byte(value+"\n"), 0o644)
 }
+
+// enableRouteLocalnet включает net.ipv4.conf.all.route_localnet=1.
+// Без этого REDIRECT в loopback-DNAT дропает пакеты с не-loopback src
+// как martian. На системах без этого sysctl (не Linux) — no-op.
+func enableRouteLocalnet() error {
+	const path = "/proc/sys/net/ipv4/conf/all/route_localnet"
+	if _, err := os.Stat(path); err != nil {
+		return nil // не Linux или sysctl нет — silently skip
+	}
+	cur, _ := readSysctl(path)
+	if cur == "1" {
+		return nil
+	}
+	return writeSysctl(path, "1")
+}

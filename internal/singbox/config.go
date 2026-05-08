@@ -64,6 +64,16 @@ const (
 	DefaultTUNMTU           = 1280
 )
 
+// Defaults для TPROXY-inbound.
+//
+// TPROXY сохраняет оригинальный src/dst LAN-клиента — sing-box видит
+// 172.16.0.97 (RPi4) вместо 172.19.0.1 (TUN gateway). Порт 7895
+// совпадает с портом в Config.Port firewall-слоя.
+const (
+	DefaultTProxyPort uint16 = 7895
+	DefaultTProxyTag         = "tproxy-in"
+)
+
 // DefaultTUNAddresses — IPv4 /30 + IPv6 /126 для transparent gateway внутри TUN.
 // 172.19.0.0/30 и fdfe:dcba:9876::/126 не пересекаются с типичными Keenetic LAN-подсетями.
 var DefaultTUNAddresses = []string{"172.19.0.1/30", "fdfe:dcba:9876::1/126"}
@@ -102,6 +112,16 @@ type ConfigParams struct {
 	// RoutingConfig — пользовательская конфигурация маршрутизации (новый путь).
 	// Если задан — переопределяет Routing/Outbounds (legacy путь).
 	RoutingConfig *types.RoutingConfig
+
+	// InboundMode — режим входящего соединения: "tun" или "tproxy".
+	// Пустая строка трактуется как "tun" (backward compat).
+	// При "tproxy" и пустом RoutingConfig.Inbounds Render() добавляет
+	// TPROXY inbound с портом TProxyPort. При "tun" — поведение без изменений.
+	InboundMode string
+	// TProxyPort — порт TPROXY-inbound sing-box. 0 → DefaultTProxyPort (7895).
+	TProxyPort uint16
+	// TProxyTag — тег TPROXY-inbound. Пустой → DefaultTProxyTag ("tproxy-in").
+	TProxyTag string
 }
 
 // DefaultConfigParams возвращает ConfigParams с разумными значениями по умолчанию.
@@ -133,6 +153,58 @@ func Render(p ConfigParams) ([]byte, error) {
 	}
 	if !validLogLevels[p.LogLevel] {
 		return nil, fmt.Errorf("singbox config: некорректный LogLevel %q (допустимо: trace/debug/info/warn/error/fatal/panic)", p.LogLevel)
+	}
+
+	// TPROXY-режим: если InboundMode == "tproxy" и RoutingConfig не задаёт
+	// inbounds явно — синтезируем TPROXY inbound через RoutingConfig.Inbounds.
+	// Это позволяет шаблону tun.json.tmpl рендерить кастомный inbound вместо
+	// default TUN-блока (ветка {{if .Inbounds}}).
+	if p.InboundMode == "tproxy" {
+		port := p.TProxyPort
+		if port == 0 {
+			port = DefaultTProxyPort
+		}
+		tag := p.TProxyTag
+		if tag == "" {
+			tag = DefaultTProxyTag
+		}
+		hasExplicitInbounds := p.RoutingConfig != nil && len(p.RoutingConfig.Inbounds) > 0
+		if !hasExplicitInbounds {
+			// На Keenetic 4.9 модуль xt_TPROXY отсутствует — используем REDIRECT.
+			// REDIRECT меняет dst на адрес интерфейса, на котором принят
+			// пакет (br0 → 172.16.0.1). Sing-box listen на 0.0.0.0 чтобы
+			// принимать на любом локальном IP. Через SO_ORIGINAL_DST
+			// извлекает original destination клиента; src клиента
+			// сохраняется (DNAT меняет только dst).
+			//
+			// REDIRECT работает только для TCP. UDP не проксируется
+			// (sing-box `redirect` inbound — TCP only).
+			//
+			// listen 127.0.0.1 не подходит: packet с не-loopback src
+			// (172.16.0.97) на dst=127.0.0.1 считается martian и
+			// дропается kernel'ом до доставки в socket.
+			tproxyInbound := types.Inbound{
+				Tag:  tag,
+				Type: "redirect",
+				Settings: map[string]any{
+					"listen":      "0.0.0.0",
+					"listen_port": port,
+				},
+			}
+			if p.RoutingConfig == nil {
+				p.RoutingConfig = &types.RoutingConfig{
+					Version:   1,
+					Inbounds:  []types.Inbound{tproxyInbound},
+					Outbounds: p.Outbounds,
+					Final:     p.DefaultOutboundTag,
+				}
+				if p.RoutingConfig.Final == "" && len(p.Outbounds) > 0 {
+					p.RoutingConfig.Final = p.Outbounds[0].Tag
+				}
+			} else {
+				p.RoutingConfig.Inbounds = []types.Inbound{tproxyInbound}
+			}
+		}
 	}
 
 	if p.RoutingConfig != nil {

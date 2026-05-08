@@ -39,6 +39,28 @@ const (
 	installOffline
 )
 
+// parseInboundFlag ищет --inbound tun|tproxy в аргументах.
+// Возвращает режим inbound (default = "tproxy" если флаг не задан) и остаток args.
+func parseInboundFlag(args []string) (mode string, rest []string) {
+	rest = make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--inbound" && i+1 < len(args) {
+			mode = args[i+1]
+			i++
+			continue
+		}
+		if after, ok := strings.CutPrefix(args[i], "--inbound="); ok {
+			mode = after
+			continue
+		}
+		rest = append(rest, args[i])
+	}
+	if mode == "" {
+		mode = state.DefaultInbound
+	}
+	return
+}
+
 // parseInstallCoreFlag ищет --core <name> или --core=<name> в аргументах.
 // Возвращает имя ядра (или пустую строку если флаг не задан) и остаток args.
 func parseInstallCoreFlag(args []string) (coreName string, rest []string) {
@@ -95,42 +117,54 @@ func parseProxyFlag(args []string) (proxyURL string, rest []string) {
 func handleInstall(ctx context.Context, args []string) error {
 	coreName, rest := parseInstallCoreFlag(args)
 	proxyURL, rest := parseProxyFlag(rest)
-	withDPI, _ := parseWithDPIFlag(rest)
-	return withLock(ctx, func() error { return doInstall(ctx, installInteractive, "", false, coreName, proxyURL, withDPI) })
+	withDPI, rest := parseWithDPIFlag(rest)
+	inbound, _ := parseInboundFlag(rest)
+	return withLock(ctx, func() error {
+		return doInstall(ctx, installInteractive, "", false, coreName, proxyURL, withDPI, inbound)
+	})
 }
 
 func handleInstallAuto(ctx context.Context, args []string) error {
 	coreName, rest := parseInstallCoreFlag(args)
 	proxyURL, rest := parseProxyFlag(rest)
-	withDPI, _ := parseWithDPIFlag(rest)
-	return withLock(ctx, func() error { return doInstall(ctx, installAuto, "", false, coreName, proxyURL, withDPI) })
+	withDPI, rest := parseWithDPIFlag(rest)
+	inbound, _ := parseInboundFlag(rest)
+	return withLock(ctx, func() error {
+		return doInstall(ctx, installAuto, "", false, coreName, proxyURL, withDPI, inbound)
+	})
 }
 
 func handleInstallOffline(ctx context.Context, args []string) error {
 	coreName, rest := parseInstallCoreFlag(args)
 	proxyURL, rest := parseProxyFlag(rest)
 	withDPI, rest := parseWithDPIFlag(rest)
+	inbound, rest := parseInboundFlag(rest)
 	if len(rest) == 0 {
 		return fmt.Errorf("--install-offline: требуется путь к tarball")
 	}
 	// install-offline всегда force=true: если state.json остался от прерванной
 	// установки (например, валидация конфига упала), пользователь явно
 	// указывает локальный tarball — переустановка поверх ожидаемое поведение.
-	return withLock(ctx, func() error { return doInstall(ctx, installOffline, rest[0], true, coreName, proxyURL, withDPI) })
+	return withLock(ctx, func() error {
+		return doInstall(ctx, installOffline, rest[0], true, coreName, proxyURL, withDPI, inbound)
+	})
 }
 
 func handleReinstall(ctx context.Context, args []string) error {
 	_, rest := parseInstallCoreFlag(args)
 	proxyURL, rest := parseProxyFlag(rest)
-	withDPI, _ := parseWithDPIFlag(rest)
+	withDPI, rest := parseWithDPIFlag(rest)
+	inbound, _ := parseInboundFlag(rest)
 	mode := installAuto
 	if proxyURL != "" {
 		mode = installInteractive
 	}
-	return withLock(ctx, func() error { return doInstall(ctx, mode, "", true, "", proxyURL, withDPI) })
+	return withLock(ctx, func() error {
+		return doInstall(ctx, mode, "", true, "", proxyURL, withDPI, inbound)
+	})
 }
 
-func doInstall(ctx context.Context, mode installMode, offlineTar string, force bool, coreName string, proxyURL string, withDPI bool) error {
+func doInstall(ctx context.Context, mode installMode, offlineTar string, force bool, coreName string, proxyURL string, withDPI bool, inboundMode string) error {
 	// Auto-detect ядра по proxy URL если --core явно не указан.
 	// Multi-match → sing-box default + info-print. Конфликт явного --core с
 	// несовместимым URL обрабатывается ниже (после core.Get).
@@ -269,6 +303,9 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string, force b
 	st := state.Default()
 	st.Outbounds = outbounds
 	st.Core = coreName
+	if inboundMode != "" {
+		st.Inbound = inboundMode
+	}
 	if err := state.Save(state.DefaultPath, st); err != nil {
 		return fmt.Errorf("--install: state: %w", err)
 	}

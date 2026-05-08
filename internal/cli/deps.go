@@ -55,6 +55,8 @@ func newFirewallApplier(s *state.State) (firewall.Applier, error) {
 	cfg.PolicyMark = s.PolicyMark
 	cfg.DPIEnabled = s.DPIEnabled
 	cfg.SkipTUNCheck = s.Core != "" && s.Core != state.DefaultCore
+	cfg.UseTProxy = s.Inbound == "tproxy"
+	cfg.SkipTUNCheck = cfg.SkipTUNCheck || cfg.UseTProxy
 
 	excl, err := state.ParsedExcludes(s)
 	if err != nil {
@@ -139,6 +141,7 @@ func configParamsFromState(s *state.State) singbox.ConfigParams {
 	if len(s.Outbounds) > 0 {
 		params.DefaultOutboundTag = s.Outbounds[0].Tag
 	}
+	params.InboundMode = s.Inbound
 	if rc, err := routing.Load(routing.DefaultPath); err != nil {
 		log.L().Warn("routing.json: ошибка загрузки, используется legacy",
 			"path", routing.DefaultPath, "err", err)
@@ -162,6 +165,7 @@ func singboxParamsForInstall(s *state.State) singbox.ConfigParams {
 	if len(s.Outbounds) > 0 {
 		params.DefaultOutboundTag = s.Outbounds[0].Tag
 	}
+	params.InboundMode = s.Inbound
 	return params
 }
 

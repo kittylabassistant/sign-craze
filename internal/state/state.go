@@ -79,7 +79,15 @@ type State struct {
 	// Core — выбранное прокси-ядро. Допустимо: "sing-box", "xray", "mihomo".
 	// Пустое значение (старые state.json) мигрируется в DefaultCore при Load().
 	Core string `json:"core,omitempty"`
+
+	// Inbound — режим входящего соединения для sing-box. Допустимо: "tun", "tproxy".
+	// Пустое значение (старые state.json) мигрируется в "tproxy" при Load().
+	// Влияет на генерацию конфига sing-box и firewall-правила (TPROXY vs TUN).
+	Inbound string `json:"inbound,omitempty"`
 }
+
+// DefaultInbound — режим inbound для новых установок.
+const DefaultInbound = "tproxy"
 
 // Default возвращает state с настройками по умолчанию: режим policy, stub direct outbound,
 // безопасные локальные исключения и admin port 22.
@@ -100,6 +108,7 @@ func Default() *State {
 		RoutingUIPort:    DefaultRoutingUIPort,
 		RoutingUIBind:    "0.0.0.0",
 		Core:             DefaultCore,
+		Inbound:          DefaultInbound,
 	}
 }
 
@@ -130,6 +139,7 @@ func Load(path string) (*State, error) {
 	migrateLegacyMode(s)
 	migrateAdminPort(s)
 	migrateRoutingUI(s)
+	migrateInbound(s)
 	if s.Outbounds == nil {
 		s.Outbounds = []types.Outbound{}
 	}
@@ -155,6 +165,14 @@ func Load(path string) (*State, error) {
 		s.Core = DefaultCore
 	}
 	return s, nil
+}
+
+// migrateInbound устанавливает Inbound = DefaultInbound для старых state.json,
+// где поле отсутствует (пустое значение).
+func migrateInbound(s *State) {
+	if s.Inbound == "" {
+		s.Inbound = DefaultInbound
+	}
 }
 
 // migrateOutboundCanonicals переносит данные из устаревшего поля
@@ -252,6 +270,13 @@ func (s *State) Validate() error {
 		case "sing-box", "xray", "mihomo":
 		default:
 			return fmt.Errorf("state: неизвестное ядро %q (допустимо: sing-box, xray, mihomo)", s.Core)
+		}
+	}
+	if s.Inbound != "" {
+		switch s.Inbound {
+		case "tun", "tproxy":
+		default:
+			return fmt.Errorf("state: неизвестный inbound %q (допустимо: tun, tproxy)", s.Inbound)
 		}
 	}
 	return nil
