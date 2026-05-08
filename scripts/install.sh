@@ -127,14 +127,24 @@ fi
 
 URL="https://github.com/$REPO/releases/download/${VERSION}/${BINARY}-${SUFFIX}"
 SHA_URL="${URL}.sha256"
-# Mirrors: публичные reverse-proxy github releases. Помогают когда
-# release-assets.githubusercontent.com заблокирован у провайдера (типично
-# для российских ISP — github.com/releases/download редиректит на
-# *.githubusercontent.com, который блокируется отдельно от github.com).
-# Несколько mirrors потому что один из них регулярно тормозит/throttle'ит:
-# 2026-05-08 наблюдалось — gh-proxy.com отдал 13KB и завис на 180s, тогда
-# как ghfast.top отдал 9MB за минуту. Перебираем по списку до первого
-# успеха. Override: SIGNCRAZE_URL=<полный URL>.
+# RAW_URL — backup-канал через raw.githubusercontent.com (Fastly CDN). В РФ
+# release-assets.githubusercontent.com (Azure blob) часто блокируется DPI,
+# а raw.githubusercontent.com — нет. Бинари каждой arch закоммичены в
+# dist/ репозитория и доступны под VERSION-тегом. Добавлен после инцидента
+# 2026-05-08: gh-proxy.com и ghfast.top throttle'или до 53 B/s, jsdelivr
+# отдавал raw на 20 KB/s.
+RAW_URL="https://raw.githubusercontent.com/$REPO/${VERSION}/dist/${BINARY}-${SUFFIX}"
+RAW_SHA_URL="${RAW_URL}.sha256"
+# JSDELIVR — третий канал поверх raw (Cloudflare CDN). Используется ТОЛЬКО
+# если git-tag VERSION имеет dist/ — для commit-ref @main работает тоже.
+JSD_URL="https://cdn.jsdelivr.net/gh/$REPO@${VERSION}/dist/${BINARY}-${SUFFIX}"
+JSD_SHA_URL="${JSD_URL}.sha256"
+# Mirrors-proxies: публичные reverse-proxy для github.com/releases/download.
+# Помогают когда release-assets.githubusercontent.com заблокирован.
+# Несколько потому что один из них регулярно тормозит/throttle'ит:
+# 2026-05-08 — gh-proxy.com отдал 13KB и завис; ghfast.top отдал 84 байта
+# за 1.5s (~53 B/s, DPI-throttle). Перебираем по списку до первого успеха.
+# Override: SIGNCRAZE_URL=<полный URL>.
 MIRRORS_PROXIES="https://gh-proxy.com https://ghfast.top"
 if [ -n "${SIGNCRAZE_URL:-}" ]; then
   URL="$SIGNCRAZE_URL"
@@ -179,19 +189,24 @@ try_download() {
   return 1
 }
 
-# build_url_chain <github-url> — direct + все mirrors через proxy (gh-proxy
-# / ghfast.top / ...) в порядке предпочтения. Direct пробуем первым: если
-# release-assets.githubusercontent.com доступен — это самый быстрый путь.
+# build_url_chain <github-url> <raw-url> <jsd-url> — формирует полную
+# цепочку: direct → raw (Fastly) → jsdelivr (Cloudflare) → proxies
+# (gh-proxy.com, ghfast.top, ...). Порядок выбран по реальной скорости в
+# РФ 2026-05-08: raw 20+ KB/s, proxies 53 B/s — 13 KB/s.
+# Direct пробуем первым потому что без блокировки это самый быстрый путь
+# (один redirect, тот же CDN что у asset).
 build_url_chain() {
-  _orig="$1"
-  printf "%s" "$_orig"
+  _direct="$1"
+  _raw="$2"
+  _jsd="$3"
+  printf "%s %s %s" "$_direct" "$_raw" "$_jsd"
   for proxy in $MIRRORS_PROXIES; do
-    printf " %s/%s" "$proxy" "$_orig"
+    printf " %s/%s" "$proxy" "$_direct"
   done
 }
 
-URL_CHAIN=$(build_url_chain "$URL")
-SHA_URL_CHAIN=$(build_url_chain "$SHA_URL")
+URL_CHAIN=$(build_url_chain "$URL" "$RAW_URL" "$JSD_URL")
+SHA_URL_CHAIN=$(build_url_chain "$SHA_URL" "$RAW_SHA_URL" "$JSD_SHA_URL")
 
 if ! try_download "$URL_CHAIN" "$TMP"; then
   echo "Не удалось скачать бинарь ни с одного зеркала. Проверь DNS/блокировки или используй offline:" >&2
