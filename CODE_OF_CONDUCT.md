@@ -65,6 +65,7 @@ Sign-Craze управляет firewall, маршрутизацией и Web UI �
 sing-box) сообщайте **приватно**:
 
 - GitHub Security Advisories: <https://github.com/kittylabassistant/sign-craze/security/advisories>
+- E-Mail: kittylabassistant@protonmail.com с той же темой
 
 Не открывайте публичный issue до согласования сроков раскрытия
 с мейнтейнером.
@@ -73,6 +74,7 @@ sing-box) сообщайте **приватно**:
 
 Случаи нарушения кодекса:
 
+- E-Mail: kittylabassistant@protonmail.com
 - GitHub: [@kittylabassistant](https://github.com/kittylabassistant) — приватно, не через
   публичный @‑mention в issue
 

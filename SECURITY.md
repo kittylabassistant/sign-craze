@@ -54,6 +54,7 @@ Sign-craze управляет firewall, маршрутизацией и web-UI �
    после релиза.
    `SECURITY: <короткое описание>`. Используйте, если нет аккаунта на
    GitHub. Чувствительные детали — после первого ответа мейнтейнера.
+3. **E-Mail** — [kittylabassistant@protonmail.com](mailto:kittylabassistant@protonmail.com) с той же темой.
 
 PGP-ключ не публикуется: GitHub Security Advisories уже передаёт
 сообщение по защищённому каналу.
@@ -263,4 +264,5 @@ Sign-craze распространяется по [BSD-3-Clause](LICENSE) **бе�
 ---
 
 Вопросы по политике, не связанные с конкретной уязвимостью, — в
-[Discussions](https://github.com/kittylabassistant/sign-craze/discussions) или
+[Discussions](https://github.com/kittylabassistant/sign-craze/discussions),
+E-Mail [kittylabassistant@protonmail.com](mailto:kittylabassistant@protonmail.com).

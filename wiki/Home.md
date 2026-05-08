@@ -97,3 +97,7 @@ Go-утилита для управления межсетевым экрано�
 - **Поведенческая спецификация:** [BEHAVIOR_SPEC.md](https://github.com/kittylabassistant/sign-craze/blob/main/BEHAVIOR_SPEC.md)
 - **Архитектура:** [docs/ARCHITECTURE.md](https://github.com/kittylabassistant/sign-craze/blob/main/docs/ARCHITECTURE.md)
 - **Лицензия:** [LICENSE](https://github.com/kittylabassistant/sign-craze/blob/main/LICENSE) (BSD 3-Clause)
+
+## Контакты
+
+- E-Mail: [kittylabassistant@protonmail.com](mailto:kittylabassistant@protonmail.com)

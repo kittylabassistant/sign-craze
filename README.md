@@ -253,3 +253,7 @@ internal/cli  (диспетчер команд)
 /opt/var/run/sign-craze-nfqws2.pid        — PID nfqws2
 /opt/var/lock/sign-craze.lock             — эксклюзивная блокировка
 ```
+
+## Контакты
+
+- E-Mail: [kittylabassistant@protonmail.com](mailto:kittylabassistant@protonmail.com)

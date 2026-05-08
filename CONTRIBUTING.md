@@ -303,6 +303,7 @@ Wiki (`sign-craze.wiki/` и онлайн) — пользовательская
 - GitHub Issues — баги, фичи.
 - GitHub Discussions — вопросы, обсуждения.
   CoC violations).
+- E-Mail: kittylabassistant@protonmail.com
 
 Если в документации противоречие — приоритет в порядке:
 `OWNERSHIP` → `ARCHITECTURE` → wiki → README.
