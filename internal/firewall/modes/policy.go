@@ -127,6 +127,49 @@ func PolicyTProxyRules(keenMark, loopMark uint32, tproxyPort uint16) []RuleSpec 
 	}
 }
 
+// PolicyTProxyRulesReal — настоящие TPROXY правила (mangle + xt_TPROXY).
+// Загрузка модулей xt_socket+xt_TPROXY обеспечивается applier.EnsureKernelModule.
+// TCP+UDP оба покрыты, оригинальный src/dst клиента сохраняется через TPROXY.
+//
+// Требует EnsureLocalRoute (ip route local 0.0.0.0/0 dev lo table N) для
+// доставки TPROXY-пакетов в сокет sing-box.
+func PolicyTProxyRulesReal(keenMark, loopMark uint32, tproxyPort uint16) []RuleSpec {
+	if keenMark == 0 {
+		return nil
+	}
+	keen := fmt.Sprintf("0x%x", keenMark)
+	loop := fmt.Sprintf("0x%x", loopMark)
+	port := fmt.Sprintf("%d", tproxyPort)
+
+	return []RuleSpec{
+		// TCP TPROXY
+		{
+			Table: "mangle", Chain: PolicyChainName,
+			Args: []string{
+				"-m", "mark", "--mark", keen,
+				"-p", "tcp",
+				"-j", "TPROXY", "--on-port", port, "--on-ip", "127.0.0.1",
+				"--tproxy-mark", loop + "/0xffffffff",
+			},
+		},
+		// UDP TPROXY
+		{
+			Table: "mangle", Chain: PolicyChainName,
+			Args: []string{
+				"-m", "mark", "--mark", keen,
+				"-p", "udp",
+				"-j", "TPROXY", "--on-port", port, "--on-ip", "127.0.0.1",
+				"--tproxy-mark", loop + "/0xffffffff",
+			},
+		},
+		// PREROUTING jump
+		{
+			Table: "mangle", Chain: "PREROUTING",
+			Args: []string{"-j", PolicyChainName},
+		},
+	}
+}
+
 // PolicyDPITCPPorts — TCP-порты, обрабатываемые nfqws2 в режиме policy.
 // Каждый элемент — single port или range (`80` / `2053:2096`), на одно
 // правило iptables. xt_multiport отсутствует в стоковом ядре Keenetic 4.9,

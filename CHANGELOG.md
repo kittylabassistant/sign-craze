@@ -5,6 +5,17 @@
 
 ---
 
+## [0.7.1] — 2026-05-08
+
+### Added
+- **Реальный TPROXY для проксирования UDP**: ранее (v0.7.0) использовался REDIRECT fallback (TCP-only), потому что было ошибочное предположение, что `xt_TPROXY` отсутствует в kernel Keenetic 4.9. На самом деле модули `xt_TPROXY.ko` и `xt_socket.ko` физически существуют в `/lib/modules/4.9-ndm-5/`, просто не загружены — `modules.dep` отсутствует, `modprobe` не работает, нужен явный `insmod` с путём.
+
+  Добавлен helper `firewall.EnsureKernelModule(name, path)` в `internal/firewall/module.go` — идемпотентная загрузка через `insmod`, проверка `/proc/modules`, fallback gracefully. `applier.applyPolicyMode()` пробует `insmod xt_socket` + `xt_TPROXY` при `UseTProxy=true`; при успехе использует `mangle:PREROUTING -j TPROXY --on-port 7895 --on-ip 127.0.0.1 --tproxy-mark 0x53` (`PolicyTProxyRulesReal`) для TCP+UDP и `EnsureLocalRoute` для доставки. При неудаче `insmod` — fallback на REDIRECT (TCP-only) с warning. Sing-box config рендерится с `Type: "tproxy"` (TCP+UDP в одном inbound, listen `::`) или `Type: "redirect"` (TCP-only fallback) в зависимости от `TProxyKernelOK`.
+
+  Проверено на Keenetic 4.9 mipsle (kernel 4.9-ndm-5): `lsmod` показывает `xt_TPROXY 4911 2 - Live` после `--restart`, `iptables -t mangle -nvL signcraze_policy` — TPROXY правила TCP+UDP с реальным трафиком (92 TCP, 11 UDP packets за минуту), sing-box log: `inbound/tproxy[tproxy-in]: inbound connection from 172.16.0.97:50062 to 149.154.166.110:443` — оригинальный src/dst клиента сохранены через TPROXY, VLESS outbound за 48ms. Self-test через mark `0xffffaab` с роутера `curl https://1.1.1.1` → `HTTP=301 TIME=0.46s` (Cloudflare).
+
+---
+
 ## [0.7.0] — 2026-05-08
 
 ### Added

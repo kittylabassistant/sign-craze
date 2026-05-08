@@ -122,6 +122,11 @@ type ConfigParams struct {
 	TProxyPort uint16
 	// TProxyTag — тег TPROXY-inbound. Пустой → DefaultTProxyTag ("tproxy-in").
 	TProxyTag string
+	// TProxyKernelOK — реальный TPROXY доступен (xt_TPROXY загружен).
+	// При true — Render() выставляет Type: "tproxy" с listen "::" (TCP+UDP).
+	// При false — fallback "redirect" с listen "0.0.0.0" (TCP-only).
+	// Заполняется applier'ом при probe xt_TPROXY в applyPolicyMode.
+	TProxyKernelOK bool
 }
 
 // DefaultConfigParams возвращает ConfigParams с разумными значениями по умолчанию.
@@ -156,9 +161,12 @@ func Render(p ConfigParams) ([]byte, error) {
 	}
 
 	// TPROXY-режим: если InboundMode == "tproxy" и RoutingConfig не задаёт
-	// inbounds явно — синтезируем TPROXY inbound через RoutingConfig.Inbounds.
+	// inbounds явно — синтезируем inbound через RoutingConfig.Inbounds.
 	// Это позволяет шаблону tun.json.tmpl рендерить кастомный inbound вместо
 	// default TUN-блока (ветка {{if .Inbounds}}).
+	//
+	// При TProxyKernelOK=true — Type: "tproxy", listen: "::" (TCP+UDP, ядро xt_TPROXY загружено).
+	// При TProxyKernelOK=false — Type: "redirect", listen: "0.0.0.0" (TCP-only, fallback).
 	if p.InboundMode == "tproxy" {
 		port := p.TProxyPort
 		if port == 0 {
@@ -170,26 +178,36 @@ func Render(p ConfigParams) ([]byte, error) {
 		}
 		hasExplicitInbounds := p.RoutingConfig != nil && len(p.RoutingConfig.Inbounds) > 0
 		if !hasExplicitInbounds {
-			// На Keenetic 4.9 модуль xt_TPROXY отсутствует — используем REDIRECT.
-			// REDIRECT меняет dst на адрес интерфейса, на котором принят
-			// пакет (br0 → 172.16.0.1). Sing-box listen на 0.0.0.0 чтобы
-			// принимать на любом локальном IP. Через SO_ORIGINAL_DST
-			// извлекает original destination клиента; src клиента
-			// сохраняется (DNAT меняет только dst).
-			//
-			// REDIRECT работает только для TCP. UDP не проксируется
-			// (sing-box `redirect` inbound — TCP only).
-			//
-			// listen 127.0.0.1 не подходит: packet с не-loopback src
-			// (172.16.0.97) на dst=127.0.0.1 считается martian и
-			// дропается kernel'ом до доставки в socket.
-			tproxyInbound := types.Inbound{
-				Tag:  tag,
-				Type: "redirect",
-				Settings: map[string]any{
-					"listen":      "0.0.0.0",
-					"listen_port": port,
-				},
+			var tproxyInbound types.Inbound
+			if p.TProxyKernelOK {
+				// Реальный TPROXY: xt_TPROXY загружен, sing-box получает оригинальный
+				// src/dst LAN-клиента. Listen "::" принимает TCP и UDP на всех интерфейсах.
+				tproxyInbound = types.Inbound{
+					Tag:  tag,
+					Type: "tproxy",
+					Settings: map[string]any{
+						"listen":      "::",
+						"listen_port": port,
+					},
+				}
+			} else {
+				// Fallback REDIRECT: xt_TPROXY отсутствует в kernel Keenetic 4.9.
+				// REDIRECT меняет dst на адрес интерфейса (br0 → 172.16.0.1).
+				// Sing-box listen на 0.0.0.0 чтобы принимать на любом локальном IP.
+				// SO_ORIGINAL_DST извлекает original destination; src клиента сохраняется.
+				// Работает только для TCP; UDP не проксируется.
+				//
+				// listen 127.0.0.1 не подходит: packet с не-loopback src
+				// (172.16.0.97) на dst=127.0.0.1 считается martian и
+				// дропается kernel'ом до доставки в socket.
+				tproxyInbound = types.Inbound{
+					Tag:  tag,
+					Type: "redirect",
+					Settings: map[string]any{
+						"listen":      "0.0.0.0",
+						"listen_port": port,
+					},
+				}
 			}
 			if p.RoutingConfig == nil {
 				p.RoutingConfig = &types.RoutingConfig{

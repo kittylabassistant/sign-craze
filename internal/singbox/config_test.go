@@ -382,6 +382,82 @@ func TestRender_TProxyInbound_CustomPort(t *testing.T) {
 	}
 }
 
+// TestRender_TProxyKernelInbound — при TProxyKernelOK=true рендер должен содержать
+// `tproxy` inbound (xt_TPROXY загружен), listen "::", TCP+UDP.
+func TestRender_TProxyKernelInbound(t *testing.T) {
+	p := DefaultConfigParams()
+	p.InboundMode = "tproxy"
+	p.TProxyKernelOK = true
+	p.Outbounds = []types.Outbound{
+		{Tag: "out", Type: "socks", Server: "1.1.1.1", Port: 1080},
+	}
+	p.DefaultOutboundTag = "out"
+
+	data, err := Render(p)
+	if err != nil {
+		t.Fatalf("Render(InboundMode=tproxy, TProxyKernelOK=true): %v", err)
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+
+	inbounds, ok := parsed["inbounds"].([]any)
+	if !ok || len(inbounds) != 1 {
+		t.Fatalf("ожидался 1 inbound, получено %d", len(inbounds))
+	}
+
+	ib0 := inbounds[0].(map[string]any)
+	if ib0["type"] != "tproxy" {
+		t.Errorf("inbounds[0].type = %v, ожидалось tproxy (TProxyKernelOK=true)", ib0["type"])
+	}
+	if ib0["tag"] != DefaultTProxyTag {
+		t.Errorf("inbounds[0].tag = %v, ожидалось %q", ib0["tag"], DefaultTProxyTag)
+	}
+	if port, ok := ib0["listen_port"].(float64); !ok || uint16(port) != DefaultTProxyPort {
+		t.Errorf("inbounds[0].listen_port = %v, ожидалось %d", ib0["listen_port"], DefaultTProxyPort)
+	}
+	if listen, ok := ib0["listen"].(string); !ok || listen != "::" {
+		t.Errorf("inbounds[0].listen = %v, ожидалось \"::\"", ib0["listen"])
+	}
+}
+
+// TestRender_TProxyKernelFalse_IsRedirect — при TProxyKernelOK=false (по умолчанию)
+// InboundMode=tproxy должен рендерить fallback redirect, listen "0.0.0.0".
+func TestRender_TProxyKernelFalse_IsRedirect(t *testing.T) {
+	p := DefaultConfigParams()
+	p.InboundMode = "tproxy"
+	p.TProxyKernelOK = false // явно: fallback REDIRECT
+	p.Outbounds = []types.Outbound{
+		{Tag: "out", Type: "socks", Server: "1.1.1.1", Port: 1080},
+	}
+	p.DefaultOutboundTag = "out"
+
+	data, err := Render(p)
+	if err != nil {
+		t.Fatalf("Render(InboundMode=tproxy, TProxyKernelOK=false): %v", err)
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+
+	inbounds := parsed["inbounds"].([]any)
+	if len(inbounds) != 1 {
+		t.Fatalf("ожидался 1 inbound, получено %d", len(inbounds))
+	}
+
+	ib0 := inbounds[0].(map[string]any)
+	if ib0["type"] != "redirect" {
+		t.Errorf("inbounds[0].type = %v, ожидалось redirect (TProxyKernelOK=false)", ib0["type"])
+	}
+	if listen, ok := ib0["listen"].(string); !ok || listen != "0.0.0.0" {
+		t.Errorf("inbounds[0].listen = %v, ожидалось \"0.0.0.0\"", ib0["listen"])
+	}
+}
+
 func TestBuildRuleSets_NoDuplicates(t *testing.T) {
 	r := types.RoutingRules{
 		GeoSiteProxy:  []string{"cat-a", "cat-b"},

@@ -77,10 +77,18 @@ type Config struct {
 	// UseTProxy переключает режим sing-box с TUN-inbound на TPROXY-inbound.
 	// Когда true:
 	//   - pre-flight CheckTUNAvailable пропускается;
-	//   - applyPolicyMode использует PolicyTProxyRules + EnsureLocalRoute;
+	//   - applyPolicyMode пробует загрузить xt_TPROXY (real TPROXY) и при успехе
+	//     использует PolicyTProxyRulesReal + EnsureLocalRoute;
+	//   - при недоступности xt_TPROXY — fallback на PolicyTProxyRules (REDIRECT, TCP-only);
 	//   - AttachTUN становится no-op;
 	//   - Remove вызывает DeleteLocalRoute вместо DeleteTUNRoute.
 	UseTProxy bool
+
+	// TProxyKernelOK заполняется applier'ом при Apply в режиме UseTProxy=true.
+	// true — xt_TPROXY загружен, используется реальный TPROXY (TCP+UDP).
+	// false — fallback на REDIRECT (TCP-only).
+	// Читается из config render для выбора inbound type sing-box.
+	TProxyKernelOK bool
 }
 
 // IPSetExcludes — имя ipset для bypass-исключений.
@@ -254,17 +262,7 @@ func (a *applierImpl) applyPolicyMode(ctx context.Context) error {
 		return err
 	}
 
-	// 2. Цепочки signcraze_policy:
-	//    - в `nat` для REDIRECT-mode (UseTProxy)
-	//    - в `mangle` для TUN-mode (legacy)
-	// signcraze_policy_dpi всегда в mangle (NFQUEUE для nfqws2).
-	policyTable := "mangle"
-	if a.cfg.UseTProxy {
-		policyTable = "nat"
-	}
-	if err := a.ipt.EnsureChain(ctx, policyTable, modes.PolicyChainName); err != nil {
-		return err
-	}
+	// 2. DPI-цепочка signcraze_policy_dpi всегда в mangle (NFQUEUE для nfqws2).
 	if a.cfg.DPIEnabled {
 		if err := a.ipt.EnsureChain(ctx, "mangle", modes.PolicyDPIChainName); err != nil {
 			return err
@@ -283,32 +281,64 @@ func (a *applierImpl) applyPolicyMode(ctx context.Context) error {
 
 	// 4. Правила маркировки / перенаправления трафика Keenetic-policy.
 	if a.cfg.UseTProxy {
-		// REDIRECT-mode (Keenetic xt_TPROXY отсутствует): DNAT в local
-		// router-IP:Port, sing-box `redirect` inbound принимает на 0.0.0.0.
-		for _, spec := range modes.PolicyTProxyRules(a.cfg.PolicyMark, a.cfg.FWMark, a.cfg.Port) {
-			if err := a.ipt.EnsureRule(ctx, spec.Table, spec.Chain, spec.Args...); err != nil {
+		// Probe xt_socket + xt_TPROXY: пытаемся загрузить kernel-модули.
+		// Если оба загружены — используем реальный TPROXY (TCP+UDP).
+		// Иначе — fallback на REDIRECT (TCP-only).
+		socketOK := EnsureKernelModule(ctx, a.runner, "xt_socket", KernelModulePathXtSocket) == nil
+		tproxyOK := false
+		if socketOK {
+			tproxyOK = EnsureKernelModule(ctx, a.runner, "xt_TPROXY", KernelModulePathXtTProxy) == nil
+		}
+		a.cfg.TProxyKernelOK = tproxyOK
+
+		if tproxyOK {
+			log.L().Info("firewall: TPROXY режим (xt_TPROXY загружен)")
+			// Реальный TPROXY: цепочка в mangle, сохраняет оригинальный src/dst.
+			if err := a.ipt.EnsureChain(ctx, "mangle", modes.PolicyChainName); err != nil {
 				return err
 			}
+			for _, spec := range modes.PolicyTProxyRulesReal(a.cfg.PolicyMark, a.cfg.FWMark, a.cfg.Port) {
+				if err := a.ipt.EnsureRule(ctx, spec.Table, spec.Chain, spec.Args...); err != nil {
+					return err
+				}
+			}
+			if err := EnsureLocalRoute(ctx, a.runner, a.cfg.Table); err != nil {
+				return err
+			}
+		} else {
+			log.L().Warn("firewall: xt_TPROXY недоступен, fallback на REDIRECT (TCP-only)")
+			// REDIRECT-mode: цепочка в nat, DNAT в local stack.
+			if err := a.ipt.EnsureChain(ctx, "nat", modes.PolicyChainName); err != nil {
+				return err
+			}
+			for _, spec := range modes.PolicyTProxyRules(a.cfg.PolicyMark, a.cfg.FWMark, a.cfg.Port) {
+				if err := a.ipt.EnsureRule(ctx, spec.Table, spec.Chain, spec.Args...); err != nil {
+					return err
+				}
+			}
 		}
-		// REDIRECT в loopback требует route_localnet=1 на input-интерфейсе,
-		// иначе kernel дропает packet с не-loopback src и dst=127.0.0.0/8
-		// как martian. Sing-box listen 0.0.0.0 принимает на router IP,
-		// но REDIRECT для transparent кейсов всё равно ожидает
-		// route_localnet. Включаем "all" — глобально разрешает.
+		// route_localnet необходим как для REDIRECT (martian-пакеты) так и для
+		// TPROXY (local socket delivery через loopback).
 		if err := enableRouteLocalnet(); err != nil {
 			log.L().Warn("firewall: route_localnet enable", "err", err)
 		}
 		// INPUT ACCEPT для sing-box listening port: NDM filter INPUT
 		// policy=DROP, все non-ESTABLISHED packets без явного ACCEPT
-		// дропаются. ctstate DNAT не всегда матчит REDIRECT-ed SYN'ы.
-		if err := a.ipt.EnsureRule(ctx, "filter", "INPUT",
-			"-p", "tcp", "--dport", fmt.Sprintf("%d", a.cfg.Port),
-			"-j", "ACCEPT",
-		); err != nil {
-			return err
+		// дропаются. TCP и UDP (для TPROXY UDP-режима).
+		for _, proto := range []string{"tcp", "udp"} {
+			if err := a.ipt.EnsureRule(ctx, "filter", "INPUT",
+				"-p", proto, "--dport", fmt.Sprintf("%d", a.cfg.Port),
+				"-j", "ACCEPT",
+			); err != nil {
+				return err
+			}
 		}
 	} else {
-		// TUN-mode (legacy): помечаем трафик fwmark для подъёма в таблицу через TUN.
+		// TUN-mode (legacy): цепочка в mangle, помечаем трафик fwmark
+		// для подъёма в таблицу через TUN.
+		if err := a.ipt.EnsureChain(ctx, "mangle", modes.PolicyChainName); err != nil {
+			return err
+		}
 		for _, spec := range modes.PolicyRules(a.cfg.PolicyMark, a.cfg.FWMark) {
 			if err := a.ipt.EnsureRule(ctx, spec.Table, spec.Chain, spec.Args...); err != nil {
 				return err

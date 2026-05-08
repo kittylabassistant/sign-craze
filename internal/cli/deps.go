@@ -152,6 +152,19 @@ func configParamsFromState(s *state.State) singbox.ConfigParams {
 			params.DefaultOutboundTag = rc.Outbounds[0].Tag
 		}
 	}
+
+	// Probe TPROXY: определяем доступность xt_TPROXY для рендера inbound type.
+	// Это probe (read-only), не actual insmod — insmod делает applier при apply.
+	// Для рендера config достаточно знать: модуль загружен или хотя бы доступен (.ko-файл).
+	if s.Inbound == "tproxy" {
+		tproxyOK := firewall.IsModuleLoaded("xt_TPROXY")
+		if !tproxyOK {
+			// .ko-файл существует → модуль loadable (insmod сделает applier).
+			tproxyOK = firewall.FindKernelModule("xt_TPROXY") != ""
+		}
+		params.TProxyKernelOK = tproxyOK
+	}
+
 	return params
 }
 
