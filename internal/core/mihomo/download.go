@@ -96,6 +96,11 @@ func Download(ctx context.Context, arch types.Arch, dstDir string) (DownloadResu
 		Repo:       "mihomo",
 		AssetMatch: matchAsset(arch),
 		DstDir:     dstDir,
+		// MetaCubeX публикует sha256sum.txt в релизе. Текущий verifySHA256
+		// ищет `<asset>.sha256` (per-asset формат), которого у mihomo нет —
+		// поэтому AllowMissingSHA=true до миграции на sha256sum.txt parser.
+		VerifySHA:       true,
+		AllowMissingSHA: true,
 	})
 	if err != nil {
 		return DownloadResult{}, fmt.Errorf("mihomo download: %w", err)

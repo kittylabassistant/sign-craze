@@ -3,6 +3,7 @@ package backup
 import (
 	"archive/tar"
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -95,8 +96,20 @@ func Create(srcPath, dstFile string) error {
 	return walkFn(srcPath, info, nil)
 }
 
+// Лимиты Restore — защита от tar-bomb на 128MB-роутере. Подобраны с запасом
+// для типичных backup'ов sign-craze (state.json, config.json, креды,
+// несколько hostlist-файлов): десятки KB суммарно.
+const (
+	maxTarFiles      = 512
+	maxTarTotalBytes = 64 << 20 // 64 MB суммарно (распакованных)
+	maxTarSingleFile = 16 << 20 // 16 MB per файл
+)
+
 // Restore извлекает tar.gz srcFile в dstDir. Создаёт dstDir при отсутствии.
-// Защищает от path traversal: пути с ".." отклоняются.
+// Защищает от:
+//   - path traversal через filepath.Clean + проверку HasPrefix(dstDir);
+//   - tar-bomb через ограничения на число файлов, общий размер,
+//     максимальный размер одного файла (см. константы maxTar*).
 func Restore(srcFile, dstDir string) error {
 	in, err := os.Open(srcFile)
 	if err != nil {
@@ -114,7 +127,16 @@ func Restore(srcFile, dstDir string) error {
 		return fmt.Errorf("backup restore: mkdir %s: %w", dstDir, mkErr)
 	}
 
+	cleanDst, absErr := filepath.Abs(dstDir)
+	if absErr != nil {
+		return fmt.Errorf("backup restore: abs %s: %w", dstDir, absErr)
+	}
+
 	tr := tar.NewReader(gz)
+	var (
+		fileCount  int
+		totalBytes int64
+	)
 	for {
 		hdr, hdrErr := tr.Next()
 		if hdrErr == io.EOF {
@@ -124,11 +146,20 @@ func Restore(srcFile, dstDir string) error {
 			return fmt.Errorf("backup restore: tar: %w", hdrErr)
 		}
 
-		// Защита от path traversal.
-		if strings.Contains(hdr.Name, "..") || filepath.IsAbs(hdr.Name) {
-			return fmt.Errorf("backup restore: подозрительный путь в архиве: %q", hdr.Name)
+		fileCount++
+		if fileCount > maxTarFiles {
+			return fmt.Errorf("backup restore: превышено максимальное число файлов %d (защита от tar-bomb)", maxTarFiles)
 		}
-		dst := filepath.Join(dstDir, hdr.Name)
+
+		// Path traversal: filepath.Clean нормализует "../", "..//.." и т.п.;
+		// после Join проверяем что dst остался внутри dstDir.
+		if filepath.IsAbs(hdr.Name) {
+			return fmt.Errorf("backup restore: абсолютный путь в архиве запрещён: %q", hdr.Name)
+		}
+		dst := filepath.Join(cleanDst, filepath.Clean(hdr.Name))
+		if !strings.HasPrefix(dst+string(filepath.Separator), cleanDst+string(filepath.Separator)) && dst != cleanDst {
+			return fmt.Errorf("backup restore: путь %q выходит за пределы %s (path traversal)", hdr.Name, dstDir)
+		}
 
 		switch hdr.Typeflag {
 		case tar.TypeDir:
@@ -136,6 +167,9 @@ func Restore(srcFile, dstDir string) error {
 				return mkErr
 			}
 		case tar.TypeReg:
+			if hdr.Size > maxTarSingleFile {
+				return fmt.Errorf("backup restore: файл %q заявлен размером %d > лимита %d", hdr.Name, hdr.Size, maxTarSingleFile)
+			}
 			if mkErr := os.MkdirAll(filepath.Dir(dst), 0o755); mkErr != nil {
 				return mkErr
 			}
@@ -143,11 +177,22 @@ func Restore(srcFile, dstDir string) error {
 			if fErr != nil {
 				return fErr
 			}
-			if _, cpErr := io.Copy(f, tr); cpErr != nil {
-				_ = f.Close()
-				return cpErr
-			}
+			// io.CopyN с лимитом +1: если декомпрессия отдаёт больше заявленного
+			// в hdr.Size (несоответствие manifest/payload — типичный признак
+			// tar-bomb с искажённым заголовком), CopyN остановится и вернёт
+			// именно столько байт сколько reader выдал.
+			n, cpErr := io.CopyN(f, tr, maxTarSingleFile+1)
 			_ = f.Close()
+			if cpErr != nil && !errors.Is(cpErr, io.EOF) {
+				return fmt.Errorf("backup restore: копирование %q: %w", hdr.Name, cpErr)
+			}
+			if n > maxTarSingleFile {
+				return fmt.Errorf("backup restore: фактический размер %q превысил лимит %d (tar-bomb?)", hdr.Name, maxTarSingleFile)
+			}
+			totalBytes += n
+			if totalBytes > maxTarTotalBytes {
+				return fmt.Errorf("backup restore: суммарный размер %d > лимита %d (tar-bomb?)", totalBytes, maxTarTotalBytes)
+			}
 		default:
 			// Симлинки и спец. файлы пропускаем.
 		}

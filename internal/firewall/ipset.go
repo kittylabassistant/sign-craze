@@ -10,6 +10,11 @@ import (
 	"github.com/kittylabassistant/sign-craze/internal/log"
 )
 
+// ipsetBatchThreshold — порог переключения с поштучного `ipset add` на
+// batch `ipset restore` через stdin. Один subprocess вместо N экономит
+// 60-150 секунд при geo-обновлении (~10K CIDR) на slow MIPS softfloat.
+const ipsetBatchThreshold = 32
+
 // IPSet управляет ipset-наборами через exectx.Runner.
 type IPSet struct {
 	runner exectx.Runner
@@ -32,25 +37,69 @@ func (s *IPSet) EnsureSet(ctx context.Context, name, setType, family string) err
 	return nil
 }
 
-// AtomicReplace заменяет содержимое набора атомарно через create-swap-destroy.
-// Алгоритм: sweep старых tmp → создать tmp → добавить cidrs → swap(name, tmp) → destroy tmp.
-// При ошибке добавления — tmp уничтожается без swap.
+// AtomicReplace заменяет содержимое набора атомарно. При количестве CIDR ≥
+// ipsetBatchThreshold и поддержке runner'ом stdin (StdinRunner) — использует
+// `ipset restore` (один subprocess для всего batch). Иначе fallback на
+// поштучный `ipset add` (legacy путь, нужен для mock-runner'ов в тестах).
 func (s *IPSet) AtomicReplace(ctx context.Context, name, setType, family string, cidrs []netip.Prefix) error {
 	tmp := name + "_tmp"
 
 	// Sweep stale tmp от прошлых неудачных Apply (safety-fixes #13). Идемпотентно.
 	if _, err := s.runner.Run(ctx, "ipset", "destroy", tmp); err != nil {
-		// Не ошибка если tmp не существует — просто очищаем на всякий случай.
 		log.L().Debug("firewall: sweep tmp ipset (no-op если отсутствует)", "tmp", tmp)
 	}
 
+	if stdinRunner, ok := s.runner.(exectx.StdinRunner); ok && len(cidrs) >= ipsetBatchThreshold {
+		return s.atomicReplaceBatch(ctx, stdinRunner, name, tmp, setType, family, cidrs)
+	}
+	return s.atomicReplaceLegacy(ctx, name, tmp, setType, family, cidrs)
+}
+
+// atomicReplaceBatch выполняет create+add+swap+destroy одним вызовом
+// `ipset restore` через stdin. Формат stdin — Linux ipset save/restore:
+//
+//	create <tmp> <type> family <family>
+//	add <tmp> <cidr>
+//	...
+//	swap <name> <tmp>
+//	destroy <tmp>
+//
+// При ошибке kernel обнаруживает невалидную операцию и rollback'ит весь
+// batch (ipset transaction-aware). Для надёжности также делаем явный
+// destroy <tmp> отдельным вызовом — на случай если swap не достиг конца.
+func (s *IPSet) atomicReplaceBatch(ctx context.Context, runner exectx.StdinRunner, name, tmp, setType, family string, cidrs []netip.Prefix) error {
+	var sb strings.Builder
+	// preallocate: ~30 байт на ADD-строку (cidr + префикс) для умеренной
+	// экономии аллокаций при 10K CIDR (≈300KB строки).
+	sb.Grow(64 + 30*len(cidrs))
+	fmt.Fprintf(&sb, "create %s %s family %s\n", tmp, setType, family)
+	for _, cidr := range cidrs {
+		fmt.Fprintf(&sb, "add %s %s\n", tmp, cidr.String())
+	}
+	fmt.Fprintf(&sb, "swap %s %s\n", name, tmp)
+	fmt.Fprintf(&sb, "destroy %s\n", tmp)
+
+	stdin := strings.NewReader(sb.String())
+	if _, err := runner.RunWithStdin(ctx, stdin, "ipset", "restore"); err != nil {
+		// rollback: явно уничтожаем tmp если он остался от частично применённого batch
+		if _, delErr := s.runner.Run(ctx, "ipset", "destroy", tmp); delErr != nil {
+			log.L().Debug("firewall: rollback tmp после ipset restore (no-op если отсутствует)", "tmp", tmp, "err", delErr)
+		}
+		return fmt.Errorf("firewall: ipset restore (%d CIDR в %s): %w", len(cidrs), name, err)
+	}
+	log.L().Debug("firewall: ipset batch restore", "set", name, "cidrs", len(cidrs))
+	return nil
+}
+
+// atomicReplaceLegacy — поштучный путь для тестовых mock-runner'ов.
+// Identичен прежней реализации до F1.
+func (s *IPSet) atomicReplaceLegacy(ctx context.Context, name, tmp, setType, family string, cidrs []netip.Prefix) error {
 	if _, err := s.runner.Run(ctx, "ipset", "create", tmp, setType, "family", family); err != nil {
 		return fmt.Errorf("firewall: создание tmp ipset %s: %w", tmp, err)
 	}
 
 	for _, cidr := range cidrs {
 		if _, err := s.runner.Run(ctx, "ipset", "add", tmp, cidr.String()); err != nil {
-			// откат — уничтожаем tmp
 			if _, delErr := s.runner.Run(ctx, "ipset", "destroy", tmp); delErr != nil {
 				log.L().Warn("firewall: не удалось уничтожить tmp ipset при откате", "tmp", tmp, "err", delErr)
 			}

@@ -14,7 +14,14 @@ import (
 // ServerConfig содержит зависимости и параметры сервера.
 type ServerConfig struct {
 	// CredsPath — путь к файлу bcrypt-хэша (/opt/etc/sign-craze/admin.creds).
-	CredsPath  string
+	CredsPath string
+
+	// ListenHost — bind-адрес для портов 9090 (Zashboard) и 9091 (admin REST).
+	// LAN-trust-модель: должен быть IP LAN-bridge (например 192.168.1.1) или
+	// loopback. Пустая строка (legacy) → ":9090"/":9091" (0.0.0.0) — небезопасно
+	// в production, оставлено для совместимости с unit-тестами.
+	ListenHost string
+
 	Status     StatusReader
 	Config     ConfigRW
 	Ports      PortsManager
@@ -78,7 +85,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	// не должны обрываться по таймауту; защита от slowloris обеспечивается
 	// ReadHeaderTimeout (≤15 с). Admin (9091) оставляет WriteTimeout=30s.
 	s.zashboard = &http.Server{
-		Addr:              ":9090",
+		Addr:              joinHostPort(cfg.ListenHost, "9090"),
 		Handler:           recoverMiddleware(securityHeadersSPA(clashMux)),
 		ReadHeaderTimeout: 15 * time.Second,
 		ReadTimeout:       15 * time.Second,
@@ -91,7 +98,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	registerAdminRoutes(adminMux, s)
 
 	s.admin = &http.Server{
-		Addr:           ":9091",
+		Addr:           joinHostPort(cfg.ListenHost, "9091"),
 		Handler:        recoverMiddleware(securityHeadersAdmin(adminMux)),
 		ReadTimeout:    15 * time.Second,
 		WriteTimeout:   30 * time.Second,
@@ -231,6 +238,16 @@ func setSecurityHeaders(next http.Handler, csp string) http.Handler {
 		h.Set("Content-Security-Policy", csp)
 		next.ServeHTTP(w, r)
 	})
+}
+
+// joinHostPort возвращает host:port для http.Server.Addr. Пустой host
+// сохраняет legacy-поведение (":port" = 0.0.0.0) для unit-тестов; в
+// production cmd_ui подставляет конкретный LAN-IP.
+func joinHostPort(host, port string) string {
+	if host == "" {
+		return ":" + port
+	}
+	return net.JoinHostPort(host, port)
 }
 
 // recoverMiddleware перехватывает паники и возвращает 500.

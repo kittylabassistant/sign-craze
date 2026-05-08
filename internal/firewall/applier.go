@@ -9,6 +9,7 @@ import (
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/firewall/modes"
 	"github.com/kittylabassistant/sign-craze/internal/log"
+	"github.com/kittylabassistant/sign-craze/internal/netif"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
@@ -60,9 +61,12 @@ type Config struct {
 	// В режиме ModeFull DPI-правила являются частью HybridRules.
 	DPIEnabled bool
 
-	// WANIface — имя WAN-интерфейса (например, eth0, GigabitEthernet1).
-	// Если задано, Apply добавляет INPUT DROP на порт 9090 (Zashboard) с WAN_IF,
-	// чтобы закрыть доступ из интернета. Remove удаляет это правило.
+	// WANIface — имя WAN-интерфейса в Linux (eth0, ppp0 и т.п. — НЕ Keenetic-имя).
+	// Apply добавляет INPUT DROP TCP/UDP для всех UI-портов (9090, 9091, 9092)
+	// с WAN_IF — единственный сетевой барьер от внешнего доступа к Web UI,
+	// который намеренно работает без auth/TLS в LAN-trust-модели.
+	// Remove удаляет эти правила.
+	// Пустая строка → ApplyInternal возвращает ошибку (fail-secure).
 	WANIface string
 
 	// SkipTUNCheck отключает pre-flight CheckTUNAvailable. Используется
@@ -170,39 +174,57 @@ func (a *applierImpl) applyInternal(ctx context.Context, mode types.Mode) error 
 	default:
 		return fmt.Errorf("firewall: неподдерживаемый режим %q", mode)
 	}
-	// Защита Zashboard (9090) от доступа через WAN: DROP на входящем WAN-интерфейсе.
-	if err := a.ensureWAN9090Drop(ctx); err != nil {
+	// Защита Web UI (9090 Zashboard, 9091 admin REST, 9092 routing UI) от
+	// доступа через WAN: DROP на входящем WAN-интерфейсе. UI работает в
+	// LAN-trust-модели без auth/TLS, WAN-доступность недопустима.
+	if err := a.ensureWANUIDrop(ctx); err != nil {
 		return err
 	}
 	return nil
 }
 
-// ensureWAN9090Drop добавляет INPUT DROP TCP/UDP на порт 9090 для WAN-интерфейса.
-// Если WANIface не задан — no-op (правило применяется только при известном WAN).
-func (a *applierImpl) ensureWAN9090Drop(ctx context.Context) error {
+// uiPorts — порты Web UI, защищаемые INPUT DROP на WAN.
+// 9090 — Zashboard (Clash-API), 9091 — admin REST, 9092 — routing editor.
+var uiPorts = []string{"9090", "9091", "9092"}
+
+// ensureWANUIDrop добавляет INPUT DROP TCP/UDP на UI-порты для WAN-интерфейса.
+// Если WANIface пуст — пытается автодетект через `ip route show default`.
+// Fail-secure: при невозможности определить WAN — return error (без сетевого
+// барьера UI без auth доступен из интернета).
+func (a *applierImpl) ensureWANUIDrop(ctx context.Context) error {
 	if a.cfg.WANIface == "" {
-		return nil
+		iface, err := netif.DetectWANIface(ctx, a.runner)
+		if err != nil {
+			return fmt.Errorf("firewall: WANIface не задан и автодетект не удался: %w", err)
+		}
+		a.cfg.WANIface = iface
+		log.L().Info("firewall: WAN автодетект", "iface", iface)
 	}
-	for _, proto := range []string{"tcp", "udp"} {
-		if err := a.ipt.EnsureRule(ctx, "filter", "INPUT",
-			"-i", a.cfg.WANIface, "-p", proto, "--dport", "9090", "-j", "DROP",
-		); err != nil {
-			return fmt.Errorf("firewall: WAN 9090 DROP (%s): %w", proto, err)
+	for _, port := range uiPorts {
+		for _, proto := range []string{"tcp", "udp"} {
+			if err := a.ipt.EnsureRule(ctx, "filter", "INPUT",
+				"-i", a.cfg.WANIface, "-p", proto, "--dport", port, "-j", "DROP",
+			); err != nil {
+				return fmt.Errorf("firewall: WAN UI DROP (port %s/%s): %w", port, proto, err)
+			}
 		}
 	}
 	return nil
 }
 
-// deleteWAN9090Drop удаляет INPUT DROP TCP/UDP на порт 9090 для WAN-интерфейса.
-func (a *applierImpl) deleteWAN9090Drop(ctx context.Context) {
+// deleteWANUIDrop удаляет INPUT DROP TCP/UDP на UI-порты для WAN-интерфейса.
+// Идемпотентно: пустой WANIface — no-op.
+func (a *applierImpl) deleteWANUIDrop(ctx context.Context) {
 	if a.cfg.WANIface == "" {
 		return
 	}
-	for _, proto := range []string{"tcp", "udp"} {
-		if err := a.ipt.DeleteRule(ctx, "filter", "INPUT",
-			"-i", a.cfg.WANIface, "-p", proto, "--dport", "9090", "-j", "DROP",
-		); err != nil {
-			log.L().Warn("firewall: ошибка удаления WAN 9090 DROP", "proto", proto, "err", err)
+	for _, port := range uiPorts {
+		for _, proto := range []string{"tcp", "udp"} {
+			if err := a.ipt.DeleteRule(ctx, "filter", "INPUT",
+				"-i", a.cfg.WANIface, "-p", proto, "--dport", port, "-j", "DROP",
+			); err != nil {
+				log.L().Warn("firewall: ошибка удаления WAN UI DROP", "port", port, "proto", proto, "err", err)
+			}
 		}
 	}
 }
@@ -428,8 +450,8 @@ func (a *applierImpl) Remove(ctx context.Context) error {
 		log.L().Warn("firewall: ошибка удаления ipset", "name", IPSetExcludes, "err", err)
 	}
 
-	// 5. Удалить WAN DROP для Zashboard (9090).
-	a.deleteWAN9090Drop(ctx)
+	// 5. Удалить WAN DROP для UI-портов (9090/9091/9092).
+	a.deleteWANUIDrop(ctx)
 
 	// Восстановить исходные значения Keenetic FASTNAT/FASTROUTE.
 	if err := RestoreFastPath(); err != nil {

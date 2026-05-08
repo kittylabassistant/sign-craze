@@ -2,6 +2,8 @@ package singbox
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -13,30 +15,39 @@ import (
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
-func fakeRelease(assetName, downloadURL string, size int64) []byte {
+// fakeRelease формирует /releases/latest JSON с asset + сопутствующим .sha256.
+// VerifySHA для sing-box обязателен (защита от MITM на GitHub CDN), поэтому
+// тестовый сервер должен отдавать оба файла.
+func fakeRelease(assetName, downloadURL string, size int64, shaURL string) []byte {
 	rel := types.Release{
 		TagName: "v1.10.0",
 		Assets: []types.Asset{
-			{
-				Name:               assetName,
-				BrowserDownloadURL: downloadURL,
-				Size:               size,
-			},
+			{Name: assetName, BrowserDownloadURL: downloadURL, Size: size},
+			{Name: assetName + ".sha256", BrowserDownloadURL: shaURL, Size: 100},
 		},
 	}
 	data, _ := json.Marshal(rel)
 	return data
 }
 
+func sha256Hex(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
 func TestDownload_Success(t *testing.T) {
 	content := []byte("fake-tarball-content")
+	sumLine := sha256Hex(content) + "  sing-box-v1.10.0-linux-arm64.tar.gz\n"
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/releases/latest"):
 			assetURL := "http://" + r.Host + "/download/sing-box-v1.10.0-linux-arm64.tar.gz"
+			shaURL := "http://" + r.Host + "/download/sing-box-v1.10.0-linux-arm64.tar.gz.sha256"
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write(fakeRelease("sing-box-v1.10.0-linux-arm64.tar.gz", assetURL, int64(len(content))))
+			_, _ = w.Write(fakeRelease("sing-box-v1.10.0-linux-arm64.tar.gz", assetURL, int64(len(content)), shaURL))
+		case strings.HasSuffix(r.URL.Path, ".sha256"):
+			_, _ = w.Write([]byte(sumLine))
 		default:
 			w.Header().Set("ETag", `"abc123"`)
 			_, _ = w.Write(content)
@@ -70,18 +81,23 @@ func TestDownload_Success(t *testing.T) {
 }
 
 func TestDownload_ETagSkipsRedownload(t *testing.T) {
+	content := []byte("data")
+	sumLine := sha256Hex(content) + "  sing-box-v1.10.0-linux-arm64.tar.gz\n"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/releases/latest"):
 			assetURL := "http://" + r.Host + "/download/sing-box-v1.10.0-linux-arm64.tar.gz"
-			_, _ = w.Write(fakeRelease("sing-box-v1.10.0-linux-arm64.tar.gz", assetURL, 4))
+			shaURL := "http://" + r.Host + "/download/sing-box-v1.10.0-linux-arm64.tar.gz.sha256"
+			_, _ = w.Write(fakeRelease("sing-box-v1.10.0-linux-arm64.tar.gz", assetURL, int64(len(content)), shaURL))
+		case strings.HasSuffix(r.URL.Path, ".sha256"):
+			_, _ = w.Write([]byte(sumLine))
 		default:
 			if r.Header.Get("If-None-Match") == `"etag-v1"` {
 				w.WriteHeader(http.StatusNotModified)
 				return
 			}
 			w.Header().Set("ETag", `"etag-v1"`)
-			_, _ = w.Write([]byte("data"))
+			_, _ = w.Write(content)
 		}
 	}))
 	defer srv.Close()
@@ -132,7 +148,10 @@ func TestDownload_TruncatedTarballRejected(t *testing.T) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/releases/latest"):
 			assetURL := "http://" + r.Host + "/download/sing-box-v1.10.0-linux-arm64.tar.gz"
-			_, _ = w.Write(fakeRelease("sing-box-v1.10.0-linux-arm64.tar.gz", assetURL, 100))
+			shaURL := "http://" + r.Host + "/download/sing-box-v1.10.0-linux-arm64.tar.gz.sha256"
+			_, _ = w.Write(fakeRelease("sing-box-v1.10.0-linux-arm64.tar.gz", assetURL, 100, shaURL))
+		case strings.HasSuffix(r.URL.Path, ".sha256"):
+			_, _ = w.Write([]byte("0000000000000000000000000000000000000000000000000000000000000000  x\n"))
 		default:
 			// сервер отдаёт ТОЛЬКО 10 байт вместо 100
 			w.Header().Set("ETag", `"truncated"`)

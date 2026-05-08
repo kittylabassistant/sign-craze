@@ -19,7 +19,11 @@ import (
 
 const (
 	defaultDownloadTimeout = 10 * time.Minute
-	defaultConnectTimeout  = 30 * time.Second
+	// defaultConnectTimeout — потолок ожидания первого байта response header.
+	// 15s — достаточно для медленного TLS handshake к api.github.com, но
+	// быстро триггерит fallback на gh-proxy/jsdelivr если GitHub блокируется
+	// провайдером (типичная ситуация в РФ, где sing-box не качается напрямую).
+	defaultConnectTimeout = 15 * time.Second
 	// userAgent — curl-like UA. GitHub anonymous-downloads throttles
 	// нестандартные User-Agents в low-priority bucket (наблюдалось ~3 минуты
 	// на 16MB файл против ~2s через curl). Использование curl-like UA
@@ -35,6 +39,11 @@ var APIBaseURL = "https://api.github.com"
 // Downloader выполняет загрузки asset'ов из GitHub Releases.
 type Downloader struct {
 	HTTPClient *http.Client
+
+	// Mirrors — порядок попыток при сбое (network error / HTTP 5xx).
+	// nil → DefaultMirrors (direct → gh-proxy.com → jsdelivr). Тесты
+	// переопределяют для проверки fallback-логики; production — оставляет nil.
+	Mirrors []URLRewriter
 }
 
 // New создаёт Downloader со стандартным HTTP-клиентом.
@@ -57,6 +66,12 @@ type FetchOptions struct {
 	AssetMatch func(types.Asset) bool // выбор нужного asset из релиза
 	DstDir     string                 // директория для записи
 	VerifySHA  bool                   // если true — ищет рядом asset с суффиксом .sha256 и сверяет
+	// AllowMissingSHA — при VerifySHA=true и отсутствии `<asset>.sha256` в
+	// релизе НЕ возвращать ошибку, а только записать WARN. Использовать
+	// исключительно для upstream-репозиториев, которые исторически не
+	// публикуют .sha256 (например nfqws2-keenetic). Для собственных и
+	// крупных upstream (SagerNet/sing-box, MetaCubeX/mihomo) оставлять false.
+	AllowMissingSHA bool
 }
 
 // FetchResult описывает результат загрузки.
@@ -122,7 +137,7 @@ func (d *Downloader) Fetch(ctx context.Context, opts FetchOptions) (FetchResult,
 	}
 
 	if downloaded && opts.VerifySHA {
-		if vErr := d.verifySHA256(ctx, release.Assets, asset.Name, sum); vErr != nil {
+		if vErr := d.verifySHA256(ctx, release.Assets, asset.Name, sum, opts.AllowMissingSHA); vErr != nil {
 			_ = os.Remove(dstFile)
 			return FetchResult{}, fmt.Errorf("ghrelease: проверка SHA256 %s: %w", asset.Name, vErr)
 		}
@@ -155,7 +170,7 @@ func (d *Downloader) fetchReleaseMeta(ctx context.Context, url string) (*types.R
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", userAgent)
 
-	resp, err := d.HTTPClient.Do(req)
+	resp, err := d.doWithFallback(req)
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +199,7 @@ func (d *Downloader) downloadAsset(ctx context.Context, url, dstFile, savedETag 
 		req.Header.Set("If-None-Match", savedETag)
 	}
 
-	resp, err := d.HTTPClient.Do(req)
+	resp, err := d.doWithFallback(req)
 	if err != nil {
 		return false, "", "", err
 	}
@@ -294,7 +309,9 @@ func (p *progressReader) tick() {
 }
 
 // verifySHA256 ищет в релизе asset с именем "<assetName>.sha256" и сверяет хэш.
-func (d *Downloader) verifySHA256(ctx context.Context, assets []types.Asset, assetName, gotSum string) error {
+// Если allowMissing=true и .sha256 не найден — WARN-лог + nil (защита для
+// upstream без культуры публикации checksums).
+func (d *Downloader) verifySHA256(ctx context.Context, assets []types.Asset, assetName, gotSum string, allowMissing bool) error {
 	wantName := assetName + ".sha256"
 	var sumAsset *types.Asset
 	for i := range assets {
@@ -304,6 +321,11 @@ func (d *Downloader) verifySHA256(ctx context.Context, assets []types.Asset, ass
 		}
 	}
 	if sumAsset == nil {
+		if allowMissing {
+			log.L().Warn("ghrelease: .sha256 отсутствует в релизе, integrity-проверка пропущена",
+				"asset", assetName)
+			return nil
+		}
 		return fmt.Errorf("asset %q отсутствует в релизе", wantName)
 	}
 
@@ -313,7 +335,7 @@ func (d *Downloader) verifySHA256(ctx context.Context, assets []types.Asset, ass
 	}
 	req.Header.Set("User-Agent", userAgent)
 
-	resp, err := d.HTTPClient.Do(req)
+	resp, err := d.doWithFallback(req)
 	if err != nil {
 		return err
 	}

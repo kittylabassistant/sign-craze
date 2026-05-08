@@ -42,6 +42,12 @@ func Download(ctx context.Context, arch types.Arch, dstDir string) (DownloadResu
 		Repo:       "nfqws2-keenetic",
 		AssetMatch: ghrelease.MatchByContains(pattern),
 		DstDir:     dstDir,
+		// nfqws2-keenetic исторически не публикует .sha256 для каждого .ipk.
+		// VerifySHA+AllowMissingSHA: проверяем когда .sha256 есть, иначе WARN.
+		// Когда upstream начнёт публиковать чек-суммы — поведение усилится
+		// автоматически (без изменения кода).
+		VerifySHA:       true,
+		AllowMissingSHA: true,
 	})
 	if err != nil {
 		return DownloadResult{}, fmt.Errorf("dpi download: %w", err)

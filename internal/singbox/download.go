@@ -41,6 +41,9 @@ func Download(ctx context.Context, arch types.Arch, dstDir string) (DownloadResu
 		Repo:       "sing-box",
 		AssetMatch: ghrelease.MatchByContains(pattern),
 		DstDir:     dstDir,
+		// SagerNet публикует <asset>.sha256 для каждого архитектурного бинаря.
+		// VerifySHA защищает от MITM на GitHub CDN — RCE с правами root.
+		VerifySHA: true,
 	})
 	if err != nil {
 		return DownloadResult{}, fmt.Errorf("singbox download: %w", err)

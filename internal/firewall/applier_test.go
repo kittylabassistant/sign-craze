@@ -19,13 +19,23 @@ func init() {
 // autoRunner записывает вызовы и возвращает разумные ответы по умолчанию.
 // -C → ошибка (правило не найдено), ipset list → ошибка (нет набора),
 // ip rule show / ip route show → пустой вывод, всё остальное → успех.
+//
+// override (опционально) перехватывает вызов до дефолтной логики:
+// возвращает (Result, true) для матчей, (_, false) для пропуска.
 type autoRunner struct {
-	calls []string
+	calls    []string
+	override func(ctx context.Context, name string, args ...string) (exectx.Result, bool)
 }
 
-func (r *autoRunner) Run(_ context.Context, name string, args ...string) (exectx.Result, error) {
+func (r *autoRunner) Run(ctx context.Context, name string, args ...string) (exectx.Result, error) {
 	key := strings.TrimSpace(name + " " + strings.Join(args, " "))
 	r.calls = append(r.calls, key)
+
+	if r.override != nil {
+		if res, ok := r.override(ctx, name, args...); ok {
+			return res, nil
+		}
+	}
 
 	switch {
 	// iptables -C → правило не найдено
@@ -37,7 +47,12 @@ func (r *autoRunner) Run(_ context.Context, name string, args ...string) (exectx
 	// ip rule show → пусто (правил нет)
 	case name == "ip" && len(args) >= 2 && args[0] == "rule" && args[1] == "show":
 		return exectx.Result{ExitCode: 0, Stdout: []byte("")}, nil
-	// ip route show → пусто (маршрутов нет)
+	// ip route show default → дефолтный маршрут на eth0 (для автодетекта WAN
+	// в ensureWANUIDrop). TestApply_FailsSecure_БезWANIface переопределяет
+	// через override, чтобы получить пустой stdout и проверить fail-secure.
+	case name == "ip" && len(args) >= 3 && args[0] == "route" && args[1] == "show" && args[2] == "default":
+		return exectx.Result{ExitCode: 0, Stdout: []byte("default via 10.0.0.1 dev eth0 proto static\n")}, nil
+	// ip route show без default → пусто
 	case name == "ip" && len(args) >= 2 && args[0] == "route" && args[1] == "show":
 		return exectx.Result{ExitCode: 0, Stdout: []byte("")}, nil
 	// iptables -t table -S → пусто (правил нет)
@@ -205,10 +220,11 @@ func TestApplier_Remove_Идемпотентен(t *testing.T) {
 	}
 }
 
-// TestApply_DropsWAN9090 — Apply должен добавлять INPUT DROP TCP и UDP
-// на порт 9090 на WAN-интерфейсе. Это закрывает Zashboard от доступа
-// из интернета через iptables, без bind на конкретный интерфейс.
-func TestApply_DropsWAN9090(t *testing.T) {
+// TestApply_DropsWANUIPorts — Apply должен добавлять INPUT DROP TCP и UDP
+// на все UI-порты (9090/9091/9092) на WAN-интерфейсе. Это единственный
+// сетевой барьер от внешнего доступа к Web UI, который работает без auth/TLS
+// в LAN-trust-модели.
+func TestApply_DropsWANUIPorts(t *testing.T) {
 	r := &autoRunner{}
 	cfg := DefaultConfig()
 	cfg.WANIface = "eth0"
@@ -216,26 +232,53 @@ func TestApply_DropsWAN9090(t *testing.T) {
 	if err := a.Apply(context.Background(), types.ModeFull); err != nil {
 		t.Fatalf("Apply(full) вернул ошибку: %v", err)
 	}
-	if !r.hasCall("iptables -t filter -A INPUT -i eth0 -p tcp --dport 9090 -j DROP") {
-		t.Error("INPUT DROP TCP 9090 на WAN не добавлен")
-	}
-	if !r.hasCall("iptables -t filter -A INPUT -i eth0 -p udp --dport 9090 -j DROP") {
-		t.Error("INPUT DROP UDP 9090 на WAN не добавлен")
+	for _, port := range []string{"9090", "9091", "9092"} {
+		for _, proto := range []string{"tcp", "udp"} {
+			call := "iptables -t filter -A INPUT -i eth0 -p " + proto + " --dport " + port + " -j DROP"
+			if !r.hasCall(call) {
+				t.Errorf("INPUT DROP %s %s на WAN не добавлен", proto, port)
+			}
+		}
 	}
 }
 
-// TestApply_DropsWAN9090_ПустойWANIface_NoOp — если WANIface не задан,
-// правило DROP на 9090 не добавляется (Keenetic-среда без RCI-детекта).
-func TestApply_DropsWAN9090_ПустойWANIface_NoOp(t *testing.T) {
+// TestApply_FailsSecure_БезWANIface — fail-secure: при пустом WANIface
+// и невозможности автодетекта Apply возвращает ошибку. Без сетевого
+// барьера UI без auth доступен из интернета — нельзя продолжать.
+func TestApply_FailsSecure_БезWANIface(t *testing.T) {
 	r := &autoRunner{}
+	// Override возвращает пустой stdout для "ip route show default" → парсер вернёт error.
+	r.override = func(ctx context.Context, name string, args ...string) (exectx.Result, bool) {
+		if name == "ip" && len(args) >= 3 && args[0] == "route" && args[1] == "show" && args[2] == "default" {
+			return exectx.Result{Stdout: []byte("")}, true
+		}
+		return exectx.Result{}, false
+	}
 	cfg := DefaultConfig()
-	// WANIface намеренно пуст
+	a := NewApplier(r, cfg)
+	err := a.Apply(context.Background(), types.ModeFull)
+	if err == nil {
+		t.Fatal("ожидалась fail-secure ошибка при пустом WANIface и неудачном автодетекте")
+	}
+}
+
+// TestApply_АвтодетектWAN — пустой WANIface + рабочий ip route show default
+// → автодетект подставляет iface, правила добавляются для него.
+func TestApply_АвтодетектWAN(t *testing.T) {
+	r := &autoRunner{}
+	r.override = func(ctx context.Context, name string, args ...string) (exectx.Result, bool) {
+		if name == "ip" && len(args) >= 3 && args[0] == "route" && args[1] == "show" && args[2] == "default" {
+			return exectx.Result{Stdout: []byte("default via 1.2.3.4 dev ppp0 proto dhcp\n")}, true
+		}
+		return exectx.Result{}, false
+	}
+	cfg := DefaultConfig()
 	a := NewApplier(r, cfg)
 	if err := a.Apply(context.Background(), types.ModeFull); err != nil {
 		t.Fatalf("Apply(full) вернул ошибку: %v", err)
 	}
-	if r.hasCall("iptables -t filter -A INPUT") {
-		t.Error("INPUT правило не должно добавляться при пустом WANIface")
+	if !r.hasCall("iptables -t filter -A INPUT -i ppp0 -p tcp --dport 9090 -j DROP") {
+		t.Error("INPUT DROP TCP 9090 на автодетектированном WAN (ppp0) не добавлен")
 	}
 }
 

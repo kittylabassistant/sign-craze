@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
+	"github.com/kittylabassistant/sign-craze/internal/netif"
 	"github.com/kittylabassistant/sign-craze/internal/routing"
 	"github.com/kittylabassistant/sign-craze/internal/service"
 	"github.com/kittylabassistant/sign-craze/internal/singbox"
@@ -102,7 +103,16 @@ func uiLifecycle() (service.Lifecycle, error) {
 
 // runUIServer собирает web.ServerConfig и блокируется на ListenAndServe
 // до отмены ctx. RoutingUI всегда включён: --ui — явная команда оператора.
+//
+// Fail-secure: bind на LAN-bridge IP (br0/br-lan); при невозможности
+// определить LAN-адрес — отказываемся стартовать, иначе UI без auth/TLS
+// окажется на 0.0.0.0 и будет достижим из WAN.
 func runUIServer(ctx context.Context) error {
+	lanIP, err := netif.DetectLANAddr()
+	if err != nil {
+		return fmt.Errorf("--ui-daemon: невозможно определить LAN-bridge IP (UI без auth/TLS не должен слушать 0.0.0.0): %w", err)
+	}
+	slog.Info("--ui-daemon: bind на LAN", "addr", lanIP)
 	runner := exectx.OS
 	singboxLC := singbox.DefaultLifecycle()
 	dpiLC := newDPILifecycle()
@@ -158,9 +168,9 @@ func runUIServer(ctx context.Context) error {
 			return singbox.Render(params)
 		},
 		OnApply: func(ctx context.Context) error {
-			fresh, err := state.Load(state.DefaultPath)
-			if err != nil {
-				return fmt.Errorf("OnApply: state.Load: %w", err)
+			fresh, loadErr := state.Load(state.DefaultPath)
+			if loadErr != nil {
+				return fmt.Errorf("OnApply: state.Load: %w", loadErr)
 			}
 			if fresh == nil {
 				fresh = state.Default()
@@ -171,6 +181,7 @@ func runUIServer(ctx context.Context) error {
 
 	cfg := web.ServerConfig{
 		CredsPath:  filepath.Join(singbox.DefaultConfigDir, "admin.creds"),
+		ListenHost: lanIP,
 		Status:     statusReader,
 		Config:     configRW,
 		Ports:      portsMgr,
@@ -185,13 +196,13 @@ func runUIServer(ctx context.Context) error {
 	// (--service-start), а не интерактивной командой.
 	cfg.RoutingUIEnabled = true
 	cfg.RoutingUIPort = state.DefaultRoutingUIPort
-	if st != nil {
-		if st.RoutingUIPort != 0 {
-			cfg.RoutingUIPort = st.RoutingUIPort
-		}
-		if st.RoutingUIBind != "" {
-			cfg.RoutingUIBind = st.RoutingUIBind
-		}
+	// LAN-trust: всегда привязываем routing UI к LAN-bridge IP, игнорируя
+	// st.RoutingUIBind. Старое поле "0.0.0.0" из state.json небезопасно
+	// (UI без auth доступен из WAN); пользовательский custom bind поддержан
+	// только если он совпадает с LAN-IP, иначе перезаписываем.
+	cfg.RoutingUIBind = lanIP
+	if st != nil && st.RoutingUIPort != 0 {
+		cfg.RoutingUIPort = st.RoutingUIPort
 	}
 
 	s, err := web.NewServer(cfg)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -61,13 +62,32 @@ type Runner interface {
 	Run(ctx context.Context, name string, args ...string) (Result, error)
 }
 
+// StdinRunner — расширение Runner с поддержкой передачи stdin.
+// Используется для batch-операций (например `ipset restore`), где
+// один subprocess принимает множество команд через stdin вместо
+// форка-на-операцию. Реализуется osRunner; mock-раннеры опционально.
+type StdinRunner interface {
+	Runner
+	RunWithStdin(ctx context.Context, stdin io.Reader, name string, args ...string) (Result, error)
+}
+
 // OS — стандартная реализация Runner через os/exec.
 var OS Runner = &osRunner{}
 
 type osRunner struct{}
 
 func (r *osRunner) Run(ctx context.Context, name string, args ...string) (Result, error) {
-	log.L().Debug("exec", "cmd", name, "args", args)
+	return r.runInternal(ctx, nil, name, args...)
+}
+
+// RunWithStdin выполняет команду с подключённым stdin. Используется для
+// batch-операций (`ipset restore`), где stdin содержит множество команд.
+func (r *osRunner) RunWithStdin(ctx context.Context, stdin io.Reader, name string, args ...string) (Result, error) {
+	return r.runInternal(ctx, stdin, name, args...)
+}
+
+func (r *osRunner) runInternal(ctx context.Context, stdin io.Reader, name string, args ...string) (Result, error) {
+	log.L().Debug("exec", "cmd", name, "args", args, "stdin", stdin != nil)
 
 	// Resolve binary через расширенный PATH (включая /opt/{sbin,bin} для
 	// Entware на Keenetic). Нельзя полагаться на exec.Command default LookPath:
@@ -84,6 +104,9 @@ func (r *osRunner) Run(ctx context.Context, name string, args ...string) (Result
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	if stdin != nil {
+		cmd.Stdin = stdin
+	}
 
 	err := cmd.Run()
 	exitCode := -1

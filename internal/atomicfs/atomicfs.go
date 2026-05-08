@@ -51,6 +51,8 @@ func WriteFileAtomic(dst string, data []byte, perm os.FileMode) error {
 		return fmt.Errorf("atomicfs: rename %s → %s: %w", tmpName, dst, err)
 	}
 
+	syncDir(dir)
+
 	success = true
 	return nil
 }
@@ -99,8 +101,27 @@ func WriteFileAtomicFromReader(dst string, r io.Reader, perm os.FileMode) error 
 	if err := os.Rename(tmpName, dst); err != nil {
 		return fmt.Errorf("atomicfs: rename %s → %s: %w", tmpName, dst, err)
 	}
+	syncDir(dir)
 	success = true
 	return nil
+}
+
+// syncDir делает fsync родительской директории — без этого rename
+// может потеряться при power-off на ext3 data=writeback или VFAT
+// (типичные FS на USB-флешке Keenetic). Ошибки игнорируются: VFAT
+// возвращает EINVAL на dir Sync, и fsync не критичен для корректности
+// чтения, только для durability — на чтение rename виден сразу.
+func syncDir(dir string) {
+	d, err := os.Open(dir)
+	if err != nil {
+		return
+	}
+	if syncErr := d.Sync(); syncErr != nil {
+		// VFAT/некоторые FS возвращают EINVAL на dir Sync — это ожидаемо;
+		// игнорируем без логирования (вызывается на каждый rename).
+		_ = syncErr
+	}
+	_ = d.Close()
 }
 
 // BackupAndReplace создаёт резервную копию dst (если существует) с суффиксом .bak.<unix>,

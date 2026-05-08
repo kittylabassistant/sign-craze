@@ -2,10 +2,12 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/firewall"
+	"github.com/kittylabassistant/sign-craze/internal/locks"
 	"github.com/kittylabassistant/sign-craze/internal/log"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
@@ -21,6 +23,25 @@ import (
 //     вызовов. На быстрых роутерах разница незаметна, на KN-1410 — заметна.
 //  4. Если правила пропали — Reconcile (idempotent re-apply без auto-rollback).
 func reconcileFirewall(ctx context.Context) error {
+	// Skip-and-return-nil при занятом flock: CLI команда (--stop, --restart,
+	// --update-geo и т.п.) держит lock в этот момент, watchdog не должен
+	// конкурировать с ней — повторное Reconcile при занятом lock пересоздаст
+	// правила, которые удаляет --stop. Следующий тик watchdog'а попробует
+	// снова. ErrLocked не фатален.
+	lk, err := locks.TryAcquire(locks.DefaultPath)
+	if err != nil {
+		if errors.Is(err, locks.ErrLocked) {
+			log.L().Debug("watchdog: flock занят CLI, пропуск тика")
+			return nil
+		}
+		return fmt.Errorf("watchdog: захват flock: %w", err)
+	}
+	defer func() {
+		if relErr := lk.Release(); relErr != nil {
+			log.L().Warn("watchdog: ошибка снятия flock", "err", relErr)
+		}
+	}()
+
 	st, err := loadState()
 	if err != nil {
 		return fmt.Errorf("load state: %w", err)

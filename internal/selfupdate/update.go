@@ -75,12 +75,17 @@ func Update(ctx context.Context, d *ghrelease.Downloader, opts Options) (string,
 		return "", fmt.Errorf("selfupdate: %w", err)
 	}
 
-	data, err := os.ReadFile(res.Path)
+	// Streaming-замена: BackupAndReplaceFromReader использует io.Copy с
+	// 8KB-буфером + atomic rename, не загружая весь бинарь (~10MB) в RAM.
+	// На 128MB-роутере прежний os.ReadFile + BackupAndReplace создавал
+	// два буфера в RAM одновременно (≈20MB) — риск OOM.
+	src, err := os.Open(res.Path)
 	if err != nil {
-		return "", fmt.Errorf("selfupdate: чтение скачанного: %w", err)
+		return "", fmt.Errorf("selfupdate: открытие скачанного: %w", err)
 	}
+	defer func() { _ = src.Close() }()
 
-	if _, err := atomicfs.BackupAndReplace(opts.BinPath, data, 0o755); err != nil {
+	if _, err := atomicfs.BackupAndReplaceFromReader(opts.BinPath, src, 0o755); err != nil {
 		return "", fmt.Errorf("selfupdate: замена %s: %w", opts.BinPath, err)
 	}
 

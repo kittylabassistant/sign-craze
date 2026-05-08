@@ -73,8 +73,38 @@ func TestRestore_PathTraversalRejected(t *testing.T) {
 	if err == nil {
 		t.Fatal("ожидалась ошибка path traversal")
 	}
-	if !strings.Contains(err.Error(), "подозрительный") {
-		t.Errorf("ожидалось сообщение про подозрительный путь, получено: %v", err)
+	if !strings.Contains(err.Error(), "path traversal") && !strings.Contains(err.Error(), "выходит за пределы") {
+		t.Errorf("ожидалось сообщение про path traversal, получено: %v", err)
+	}
+}
+
+func TestRestore_TarBomb_МногоФайлов(t *testing.T) {
+	dir := t.TempDir()
+	bomb := filepath.Join(dir, "bomb.tar.gz")
+	if err := writeManyFiles(bomb, maxTarFiles+10); err != nil {
+		t.Fatal(err)
+	}
+	err := Restore(bomb, t.TempDir())
+	if err == nil {
+		t.Fatal("ожидалась ошибка tar-bomb (превышено число файлов)")
+	}
+	if !strings.Contains(err.Error(), "число файлов") {
+		t.Errorf("ожидалось сообщение про число файлов, получено: %v", err)
+	}
+}
+
+func TestRestore_TarBomb_БольшойФайл(t *testing.T) {
+	dir := t.TempDir()
+	bomb := filepath.Join(dir, "bigbomb.tar.gz")
+	if err := writeOversizedFile(bomb, maxTarSingleFile+1024); err != nil {
+		t.Fatal(err)
+	}
+	err := Restore(bomb, t.TempDir())
+	if err == nil {
+		t.Fatal("ожидалась ошибка tar-bomb (большой файл)")
+	}
+	if !strings.Contains(err.Error(), "лимита") && !strings.Contains(err.Error(), "tar-bomb") {
+		t.Errorf("ожидалось сообщение про лимит размера, получено: %v", err)
 	}
 }
 

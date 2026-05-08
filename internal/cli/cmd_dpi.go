@@ -142,11 +142,41 @@ func dpiDisable(_ context.Context) error {
 	return nil
 }
 
+// dpiStrategyForbidden — shell-метасимволы и управляющие символы, которых
+// не должно быть в --dpi-strategy. Дефолтные стратегии nfqws2 содержат
+// только alphanumeric, `-`, `_`, `.`, `,`, `:`, `=`, `@`, `/`, пробел.
+// Запрещённые символы могут привести к экспедиции в exec.Command аргументы
+// нежелательных флагов через `splitArgs(strings.Fields(...))` или к
+// shell-инъекции если стратегия попадёт в shim-script.
+const dpiStrategyForbidden = ";&|$`<>(){}\\\n\r\t\x00"
+
+const dpiStrategyMaxLen = 1024
+
+// validateDPIStrategy — blocklist shell-метасимволов в строке стратегии.
+// Allowlist слишком узок: легитимные стратегии содержат непредсказуемый
+// набор символов в hostnames (`sni=fonts.google.com`), числах (`pos=1,midsld`)
+// и т.п. Blocklist чёрный — короткий, безопасный, не ломает upstream-стратегии.
+func validateDPIStrategy(s string) error {
+	if s == "" {
+		return fmt.Errorf("--dpi-strategy: пустая строка")
+	}
+	if len(s) > dpiStrategyMaxLen {
+		return fmt.Errorf("--dpi-strategy: длина %d > лимита %d", len(s), dpiStrategyMaxLen)
+	}
+	if i := strings.IndexAny(s, dpiStrategyForbidden); i >= 0 {
+		return fmt.Errorf("--dpi-strategy: запрещённый символ %q в позиции %d (shell-метасимволы и управляющие не допускаются)", s[i], i)
+	}
+	return nil
+}
+
 func handleDPIStrategy(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("--dpi-strategy: требуется preset или file://путь")
 	}
 	strategy := strings.TrimSpace(args[0])
+	if err := validateDPIStrategy(strategy); err != nil {
+		return err
+	}
 	return withLock(ctx, func() error {
 		st, err := loadState()
 		if err != nil {

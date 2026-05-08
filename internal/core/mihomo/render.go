@@ -33,6 +33,17 @@ func DefaultConfigParams() ConfigParams {
 //go:embed templates/config.yaml.tmpl
 var configTmpl string
 
+// renderFuncMap — функции, доступные в config.yaml.tmpl. Pure-функции,
+// шаблон может быть скомпилирован один раз (см. parsedConfigTmpl).
+var renderFuncMap = template.FuncMap{
+	"yamlInline": marshalYAMLInline,
+}
+
+// parsedConfigTmpl — предкомпилированный шаблон mihomo config.yaml.
+// На MIPS softfloat parse text/template — десятки ms; делаем однократно
+// в init-time, чтобы Render() не платил повторно при каждом регенере конфига.
+var parsedConfigTmpl = template.Must(template.New("config").Funcs(renderFuncMap).Parse(configTmpl))
+
 // templateData — данные, передаваемые в шаблон config.yaml.tmpl.
 type templateData struct {
 	LogLevel   string
@@ -97,19 +108,8 @@ func Render(p ConfigParams) ([]byte, error) {
 		ProxyNames: proxyNames,
 	}
 
-	// Регистрируем функцию yamlInline для шаблона.
-	// Сериализует map[string]any в однострочный YAML-mapping (inline).
-	funcMap := template.FuncMap{
-		"yamlInline": marshalYAMLInline,
-	}
-
-	tmpl, err := template.New("config").Funcs(funcMap).Parse(configTmpl)
-	if err != nil {
-		return nil, fmt.Errorf("mihomo render: parse template: %w", err)
-	}
-
 	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, data); err != nil {
+	if err := parsedConfigTmpl.Execute(&buf, data); err != nil {
 		return nil, fmt.Errorf("mihomo render: execute template: %w", err)
 	}
 	return buf.Bytes(), nil

@@ -109,6 +109,11 @@ func Download(ctx context.Context, arch types.Arch, dstDir string) (DownloadResu
 		Repo:       "Xray-core",
 		AssetMatch: ghrelease.MatchByContains(pattern),
 		DstDir:     dstDir,
+		// XTLS публикует zsha1/zsha256 файлы (формат отличается от <asset>.sha256).
+		// Текущий verifySHA256 не парсит этот формат → AllowMissingSHA=true до
+		// добавления поддержки. ETag + content-length проверки уже работают.
+		VerifySHA:       true,
+		AllowMissingSHA: true,
 	})
 	if err != nil {
 		return DownloadResult{}, fmt.Errorf("xray download: %w", err)

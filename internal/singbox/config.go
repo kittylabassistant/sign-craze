@@ -18,6 +18,39 @@ import (
 //go:embed templates/tun.json.tmpl
 var tunTmpl string
 
+// configFuncMap — функции, доступные в template/tun.json.tmpl. Pure-функции,
+// не захватывают состояние Render, поэтому шаблон можно скомпилировать один
+// раз на уровне пакета (см. configTmpl ниже).
+var configFuncMap = template.FuncMap{
+	"jsonMarshal": func(v any) (string, error) {
+		// Для types.Outbound используем renderOutboundJSON чтобы получить
+		// sing-box-специфичный flatten (canonical или legacy Settings).
+		if ob, ok := v.(types.Outbound); ok {
+			m, rErr := renderOutboundJSON(ob)
+			if rErr != nil {
+				return "", rErr
+			}
+			b, mErr := json.Marshal(m)
+			if mErr != nil {
+				return "", mErr
+			}
+			return string(b), nil
+		}
+		b, mErr := json.Marshal(v)
+		if mErr != nil {
+			return "", mErr
+		}
+		return string(b), nil
+	},
+}
+
+// configTmpl — предкомпилированный шаблон tun.json. Парсинг шаблона
+// (text/template) на MIPS softfloat занимает десятки ms; делаем это однократно
+// в init-time, чтобы каждый Render() и watchdog Reconcile не платил повторно.
+// Init-time panic при битом шаблоне — приемлемо: шаблон embedded и его валидность
+// проверяется тестами.
+var configTmpl = template.Must(template.New("config").Funcs(configFuncMap).Parse(tunTmpl))
+
 // Defaults для TUN-inbound.
 //
 // MTU 1280 (минимум IPv6) выбран чтобы избежать фрагментации на upstream-пути
@@ -124,36 +157,8 @@ func Render(p ConfigParams) ([]byte, error) {
 		return nil, fmt.Errorf("singbox config: построение модели: %w", err)
 	}
 
-	funcMap := template.FuncMap{
-		"jsonMarshal": func(v any) (string, error) {
-			// Для types.Outbound используем renderOutboundJSON чтобы получить
-			// sing-box-специфичный flatten (canonical или legacy Settings).
-			if ob, ok := v.(types.Outbound); ok {
-				m, rErr := renderOutboundJSON(ob)
-				if rErr != nil {
-					return "", rErr
-				}
-				b, mErr := json.Marshal(m)
-				if mErr != nil {
-					return "", mErr
-				}
-				return string(b), nil
-			}
-			b, mErr := json.Marshal(v)
-			if mErr != nil {
-				return "", mErr
-			}
-			return string(b), nil
-		},
-	}
-
-	tmpl, err := template.New("config").Funcs(funcMap).Parse(tunTmpl)
-	if err != nil {
-		return nil, fmt.Errorf("singbox config: парсинг шаблона: %w", err)
-	}
-
 	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, model); err != nil {
+	if err := configTmpl.Execute(&buf, model); err != nil {
 		return nil, fmt.Errorf("singbox config: рендеринг шаблона: %w", err)
 	}
 

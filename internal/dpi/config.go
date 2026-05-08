@@ -17,6 +17,10 @@ import (
 //go:embed templates/nfqws2.conf.tmpl
 var nfqws2ConfTmpl string
 
+// nfqws2ConfTmplParsed — предкомпилированный шаблон nfqws2.conf. Парсинг
+// text/template на MIPS softfloat — десятки ms; делаем однократно в init-time.
+var nfqws2ConfTmplParsed = template.Must(template.New("nfqws2.conf").Parse(nfqws2ConfTmpl))
+
 // DefaultBlobDir — каталог для blob-payload'ов nfqws2 (quic_initial.bin,
 // tls_clienthello.bin и т.п.). Распаковывается из .ipk во время Install.
 const DefaultBlobDir = "/opt/etc/sign-craze/blobs"
@@ -212,13 +216,8 @@ func GenerateConfig(params ConfigParams, dstPath string) error {
 		return fmt.Errorf("dpi config: PolicyName не задан")
 	}
 
-	tmpl, err := template.New("nfqws2.conf").Parse(nfqws2ConfTmpl)
-	if err != nil {
-		return fmt.Errorf("dpi config: парсинг шаблона: %w", err)
-	}
-
 	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, params); err != nil {
+	if err := nfqws2ConfTmplParsed.Execute(&buf, params); err != nil {
 		return fmt.Errorf("dpi config: рендеринг шаблона: %w", err)
 	}
 
