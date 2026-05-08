@@ -38,4 +38,3 @@ func handleRestore(ctx context.Context, args []string) error {
 		return nil
 	})
 }
-
