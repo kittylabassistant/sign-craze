@@ -98,6 +98,7 @@ Issue без диагностики и команды воспроизведен
 ### Уязвимости безопасности
 
 **Не открывайте публичный issue.** Канал приватного раскрытия —
+GitHub Security Advisories, см.
 [CODE_OF_CONDUCT.md → Уязвимости безопасности](CODE_OF_CONDUCT.md#уязвимости-безопасности).
 
 ## Предложить улучшение
@@ -302,8 +303,8 @@ Wiki (`sign-craze.wiki/` и онлайн) — пользовательская
 
 - GitHub Issues — баги, фичи.
 - GitHub Discussions — вопросы, обсуждения.
-  CoC violations).
-- E-Mail: kittylabassistant@protonmail.com
+- E-Mail: kittylabassistant@protonmail.com — приватные обращения
+  (security, CoC violations).
 
 Если в документации противоречие — приоритет в порядке:
 `OWNERSHIP` → `ARCHITECTURE` → wiki → README.

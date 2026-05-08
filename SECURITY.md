@@ -52,9 +52,10 @@ Sign-craze управляет firewall, маршрутизацией и web-UI �
    Канал шифрует сообщение, видим только мейнтейнеру, поддерживает
    совместную работу над фиксом и автоматическую публикацию advisory
    после релиза.
-   `SECURITY: <короткое описание>`. Используйте, если нет аккаунта на
-   GitHub. Чувствительные детали — после первого ответа мейнтейнера.
-3. **E-Mail** — [kittylabassistant@protonmail.com](mailto:kittylabassistant@protonmail.com) с той же темой.
+2. **E-Mail** — [kittylabassistant@protonmail.com](mailto:kittylabassistant@protonmail.com)
+   с темой `SECURITY: <короткое описание>`. Используйте, если нет
+   аккаунта на GitHub. Чувствительные детали — после первого ответа
+   мейнтейнера.
 
 PGP-ключ не публикуется: GitHub Security Advisories уже передаёт
 сообщение по защищённому каналу.
@@ -98,7 +99,7 @@ PGP-ключ не публикуется: GitHub Security Advisories уже пе
 
 Категория ставится по CVSS v3.1: critical ≥ 9.0, high 7.0–8.9, medium
 4.0–6.9, low < 4.0. Если в течение 7 дней не пришёл ответ — продублируйте
-наоборот).
+сообщение во второй канал (E-Mail, если писали через GHSA, или наоборот).
 
 ## Что считаем уязвимостью
 
@@ -227,6 +228,7 @@ Out-of-scope: репортить можно, но это будет закрыт
   (гостевой Wi-Fi, IoT) — изолируйте их в отдельный сегмент Keenetic.
   Web UI sign-craze не требует пароля.
 - **Не публикуйте `proxy.json`.** Файл содержит URL outbound с
+  секретами. При запросах в issue / E-Mail редактируйте перед
   публикацией.
 - **Защитите доступ к роутеру.** SSH-ключи вместо паролей, отключите
   Telnet, обновляйте KeeneticOS.
@@ -264,5 +266,5 @@ Sign-craze распространяется по [BSD-3-Clause](LICENSE) **бе�
 ---
 
 Вопросы по политике, не связанные с конкретной уязвимостью, — в
-[Discussions](https://github.com/kittylabassistant/sign-craze/discussions),
+[Discussions](https://github.com/kittylabassistant/sign-craze/discussions) или
 E-Mail [kittylabassistant@protonmail.com](mailto:kittylabassistant@protonmail.com).
