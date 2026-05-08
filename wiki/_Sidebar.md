@@ -2,6 +2,7 @@
 
 - [Home](Home)
 - [Installation](Installation)
+  - [Установка за DPI/блокировкой](Install-Behind-DPI)
 - [Routing](Routing)
   - [Reference](Routing-Reference)
   - [Recipes](Recipes)
