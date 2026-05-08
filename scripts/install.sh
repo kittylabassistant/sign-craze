@@ -11,15 +11,27 @@ MIN_FREE_KB=30000  # 30 MB запас
 
 # Выбрать загрузчик с проверкой TLS-сертификата.
 # Если на роутере нет корневых CA — поставить: opkg install ca-certificates
-# Таймауты обязательны: без них зависший connect к releases висит 60-120 сек,
-# и фолбэк на raw не срабатывает за разумное время.
+#
+# Таймауты:
+#   --connect-timeout 10     — TCP+TLS handshake
+#   --max-time 300            — общий потолок 5 мин на одну загрузку
+#   --speed-limit 5000 --speed-time 30
+#                             — abort если средняя скорость падает ниже
+#                               5 KB/s в течение 30 секунд подряд. Ловит
+#                               DPI-throttle: типичный паттерн —
+#                               TLS clienthello проходит, отдаются первые
+#                               10-16 KB, потом TCP застревает. Без этого
+#                               теста --max-time 300 ждёт 5 мин впустую.
+#
+# wget: --read-timeout=30 — inactivity timeout (нет байт 30s → abort).
+# BusyBox wget без этого флага не поддерживается (нужен entware wget-ssl).
 if command -v curl >/dev/null 2>&1; then
   DL="curl -fsSL --connect-timeout 10 --max-time 60"
-  DL_OUT="curl -fsSL --connect-timeout 10 --max-time 180 -o"
+  DL_OUT="curl -fsSL --connect-timeout 10 --max-time 300 --speed-limit 5000 --speed-time 30 -o"
   DL_TYPE="curl"
 elif wget --help 2>&1 | grep -q -- '--https-only\|HTTPS support'; then
   DL="wget -q -T 30 --tries=1 -O-"
-  DL_OUT="wget -q -T 180 --tries=1 -O"
+  DL_OUT="wget -q --connect-timeout=10 --read-timeout=30 -T 300 --tries=1 -O"
   DL_TYPE="wget"
 else
   echo "Нужен curl или wget-ssl. Установите: opkg install curl ca-certificates" >&2
