@@ -495,7 +495,10 @@ func runProxyWizard(in io.Reader, out io.Writer) ([]types.Outbound, error) {
 
 func wizardURL(r *bufio.Reader, out io.Writer) ([]types.Outbound, error) {
 	fmt.Fprint(out, "URL: ")
-	url, _ := readLineE(r)
+	url, err := readLineE(r)
+	if err != nil {
+		return nil, fmt.Errorf("чтение URL: %w", err)
+	}
 	if url == "" {
 		return nil, nil
 	}
