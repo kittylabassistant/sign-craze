@@ -44,7 +44,8 @@ $(DIST)/sign-craze-mips: $(DIST)
 	  $(GO_IMAGE) go build -buildvcs=false -ldflags="$(LDFLAGS)" -trimpath -o $@ ./cmd/sign-craze
 
 upx: all
-	upx --lzma $(DIST)/sign-craze-*
+	upx --lzma $(DIST)/sign-craze-arm64 $(DIST)/sign-craze-arm7
+	@echo "skip upx for mipsle/mips: UPX-стаб крашит CLI на Keenetic 4.9"
 
 tidy:
 	$(GO_RUN) go mod tidy

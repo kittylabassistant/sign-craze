@@ -180,7 +180,12 @@ func TestRender_TagWithQuoteEscaped(t *testing.T) {
 // TestRender_TUNStackIsGvisor — TUN inbound должен использовать gvisor stack.
 // Reason: на Keenetic mipsle softfloat kernel TCP/IP не обрабатывает пакеты
 // корректно при policy-routing → TUN. gvisor читает raw bytes напрямую из TUN
-// fd, не зависит от kernel TCP stack.
+// fd, не зависит от kernel TCP stack. system stack без nftables-based
+// auto_redirect (недоступен на Keenetic 4.9 — нет nftables) не сохраняет
+// original src LAN-клиента в metadata: пакеты RPi4 (172.16.0.97) приходят в
+// sing-box с src=172.19.0.1 (TUN gw), и ответы от прокси возвращаются к
+// роутеру locally, не к клиенту. Полное решение — переход на TPROXY inbound,
+// запланирован отдельной фазой.
 func TestRender_TUNStackIsGvisor(t *testing.T) {
 	p := DefaultConfigParams()
 	p.Outbounds = []types.Outbound{

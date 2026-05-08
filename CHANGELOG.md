@@ -5,6 +5,13 @@
 
 ---
 
+## [0.6.5] — 2026-05-08
+
+### Fixed
+- **UPX-стаб сегфолтит CLI на Keenetic 4.9 mipsle**: бинарь `sign-craze` для `mipsle` упаковывался через `upx --lzma`, что приводило к SIGSEGV при любом интерактивном вызове (`--version`, `--status`, `--help`) на Keenetic 4.9-ndm-5. Daemon-режим (`--service-watchdog`, `--ui-daemon`) без TTY работал — падал только CLI. Гипотетическая причина — `term.IsTerminal(os.Stderr.Fd())` в `internal/log/log.go` крашит UPX-стаб на mipsle. Исправление: в `.github/workflows/release.yml` добавлено поле `upx` в build matrix — UPX применяется только к `arm64` и `arm7`; для `mipsle` и `mips` бинари распространяются несжатыми (~13 MB). Аналогично обновлён `Makefile` target `upx`.
+
+---
+
 ## [0.5.16] — 2026-05-07
 
 ### Added

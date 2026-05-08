@@ -15,18 +15,25 @@ jobs:
             goarm: ""
             gomips: ""
             suffix: arm64
+            upx: "true"
           - goarch: arm
             goarm: "7"
             gomips: ""
             suffix: arm7
+            upx: "true"
+          # mipsle: UPX-стаб сегфолтит на Keenetic 4.9 mipsle при interactive
+          # запуске CLI (term.IsTerminal=true путь крашит). Бинарь идёт несжатым.
           - goarch: mipsle
             goarm: ""
             gomips: softfloat
             suffix: mipsle
+            upx: "false"
+          # mips big-endian: UPX вообще не поддерживает.
           - goarch: mips
             goarm: ""
             gomips: softfloat
             suffix: mips
+            upx: "false"
 
     steps:
       - uses: actions/checkout@v6
@@ -61,11 +68,12 @@ jobs:
             ./cmd/sign-craze
 
       - name: install upx
+        if: matrix.upx == 'true'
         run: sudo apt-get install -y upx
 
       - name: compress
-        # UPX не поддерживает mips big-endian — пропускать без ошибки
-        run: upx --lzma dist/sign-craze-${{ matrix.suffix }} || true
+        if: matrix.upx == 'true'
+        run: upx --lzma dist/sign-craze-${{ matrix.suffix }}
 
       - name: checksum
         run: |
