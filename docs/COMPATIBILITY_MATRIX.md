@@ -6,9 +6,9 @@
 
 ## 1. Архитектуры CPU
 
-| Суффикс релиза      | GOARCH   | GOARM | GOMIPS      | Порядок байт  | UPX (`--lzma`) | Примеры устройств                        |
-|---------------------|----------|-------|-------------|---------------|----------------|------------------------------------------|
-| `sign-craze-mipsle` | `mipsle` | —     | `softfloat` | Little-endian | Да             | Keenetic KN-1810, KN-1012, KN-2510       |
+| Суффикс релиза      | GOARCH   | GOARM | GOMIPS      | Порядок байт  | UPX (`--lzma`) | Примеры устройств                         |
+|---------------------|----------|-------|-------------|---------------|----------------|------------------------------------------ |
+| `sign-craze-mipsle` | `mipsle` | —     | `softfloat` | Little-endian | Да             | Keenetic KN-1810, KN-1012, KN-2510        |
 | `sign-craze-mips`   | `mips`   | —     | `softfloat` | Big-endian    | Нет¹           | Некоторые старые Keenetic/TP-Link MIPS BE |
 | `sign-craze-arm7`   | `arm`    | `7`   | —           | Little-endian | Да             | Keenetic Giga / Speed X (ARMv7)           |
 | `sign-craze-arm64`  | `arm64`  | —     | —           | Little-endian | Да             | Keenetic Ultra KN-1811, Raspberry Pi 4    |
@@ -23,12 +23,12 @@
 
 ## 2. Firmware Keenetic
 
-| KeeneticOS     | Режим `policy` (RCI 5.x) | Режим `full` (legacy) | Известные ограничения                                     |
-|----------------|--------------------------|----------------------|----------------------------------------------------------|
-| **5.0.x**      | Поддерживается ✓         | Поддерживается ✓      | Проверено на KN-1810 (validated reference)               |
-| **5.1–5.x**    | Ожидается ✓ (RCI стабилен) | Ожидается ✓          | Не тестировалось; сообщите об отклонениях                |
-| **4.x**        | Не поддерживается ✗      | Не проверялось        | RCI `/rci/show/ip/policy` отсутствует в 4.x              |
-| **3.x и ниже** | Не поддерживается ✗      | Не проверялось        | Нет IP Policy API; iptables-модули могут отличаться      |
+| KeeneticOS     | Режим `policy` (RCI 5.x)   | Режим `full` (legacy) | Известные ограничения                                    |
+|----------------|--------------------------  |---------------------- |----------------------------------------------------------|
+| **5.0.x**      | Поддерживается ✓           | Поддерживается ✓      | Проверено на KN-1810 (validated reference)               |
+| **5.1–5.x**    | Ожидается ✓ (RCI стабилен) | Ожидается ✓           | Не тестировалось; сообщите об отклонениях                |
+| **4.x**        | Не поддерживается ✗        | Не проверялось        | RCI `/rci/show/ip/policy` отсутствует в 4.x              |
+| **3.x и ниже** | Не поддерживается ✗        | Не проверялось        | Нет IP Policy API; iptables-модули могут отличаться      |
 
 **Режим `policy`** требует Keenetic NDM RCI версии 5.x (`/rci/show/ip/policy`, `/rci/show/rc/ip/policy`, POST `/rci/`). Если RCI на `127.0.0.1:79` недоступен — sign-craze завершится с ошибкой и предложит переключиться в `--mode full`. Источник: `docs/BEHAVIOR_SPEC.md` §4.
 
@@ -38,13 +38,13 @@
 
 ## 3. Протестированные устройства
 
-| Модель                       | Arch     | KeeneticOS | RAM    | Flash  | Статус                          |
-|------------------------------|----------|------------|--------|--------|---------------------------------|
-| **Keenetic KN-1810** (Ultra) | `mipsle` | 5.0.4      | 256 MB | 128 MB | **validated** — reference device |
-| Keenetic KN-1012             | `mipsle` | —          | 128 MB | 16 MB  | community                       |
-| Keenetic KN-2510             | `mipsle` | —          | 128 MB | 32 MB  | community                       |
-| Keenetic Giga (ARMv7)        | `arm7`   | —          | 256 MB | —      | untested                        |
-| Keenetic Ultra KN-1811       | `arm64`  | —          | 512 MB | —      | untested                        |
+| Модель                       | Arch     | KeeneticOS | RAM    | Flash  | Статус                               |
+|------------------------------|----------|------------|--------|--------|---------------------------------     |
+| **Keenetic KN-1810** (Ultra) | `mipsle` | 5.0.4      | 256 MB | 128 MB | **validated** — reference device     |
+| Keenetic KN-1012             | `mipsle` | —          | 128 MB | 16 MB  | community                            |
+| Keenetic KN-2510             | `mipsle` | —          | 128 MB | 32 MB  | community                            |
+| Keenetic Giga (ARMv7)        | `arm7`   | —          | 256 MB | —      | untested                             |
+| Keenetic Ultra KN-1811       | `arm64`  | —          | 512 MB | —      | untested                             |
 | Raspberry Pi 4               | `arm64`  | —          | ≥1 GB  | —      | untested (Entware + iptables-legacy) |
 
 **Статусы:**
@@ -59,12 +59,12 @@
 
 ## 4. Kernel-модули и системные компоненты
 
-| Компонент / модуль          | Требуется в режиме    | Как проверить                                      | Установка (Entware)                          |
-|-----------------------------|-----------------------|----------------------------------------------------|----------------------------------------------|
+| Компонент / модуль          | Требуется в режиме    | Как проверить                                      | Установка (Entware)                           |
+|-----------------------------|-----------------------|----------------------------------------------------|---------------------------------------------- |
 | `/dev/net/tun` (CONFIG_TUN) | `policy` и `full`     | `ls -l /dev/net/tun`                               | Встроен в стоковое ядро Keenetic (OpenVPN/WG) |
 | `iptables-legacy`           | `policy` и `full`     | `iptables --version` (ожидается `legacy`)          | Стандартный на Keenetic                       |
 | `xt_MARK`                   | `policy` и `full`     | `iptables -t mangle -A TEST -j MARK --set-mark 1`  | Встроен                                       |
-| `xt_set` / `libxt_set.so`   | только `full`         | `opkg list-installed \| grep iptables-mod-ipset`  | `opkg install iptables-mod-ipset`             |
+| `xt_set` / `libxt_set.so`   | только `full`         | `opkg list-installed \| grep iptables-mod-ipset`   | `opkg install iptables-mod-ipset`             |
 | `ipset` (userspace)         | только `full`         | `ipset --version`                                  | `opkg install ipset`                          |
 | `kmod-nfnetlink-queue`      | только `--dpi on`     | `lsmod \| grep nfnetlink_queue`                    | `opkg install kmod-nfnetlink-queue`           |
 | `iptables-mod-nfqueue`      | только `--dpi on`     | `iptables -j NFQUEUE --help`                       | `opkg install iptables-mod-nfqueue`           |
@@ -80,10 +80,10 @@
 
 ## 5. Внешние бинари
 
-| Бинарь      | Мин. версия | GitHub-репозиторий                          | Путь установки          | Загружается при         |
-|-------------|-------------|---------------------------------------------|-------------------------|--------------------------|
+| Бинарь      | Мин. версия | GitHub-репозиторий                          | Путь установки          | Загружается при              |
+|-------------|-------------|---------------------------------------------|-------------------------|------------------------------|
 | `sing-box`  | **1.13.0**  | `github.com/SagerNet/sing-box`              | `/opt/sbin/sing-box`    | `--install`, `--update-core` |
-| `nfqws2`    | latest      | `github.com/nfqws/nfqws2-keenetic`          | `/opt/sbin/nfqws2`      | `--dpi on`               |
+| `nfqws2`    | latest      | `github.com/nfqws/nfqws2-keenetic`          | `/opt/sbin/nfqws2`      | `--dpi on`                   |
 
 **sing-box 1.13** — минимальная версия: начиная с 1.13 DNS-сервер использует тип `local` (системный resolver); тип `udp` с `detour: direct` запрещён. Генератор конфига в `internal/singbox/config.go` опирается на это поведение.
 
@@ -126,7 +126,7 @@ Sign-craze поддерживает три взаимозаменяемых пр
 ### Таблица 1: базовые протоколы
 
 | Протокол | sing-box | xray | mihomo | Заметки |
-|---|---|---|---|---|
+| -------- | -------- | ---- | ------ | ------- |
 | VLESS | ✅ | ✅ | ✅ | См. таблицу 2 для частных режимов |
 | VMess | ✅ | ✅ | ✅ | AEAD by default |
 | Shadowsocks (legacy) | ✅ | ✅ | ✅ | aes-256-gcm, chacha20-poly1305 |
@@ -141,7 +141,7 @@ Sign-craze поддерживает три взаимозаменяемых пр
 ### Таблица 2: VLESS субпротоколы
 
 | Параметр | sing-box | xray | mihomo | Назначение |
-|---|---|---|---|---|
+| -------- | -------- | ---- | ------ | ------- |
 | Reality (PublicKey + ShortID) | ✅ | ✅ | ✅ | TLS-маскировка под чужой домен |
 | Vision (`flow=xtls-rprx-vision`) | ⚠️ | ✅ | ✅ | TLS-passthrough, splice |
 | Vision UDP443 (`flow=xtls-rprx-vision-udp443`) | ❌ | ✅ | ❌ | Splice over UDP/443 — только xray |
@@ -160,7 +160,7 @@ Sign-craze поддерживает три взаимозаменяемых пр
 ### Таблица 3: ядро-специфичные функции
 
 | Функция | sing-box | xray | mihomo | Заметки |
-|---|---|---|---|---|
+| ------- | -------- | ---- | ------ | ------- |
 | TUN inbound | ✅ | ❌ | ✅ | xray использует tproxy через dokodemo-door |
 | TPROXY inbound | ✅ | ✅ | ✅ | sign-craze стандарт через fwmark 0x53 |
 | Native Clash API | ⚠️ | ❌ | ✅ | sing-box даёт compat-stub; xray не имеет; mihomo native |
@@ -174,7 +174,7 @@ Sign-craze поддерживает три взаимозаменяемых пр
 
 ### Условные обозначения
 
-```
+```plain
 ✅ — полная поддержка
 ⚠️ — частичная или экспериментальная (см. заметки)
 ❌ — не поддерживается, sign-craze.Validate отвергнет конфиг

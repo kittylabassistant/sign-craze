@@ -193,16 +193,13 @@ sing-box   v<VERSION>  (установлен в /opt/sbin/sing-box)
 
 Восстанавливает конфиг из tarball (путь — аргумент). Сначала останавливает сервис, восстанавливает, **не перезапускает**.
 
-### `--config-backup` / `--config-restore`
-
-Аналог backup/restore только для config.json.
-
 ---
 
 ### `--ui on|off`
 
 `on`: запускает встроенные HTTP-серверы:
-- порт `9090` — Zashboard (Clash-совместимый dashboard, управление прокси и мониторинг трафика)
+
+- порт `9090` — Metacube(XD) (Clash-совместимый dashboard, управление прокси и мониторинг трафика)
 - порт `9091` — admin REST API sign-craze
 - порт `9092` — Routing Editor SPA
 
@@ -234,7 +231,7 @@ Selective DPI: задаёт список доменов/SNI-паттернов �
 При активном `DPIEnabled` команда сразу регенерирует `nfqws2.conf` и hostlist.
 nfqws2 подхватит изменения только после `--restart`.
 
-```
+```sh
 sign-craze --dpi-targets discord.com,youtube.com,googlevideo.com
 sign-craze --dpi-targets clear
 ```
@@ -341,7 +338,7 @@ NFQWS_EXTRA_ARGS=""           # --hostlist=<file> добавляется при 
 
 sign-craze собирает cmdline по схеме upstream init.d (`etc/init.d/common`):
 
-```
+```sh
 nfqws2 --user=nobody --qnum=300 <NFQWS_BASE_ARGS>
        <NFQWS_ARGS_UDP>  --new
        <NFQWS_ARGS_QUIC> --new
@@ -354,6 +351,7 @@ TCP/UDP/QUIC флаги в один блок и упадёт в init.
 #### Blob-файлы
 
 При `--dpi on` (или `--install --with-dpi`) sign-craze распаковывает из .ipk:
+
 - `/opt/etc/sign-craze/blobs/quic_initial.bin`
 - `/opt/etc/sign-craze/blobs/tls_clienthello.bin`
 
@@ -461,7 +459,7 @@ ip route:   table 83: default dev signbox-tun
 
 #### iptables (mangle)
 
-```
+```plain
 Chain PREROUTING (policy ACCEPT)
   -j signcraze_dpi          # цепочка DPI первой (пустая если DPIEnabled=false)
   -j signcraze              # mark-маршрутизация

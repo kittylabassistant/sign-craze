@@ -41,7 +41,7 @@ Go-утилита для управления межсетевым экрано�
 ## Поддерживаемые архитектуры
 
 | Платформа | GOARCH | Примечание |
-|-----------|--------|-----------|
+| ----------- | -------- | ----------- |
 | Keenetic (MIPS LE) | `mipsle` | GOMIPS=softfloat |
 | Keenetic (MIPS BE) | `mips` | GOMIPS=softfloat |
 | Keenetic / RPi (ARM 32) | `arm` | GOARM=7 |
@@ -107,7 +107,7 @@ sign-craze управляет маршрутизацией через файл `
 ### Порты управления
 
 | Порт | Что | Когда использовать |
-|------|-----|-------------------|
+| ----------- | ----------- | ------------------- |
 | `:9090` | Zashboard (мониторинг) | Смотреть live трафик, переключать proxy-selectors |
 | `:9091` | Admin REST | Скрипты управления state, excludes, DPI |
 | `:9092` | **Routing Editor** | **Редактировать правила маршрутизации** |
@@ -167,7 +167,7 @@ sign-craze --core-list          Список зарегистрированны�
 sign-craze --core <name>        Переключить активное ядро (требует --restart)
 sign-craze --core-install <name> Скачать и установить указанное ядро
 
-sign-craze --config-backup      Создать архив state.json + admin.creds в /opt/var/lib/sign-craze
+sign-craze --config-backup      Создать архив state.json в /opt/var/lib/sign-craze
 sign-craze --config-restore <путь> Восстановить конфиг из архива
 
 sign-craze --mode policy|full        Переключить режим маршрутизации
@@ -237,19 +237,6 @@ internal/cli  (диспетчер команд)
 ```
 
 Подробная диаграмма потоков данных — в [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
-
-## Состояние разработки
-
-| Фаза | Статус | Содержание |
-|------|--------|-----------|
-| Phase 0 — подготовка | ✅ | go.mod, Makefile, CI, BEHAVIOR_SPEC.md, docs |
-| Phase 1 — scaffold | ✅ | cli, log, locks, exectx, errors, atomicfs, version, types |
-| Phase 2 — sing-box | ✅ | download, install, config template, service shim, lifecycle |
-| Phase 3 — firewall | ✅ | iptables/ipset, режимы policy/full (TUN + ipset), Docker тесты |
-| Phase 4 — DPI/nfqws2 | ✅ | download, config, NFQUEUE lifecycle |
-| Phase 5 — гео-файлы | ✅ | SRS manifest, выборочная загрузка, ipset |
-| Phase 6 — Web UI | ✅ | HTTP-сервер, REST API, Routing Editor |
-| Phase 7 — release | 🔄 | GitHub Actions pipeline, install.sh |
 
 ## Структура файлов на роутере
 

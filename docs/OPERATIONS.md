@@ -218,22 +218,12 @@ sign-craze --backup
 
 > `admin.creds` — reserved-файл; basic auth не применяется с v0.5.2, но файл создаётся `LoadOrCreateCreds` для совместимости.
 
-### 6.2 Backup только config.json
+### 6.2 Восстановление
 
 ```sh
-sign-craze --config-backup
-```
-
-### 6.3 Восстановление
-
-```sh
-# Полное (сервис останавливается автоматически)
+# Сервис останавливается автоматически
 sign-craze --restore /opt/var/lib/sign-craze/backups/backup-2026-05-03T12-00-00.tar.gz
 sign-craze --start
-
-# Только config.json
-sign-craze --config-restore /opt/var/lib/sign-craze/backups/config-2026-05-03T...tar.gz
-sign-craze --restart
 ```
 
 **Проверка:**

@@ -35,7 +35,7 @@ singbox         dpi             firewall
 ## Вспомогательные пакеты
 
 | Пакет | Роль |
-|---|---|
+| ----- | ---- |
 | `internal/singbox` | загрузка, установка, генерация конфига, версия sing-box |
 | `internal/core` | registry + абстрактный интерфейс `Core`; регистрирует ядра: sing-box, xray, mihomo |
 | `internal/core/xray` | адаптер ядра xray |
@@ -77,7 +77,7 @@ cli/service.Run
 ## Порты Web UI
 
 | Порт | Назначение |
-|------|-----------|
+| ------ | ----------- |
 | `9090` | Zashboard — Clash-совместимый dashboard (управление прокси, мониторинг трафика) |
 | `9091` | Admin REST API sign-craze |
 | `9092` | Routing Editor SPA (Preact) |
@@ -98,7 +98,7 @@ cli/startUI
 ## Режимы маршрутизации
 
 | Режим | sing-box | nfqws2 | iptables |
-|---|---|---|---|
+| ----- | -------- | ------ | -------- |
 | `policy` (default) | да | опционально | fwmark 0xffffaaXX → MARK 0x53 → TUN |
 | `full` | да | опционально | ipset dst-match → MARK 0x53 → TUN |
 
@@ -114,7 +114,7 @@ Legacy-имена `proxy`, `dpi`, `hybrid` принимаются для обр�
 ## Идентификаторы
 
 | Элемент | Значение |
-|---|---|
+| ----- | -------- |
 | Цепочки iptables | `signcraze`, `signcraze_full`, `signcraze_dpi`, `signcraze_ports`, `signcraze_policy`, `signcraze_policy_dpi` |
 | ipset-наборы | `signcraze_ipv4`, `signcraze_ipv6` |
 | fwmark | `0x53` (= 83 dec) |

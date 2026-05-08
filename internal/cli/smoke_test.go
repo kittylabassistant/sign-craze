@@ -19,7 +19,7 @@ var expectedCommands = []string{
 	"--mode",
 	"--port-add", "--port-del", "--port-list",
 	"--exclude-add", "--exclude-del", "--exclude-list",
-	"--backup", "--restore", "--config-backup", "--config-restore",
+	"--backup", "--restore",
 	"--reapply",
 }
 
