@@ -41,9 +41,16 @@ func Download(ctx context.Context, arch types.Arch, dstDir string) (DownloadResu
 		Repo:       "sing-box",
 		AssetMatch: ghrelease.MatchByContains(pattern),
 		DstDir:     dstDir,
-		// SagerNet публикует <asset>.sha256 для каждого архитектурного бинаря.
-		// VerifySHA защищает от MITM на GitHub CDN — RCE с правами root.
-		VerifySHA: true,
+		// SagerNet sing-box историчесĸи НЕ публикует <asset>.sha256 в релизах
+		// (проверено на v1.13.11 — gh api repos/SagerNet/sing-box/releases/tags/...
+		// не содержит .sha256 / SHA256SUMS / signature файлов).
+		// AllowMissingSHA=true: integrity-проверка пропускается с WARN.
+		// Защита от truncated download остаётся через manifest Size check
+		// в ghrelease.downloadFromMirror (resp.Size != asset.Size → ошибка).
+		// От targeted MITM не защищает — но sing-box качается через GitHub
+		// HTTPS, для RCE-attack нужно компрометировать SagerNet/GitHub TLS.
+		VerifySHA:       true,
+		AllowMissingSHA: true,
 	})
 	if err != nil {
 		return DownloadResult{}, fmt.Errorf("singbox download: %w", err)
