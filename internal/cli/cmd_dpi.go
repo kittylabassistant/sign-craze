@@ -49,6 +49,25 @@ func detectISPInterface(ctx context.Context) (string, error) {
 	return iface, nil
 }
 
+// dpiAssetsPresent — true, когда обязательные lua-расширения и blob-payload'ы
+// существуют на диске. Достаточно отсутствия одного критичного файла, чтобы
+// nfqws2 упал на старте с "bad file ...lua" / "blob not found".
+func dpiAssetsPresent() bool {
+	required := []string{
+		dpi.DefaultLuaDir + "/zapret-lib.lua",
+		dpi.DefaultLuaDir + "/zapret-antidpi.lua",
+		dpi.DefaultLuaDir + "/zapret-auto.lua",
+		dpi.DefaultBlobDir + "/quic_initial.bin",
+		dpi.DefaultBlobDir + "/tls_clienthello.bin",
+	}
+	for _, p := range required {
+		if _, err := os.Stat(p); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
 // installNfqws2WithBlobs скачивает .ipk пакет nfqws2-keenetic, устанавливает
 // бинарь и распаковывает blob-файлы (quic_initial.bin, tls_clienthello.bin).
 // Используется в dpiEnable и в --install --with-dpi.
@@ -82,8 +101,18 @@ func dpiEnable(ctx context.Context) error {
 		return err
 	}
 
-	// Установка бинаря + blob-файлов, если отсутствуют.
+	// Установка бинаря + blob/lua-ассетов, если отсутствует хотя бы что-то.
+	// Раньше проверялся только бинарь — но на роутере мог остаться бинарь
+	// от прошлой установки (например после ручного opkg install nfqws2-keenetic
+	// или прерванного --dpi on), а ассеты отсутствовать. Без zapret-lib.lua
+	// nfqws2 падает с "bad file ... .lua" сразу после старта, и --dpi on
+	// «успешно» завершался, оставляя пользователя со сломанной DPI.
+	binMissing := false
 	if _, statErr := os.Stat(dpi.DefaultBinPath); statErr != nil {
+		binMissing = true
+	}
+	assetsMissing := !dpiAssetsPresent()
+	if binMissing || assetsMissing {
 		if instErr := installNfqws2WithBlobs(ctx); instErr != nil {
 			return fmt.Errorf("--dpi on: %w", instErr)
 		}

@@ -3,6 +3,7 @@ package ghrelease
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/kittylabassistant/sign-craze/internal/log"
@@ -16,19 +17,34 @@ type URLRewriter func(directURL string) string
 // directRewriter возвращает URL без изменений (первая попытка — direct).
 func directRewriter(u string) string { return u }
 
-// ghProxyRewriter переписывает любой github.com/api.github.com/raw
-// URL через https://gh-proxy.com/<full-direct-url>. Прокси сохраняет
-// HTTPS, заголовки и тело. Не подходит для не-GH хостов.
-func ghProxyRewriter(u string) string {
+// isGitHubURL — общий префикс-чек для reverse-proxy зеркал, работающих
+// с любым GitHub-хостом (api / releases / raw / objects / codeload).
+func isGitHubURL(u string) bool {
 	switch {
 	case strings.HasPrefix(u, "https://github.com/"),
 		strings.HasPrefix(u, "https://api.github.com/"),
 		strings.HasPrefix(u, "https://raw.githubusercontent.com/"),
 		strings.HasPrefix(u, "https://objects.githubusercontent.com/"),
 		strings.HasPrefix(u, "https://codeload.github.com/"):
-		return "https://gh-proxy.com/" + u
+		return true
 	}
-	return ""
+	return false
+}
+
+// proxyRewriter возвращает URLRewriter, добавляющий префикс <base>/ к
+// любому GitHub-URL. base без trailing slash, например "https://gh-proxy.com".
+func proxyRewriter(base string) URLRewriter {
+	return func(u string) string {
+		if !isGitHubURL(u) {
+			return ""
+		}
+		return base + "/" + u
+	}
+}
+
+// ghProxyRewriter — алиас для совместимости с тестами.
+func ghProxyRewriter(u string) string {
+	return proxyRewriter("https://gh-proxy.com")(u)
 }
 
 // jsdelivrRewriter переписывает raw.githubusercontent.com URL в
@@ -49,13 +65,53 @@ func jsdelivrRewriter(u string) string {
 	return fmt.Sprintf("https://cdn.jsdelivr.net/gh/%s/%s@%s/%s", owner, repo, ref, path)
 }
 
-// DefaultMirrors — порядок попыток при сбое: direct → gh-proxy → jsdelivr.
-// Меняется в тестах (см. mirrors_test.go) и в Downloader.Mirrors для
-// кастомных setup'ов.
-var DefaultMirrors = []URLRewriter{
-	directRewriter,
-	ghProxyRewriter,
-	jsdelivrRewriter,
+// DefaultMirrors — порядок попыток при сбое: direct → ghfast.top →
+// gh-proxy.com → jsdelivr.
+// ghfast.top — Cloudflare reverse-proxy, в РФ работает стабильнее
+// gh-proxy.com (2026-05-08: gh-proxy подвисал на connect, ghfast отдавал
+// ~2 МБ/с). gh-proxy.com оставлен как 3-й fallback.
+// jsdelivr — только raw-файлы, для releases возвращает "" и пропускается.
+//
+// Override: env SIGNCRAZE_GH_MIRRORS=direct,ghfast,gh-proxy,jsdelivr
+// (см. mirrorsFromEnv).
+var DefaultMirrors = mirrorsFromEnv()
+
+// mirrorsFromEnv формирует список URLRewriter из env SIGNCRAZE_GH_MIRRORS,
+// либо возвращает встроенный default. Имена: direct, ghfast, gh-proxy,
+// jsdelivr. Неизвестные имена логируются и пропускаются.
+func mirrorsFromEnv() []URLRewriter {
+	def := []URLRewriter{
+		directRewriter,
+		proxyRewriter("https://gh-proxy.com"),
+		proxyRewriter("https://ghfast.top"),
+		jsdelivrRewriter,
+	}
+	raw := strings.TrimSpace(os.Getenv("SIGNCRAZE_GH_MIRRORS"))
+	if raw == "" {
+		return def
+	}
+	known := map[string]URLRewriter{
+		"direct":   directRewriter,
+		"ghfast":   proxyRewriter("https://ghfast.top"),
+		"gh-proxy": proxyRewriter("https://gh-proxy.com"),
+		"jsdelivr": jsdelivrRewriter,
+	}
+	out := make([]URLRewriter, 0, 5)
+	for _, name := range strings.Split(raw, ",") {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		if r, ok := known[name]; ok {
+			out = append(out, r)
+		} else {
+			log.L().Warn("ghrelease: неизвестный mirror в SIGNCRAZE_GH_MIRRORS", "name", name)
+		}
+	}
+	if len(out) == 0 {
+		return def
+	}
+	return out
 }
 
 // doWithFallback пытается выполнить req по очереди через каждое из зеркал

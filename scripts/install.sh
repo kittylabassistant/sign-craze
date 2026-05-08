@@ -147,6 +147,11 @@ trap 'rm -f "$TMP" "$TMP.sha256"' EXIT
 # asset-домене. 10s timeout вместо 60-120s на TCP connect.
 if ! probe "$URL"; then
   echo "WARN: $URL недоступен (probe 10s timeout), переключаюсь на gh-proxy..." >&2
+  if ! probe "$MIRROR_URL"; then
+    echo "Оба зеркала недоступны (releases + gh-proxy). Проверь DNS/блокировки или используй offline:" >&2
+    echo "  scp sign-craze-${SUFFIX} router:/tmp/ && SIGNCRAZE_BIN=/tmp/sign-craze-${SUFFIX} sh install.sh" >&2
+    exit 1
+  fi
   URL="$MIRROR_URL"
   SHA_URL="$MIRROR_SHA_URL"
 fi
@@ -155,6 +160,10 @@ fi
 if ! $DL_OUT "$TMP" "$URL"; then
   if [ "$URL" != "$MIRROR_URL" ]; then
     echo "WARN: загрузка с $URL не удалась, пробую gh-proxy..." >&2
+    if ! probe "$MIRROR_URL"; then
+      echo "gh-proxy также недоступен (probe), отмена" >&2
+      exit 1
+    fi
     if ! $DL_OUT "$TMP" "$MIRROR_URL"; then
       echo "Не удалось скачать бинарь ни с releases, ни с gh-proxy" >&2
       exit 1

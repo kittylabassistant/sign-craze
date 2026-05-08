@@ -113,7 +113,10 @@ func handleInstallOffline(ctx context.Context, args []string) error {
 	if len(rest) == 0 {
 		return fmt.Errorf("--install-offline: требуется путь к tarball")
 	}
-	return withLock(ctx, func() error { return doInstall(ctx, installOffline, rest[0], false, coreName, proxyURL, withDPI) })
+	// install-offline всегда force=true: если state.json остался от прерванной
+	// установки (например, валидация конфига упала), пользователь явно
+	// указывает локальный tarball — переустановка поверх ожидаемое поведение.
+	return withLock(ctx, func() error { return doInstall(ctx, installOffline, rest[0], true, coreName, proxyURL, withDPI) })
 }
 
 func handleReinstall(ctx context.Context, args []string) error {

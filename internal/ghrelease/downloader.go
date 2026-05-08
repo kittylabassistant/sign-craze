@@ -7,10 +7,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/kittylabassistant/sign-craze/internal/log"
@@ -31,7 +33,22 @@ const (
 	userAgent = "curl/8.12.1"
 	// progressInterval — частота прогресс-логов при загрузке asset'а.
 	progressInterval = 5 * time.Second
+	// dialTimeout — потолок TCP+TLS handshake. Без него висший SYN на
+	// заблокированном asset-CDN (release-assets.githubusercontent.com →
+	// Azure blob, типичный block в РФ) ждёт defaultDownloadTimeout (10 min).
+	// 10s — баланс: достаточно для медленного TLS на МIPS, fail-fast при drop.
+	dialTimeout = 10 * time.Second
 )
+
+// bodyIdleTimeout — потолок паузы между байтами тела ответа. Без него
+// stall'нувшее зеркало (наблюдение 2026-05-08: ghfast.top отдал headers
+// но 0 байт за 5 минут, потом TCP RST) держит загрузку в неопределённом
+// состоянии. 30s — даёт slow-link шанс отдать первые байты, fail-fast
+// при реальном stall.
+//
+// var (а не const) — чтобы тесты могли переопределить на доли секунды
+// без долгих ожиданий. В production остаётся 30s.
+var bodyIdleTimeout = 30 * time.Second
 
 // APIBaseURL — базовый URL GitHub API. Перезаписывается в тестах через httptest.Server.
 var APIBaseURL = "https://api.github.com"
@@ -48,11 +65,18 @@ type Downloader struct {
 
 // New создаёт Downloader со стандартным HTTP-клиентом.
 func New() *Downloader {
+	dialer := &net.Dialer{
+		Timeout:   dialTimeout,
+		KeepAlive: 30 * time.Second,
+	}
 	return &Downloader{
 		HTTPClient: &http.Client{
 			Timeout: defaultDownloadTimeout,
 			Transport: &http.Transport{
+				DialContext:           dialer.DialContext,
+				TLSHandshakeTimeout:   dialTimeout,
 				ResponseHeaderTimeout: defaultConnectTimeout,
+				ExpectContinueTimeout: 1 * time.Second,
 			},
 		},
 	}
@@ -188,76 +212,147 @@ func (d *Downloader) fetchReleaseMeta(ctx context.Context, url string) (*types.R
 }
 
 // downloadAsset скачивает url в dstFile с поддержкой ETag.
-// Возвращает (downloaded, newETag, sha256-hex).
+// Перебирает все зеркала: при сбое body (включая idle timeout) переходит
+// к следующему. Без этого один stall'нувшийся mirror (наблюдение 2026-05-08:
+// ghfast.top отдал headers и 0 байт тела за 5 мин) валит всю загрузку,
+// хотя следующий mirror работоспособен.
 func (d *Downloader) downloadAsset(ctx context.Context, url, dstFile, savedETag string) (bool, string, string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return false, "", "", err
+	mirrors := d.Mirrors
+	if mirrors == nil {
+		mirrors = DefaultMirrors
+	}
+	if mkErr := os.MkdirAll(filepath.Dir(dstFile), 0o755); mkErr != nil {
+		return false, "", "", fmt.Errorf("mkdir: %w", mkErr)
+	}
+
+	var lastErr error
+	for i, rewrite := range mirrors {
+		mirrorURL := rewrite(url)
+		if mirrorURL == "" {
+			continue
+		}
+		host := hostOf(mirrorURL)
+		downloaded, etag, sum, retriable, err := d.tryMirrorDownload(ctx, mirrorURL, dstFile, savedETag, host)
+		if err == nil {
+			if i > 0 {
+				log.L().Info("ghrelease: использовано mirror-зеркало", "mirror", host)
+			}
+			return downloaded, etag, sum, nil
+		}
+		lastErr = fmt.Errorf("mirror[%d] %s: %w", i, host, err)
+		if !retriable {
+			return false, "", "", lastErr
+		}
+		log.L().Warn("ghrelease: mirror недоступен, пробую следующий",
+			"mirror", host, "err", err)
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("все зеркала вернули неподдерживаемый URL: %s", url)
+	}
+	return false, "", "", lastErr
+}
+
+// tryMirrorDownload — одна попытка загрузки. retriable=true → caller
+// переключается на следующий mirror; false → клиентская ошибка (4xx),
+// retry бесполезен.
+func (d *Downloader) tryMirrorDownload(ctx context.Context, url, dstFile, savedETag, host string) (downloaded bool, etag, sum string, retriable bool, err error) {
+	// Локальный cancel — нужен idle watchdog'у. Body.Close() не разблокирует
+	// уже-висящий Read на conn (Go runtime не пробуждает блокированный poll
+	// при Close без cancel). Cancel ctx → Transport закрывает conn → Read
+	// возвращает err.
+	reqCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	req, rerr := http.NewRequestWithContext(reqCtx, http.MethodGet, url, nil)
+	if rerr != nil {
+		return false, "", "", false, rerr
 	}
 	req.Header.Set("User-Agent", userAgent)
 	if savedETag != "" {
 		req.Header.Set("If-None-Match", savedETag)
 	}
 
-	resp, err := d.doWithFallback(req)
-	if err != nil {
-		return false, "", "", err
+	resp, derr := d.HTTPClient.Do(req)
+	if derr != nil {
+		return false, "", "", true, derr
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotModified {
-		log.L().Info("ghrelease: файл не изменился (ETag совпал)", "url", url)
-		return false, savedETag, "", nil
+		log.L().Info("ghrelease: файл не изменился (ETag совпал)", "mirror", host)
+		return false, savedETag, "", false, nil
+	}
+	if resp.StatusCode >= 500 {
+		return false, "", "", true, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return false, "", "", fmt.Errorf("HTTP %d для %s", resp.StatusCode, url)
+		return false, "", "", false, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
-	if mkErr := os.MkdirAll(filepath.Dir(dstFile), 0o755); mkErr != nil {
-		return false, "", "", fmt.Errorf("mkdir: %w", mkErr)
-	}
-
-	// Имя tmp-файла рядом с dstFile, чтобы rename был на одной FS.
-	tmp, err := os.CreateTemp(filepath.Dir(dstFile), ".dl-*")
-	if err != nil {
-		return false, "", "", fmt.Errorf("создание temp-файла: %w", err)
+	tmp, terr := os.CreateTemp(filepath.Dir(dstFile), ".dl-*")
+	if terr != nil {
+		return false, "", "", false, fmt.Errorf("создание temp-файла: %w", terr)
 	}
 	tmpName := tmp.Name()
-	cleanup := func() { _ = os.Remove(tmpName) }
+	success := false
 	defer func() {
-		if tmpName != "" {
-			cleanup()
+		if !success {
+			_ = os.Remove(tmpName)
 		}
 	}()
 
-	totalSize := resp.ContentLength
-	pr := newProgressReader(resp.Body, totalSize)
+	pr := newProgressReader(resp.Body, resp.ContentLength)
+
+	idleStop := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(bodyIdleTimeout / 3)
+		defer ticker.Stop()
+		var lastRead int64
+		stagnantSince := time.Now()
+		for {
+			select {
+			case <-idleStop:
+				return
+			case <-ticker.C:
+				cur := pr.bytesRead()
+				if cur > lastRead {
+					lastRead = cur
+					stagnantSince = time.Now()
+					continue
+				}
+				if time.Since(stagnantSince) >= bodyIdleTimeout {
+					log.L().Warn("ghrelease: body idle timeout, отменяю загрузку",
+						"mirror", host, "получено_байт", cur, "пауза_сек", int(time.Since(stagnantSince).Seconds()))
+					cancel()
+					return
+				}
+			}
+		}
+	}()
 
 	h := sha256.New()
-	if _, cpErr := io.Copy(io.MultiWriter(tmp, h), pr); cpErr != nil {
+	_, cpErr := io.Copy(io.MultiWriter(tmp, h), pr)
+	close(idleStop)
+	if cpErr != nil {
 		_ = tmp.Close()
-		return false, "", "", fmt.Errorf("чтение тела ответа: %w", cpErr)
+		return false, "", "", true, fmt.Errorf("чтение тела ответа: %w", cpErr)
 	}
 	if syncErr := tmp.Sync(); syncErr != nil {
 		_ = tmp.Close()
-		return false, "", "", fmt.Errorf("fsync: %w", syncErr)
+		return false, "", "", false, fmt.Errorf("fsync: %w", syncErr)
 	}
 	if closeErr := tmp.Close(); closeErr != nil {
-		return false, "", "", fmt.Errorf("закрытие tmp-файла: %w", closeErr)
+		return false, "", "", false, fmt.Errorf("закрытие tmp-файла: %w", closeErr)
 	}
 
 	checksum := hex.EncodeToString(h.Sum(nil))
-	log.L().Debug("ghrelease: загрузка завершена", "sha256", checksum, "bytes", pr.read)
+	log.L().Debug("ghrelease: загрузка завершена", "sha256", checksum, "bytes", pr.bytesRead())
 
-	// Атомарный rename вместо ReadFile+WriteFileAtomic: tmp на той же FS,
-	// rename атомарен в POSIX. Раньше был лишний 16MB-аллок в RAM, что
-	// проблема на 128MB-роутерах.
 	if rnErr := os.Rename(tmpName, dstFile); rnErr != nil {
-		return false, "", "", fmt.Errorf("атомарный rename %s → %s: %w", tmpName, dstFile, rnErr)
+		return false, "", "", false, fmt.Errorf("атомарный rename %s → %s: %w", tmpName, dstFile, rnErr)
 	}
-	tmpName = "" // успех — не удалять
-
-	return true, resp.Header.Get("ETag"), checksum, nil
+	success = true
+	return true, resp.Header.Get("ETag"), checksum, false, nil
 }
 
 // progressReader логирует прогресс загрузки каждые progressInterval.
@@ -266,7 +361,7 @@ func (d *Downloader) downloadAsset(ctx context.Context, url, dstFile, savedETag 
 type progressReader struct {
 	r        io.Reader
 	total    int64 // -1 если ContentLength неизвестен
-	read     int64
+	read     atomic.Int64
 	lastTick time.Time
 	started  time.Time
 }
@@ -278,7 +373,7 @@ func newProgressReader(r io.Reader, total int64) *progressReader {
 
 func (p *progressReader) Read(b []byte) (int, error) {
 	n, err := p.r.Read(b)
-	p.read += int64(n)
+	p.read.Add(int64(n))
 	if time.Since(p.lastTick) >= progressInterval {
 		p.tick()
 		p.lastTick = time.Now()
@@ -286,23 +381,28 @@ func (p *progressReader) Read(b []byte) (int, error) {
 	return n, err
 }
 
+// bytesRead возвращает текущее число байт (atomic-read для idle watchdog).
+func (p *progressReader) bytesRead() int64 {
+	return p.read.Load()
+}
+
 func (p *progressReader) tick() {
 	elapsed := time.Since(p.started).Seconds()
 	if elapsed < 0.001 {
 		return
 	}
-	speed := float64(p.read) / elapsed / 1024 // KB/s
+	speed := float64(p.bytesRead()) / elapsed / 1024 // KB/s
 	if p.total > 0 {
-		pct := float64(p.read) * 100 / float64(p.total)
+		pct := float64(p.bytesRead()) * 100 / float64(p.total)
 		log.L().Info("ghrelease: прогресс",
-			"загружено_МБ", fmt.Sprintf("%.1f", float64(p.read)/(1024*1024)),
+			"загружено_МБ", fmt.Sprintf("%.1f", float64(p.bytesRead())/(1024*1024)),
 			"всего_МБ", fmt.Sprintf("%.1f", float64(p.total)/(1024*1024)),
 			"процент", fmt.Sprintf("%.0f", pct),
 			"скорость_КБ/с", fmt.Sprintf("%.0f", speed),
 		)
 	} else {
 		log.L().Info("ghrelease: прогресс",
-			"загружено_МБ", fmt.Sprintf("%.1f", float64(p.read)/(1024*1024)),
+			"загружено_МБ", fmt.Sprintf("%.1f", float64(p.bytesRead())/(1024*1024)),
 			"скорость_КБ/с", fmt.Sprintf("%.0f", speed),
 		)
 	}

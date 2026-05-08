@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
@@ -198,6 +199,105 @@ func TestFetch_ByTag(t *testing.T) {
 	}
 	if res.Version != "v9.9.9" {
 		t.Errorf("Version = %q, ожидалось v9.9.9", res.Version)
+	}
+}
+
+// TestDownloadAsset_BodyIdleTimeout_FailsOverToNextMirror — mirror A
+// возвращает headers + Content-Length, но body не отдаёт (висит дольше
+// bodyIdleTimeout). Watchdog должен закрыть body, downloadAsset перейти
+// на mirror B и успешно скачать оттуда. Без этого механизма stall'нувшее
+// зеркало (наблюдение 2026-05-08: ghfast.top отдал headers и 0 байт
+// тела за 5 минут) валит всю загрузку, хотя следующее работоспособно.
+func TestDownloadAsset_BodyIdleTimeout_FailsOverToNextMirror(t *testing.T) {
+	// Уменьшаем idle timeout чтобы тест шёл миллисекундами, не 30s.
+	oldTimeout := bodyIdleTimeout
+	bodyIdleTimeout = 200 * time.Millisecond
+	defer func() { bodyIdleTimeout = oldTimeout }()
+
+	content := []byte("real-payload-from-mirror-B")
+	stallEnter := make(chan struct{}, 1)
+
+	stallSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "1024")
+		w.WriteHeader(http.StatusOK)
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		stallEnter <- struct{}{}
+		// Ждём пока клиент не закроет соединение (idle watchdog → Body.Close
+		// → request ctx cancel) — либо до окончания теста.
+		<-r.Context().Done()
+	}))
+	defer stallSrv.Close()
+
+	goodSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(content)
+	}))
+	defer goodSrv.Close()
+
+	// Release-meta + sha-meta отдаёт отдельный сервер, чтобы Mirrors
+	// применялись только к asset-загрузке.
+	apiSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rel := types.Release{
+			TagName: "v1.0.0",
+			Assets: []types.Asset{{
+				Name:               "asset.bin",
+				BrowserDownloadURL: "https://example.invalid/asset.bin",
+				Size:               int64(len(content)),
+			}},
+		}
+		_ = json.NewEncoder(w).Encode(rel)
+		_ = r
+	}))
+	defer apiSrv.Close()
+
+	old := APIBaseURL
+	APIBaseURL = apiSrv.URL
+	defer func() { APIBaseURL = old }()
+
+	// Mirror rewriters: asset URL (example.invalid) переписывается на тестовые
+	// серверы, всё остальное (release-meta) проходит direct, чтобы fetchReleaseMeta
+	// не попало в stall-сервер.
+	d := New()
+	d.Mirrors = []URLRewriter{
+		func(u string) string {
+			if strings.Contains(u, "example.invalid") {
+				return stallSrv.URL + "/asset.bin"
+			}
+			return u
+		},
+		func(u string) string {
+			if strings.Contains(u, "example.invalid") {
+				return goodSrv.URL + "/asset.bin"
+			}
+			return "" // meta уже прошла через первый mirror
+		},
+	}
+
+	dst := t.TempDir()
+	res, err := d.Fetch(context.Background(), FetchOptions{
+		Owner:      "owner",
+		Repo:       "repo",
+		AssetMatch: MatchByContains("asset"),
+		DstDir:     dst,
+	})
+	if err != nil {
+		t.Fatalf("Fetch вернул ошибку, ожидался успех с fallback: %v", err)
+	}
+
+	// Удостоверимся, что stall-сервер действительно был вызван (не пропущен).
+	select {
+	case <-stallEnter:
+	default:
+		t.Error("stall mirror не был вызван — fallback сработал слишком рано")
+	}
+
+	got, readErr := os.ReadFile(res.Path)
+	if readErr != nil {
+		t.Fatalf("чтение результата: %v", readErr)
+	}
+	if string(got) != string(content) {
+		t.Errorf("содержимое = %q, ожидалось %q (с good mirror)", got, content)
 	}
 }
 

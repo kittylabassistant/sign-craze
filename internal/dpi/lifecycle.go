@@ -7,6 +7,11 @@ import (
 const (
 	// DefaultPIDFile — путь к PID-файлу nfqws2.
 	DefaultPIDFile = "/opt/var/run/sign-craze-nfqws2.pid"
+	// DefaultStderrPath — куда уходят stdout/stderr nfqws2. Без этого ранний
+	// crash (битый аргумент, отсутствие kernel-модуля nfnetlink_queue) теряется
+	// в /dev/null и Start возвращает только "процесс упал сразу после старта"
+	// без причины.
+	DefaultStderrPath = "/opt/var/log/sign-craze/nfqws2.stderr.log"
 )
 
 // NewLifecycle создаёт Lifecycle для процесса nfqws2.
@@ -18,10 +23,11 @@ const (
 // pidFile — путь к PID-файлу (обычно DefaultPIDFile).
 func NewLifecycle(binPath string, params ConfigParams, pidFile string) service.Lifecycle {
 	return service.NewLifecycle(service.ProcessConfig{
-		Name:    "nfqws2",
-		BinPath: binPath,
-		Args:    params.BuildCmdline(),
-		PIDFile: pidFile,
+		Name:       "nfqws2",
+		BinPath:    binPath,
+		Args:       params.BuildCmdline(),
+		PIDFile:    pidFile,
+		StderrPath: DefaultStderrPath,
 	})
 }
 
