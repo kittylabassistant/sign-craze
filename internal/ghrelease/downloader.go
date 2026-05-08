@@ -134,6 +134,17 @@ func (d *Downloader) Fetch(ctx context.Context, opts FetchOptions) (FetchResult,
 	dstFile := filepath.Join(opts.DstDir, asset.Name)
 	etagFile := dstFile + ".etag"
 	savedETag := readETag(etagFile)
+	// Если cache был очищен (uninstall, ручное rm), .etag-файл может уцелеть
+	// без бинаря. Без этой проверки сервер вернёт 304 Not Modified, downloadAsset
+	// вернёт downloaded=false с savedETag, caller попытается распаковать
+	// несуществующий файл. Игнорируем ETag когда файла нет.
+	if savedETag != "" {
+		if _, statErr := os.Stat(dstFile); statErr != nil {
+			log.L().Warn("ghrelease: ETag есть, но локальный файл отсутствует — форсирую загрузку",
+				"path", dstFile)
+			savedETag = ""
+		}
+	}
 
 	log.L().Info("ghrelease: загрузка", "repo", opts.Owner+"/"+opts.Repo, "version", release.TagName, "asset", asset.Name)
 
