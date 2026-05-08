@@ -115,14 +115,15 @@ fi
 
 URL="https://github.com/$REPO/releases/download/${VERSION}/${BINARY}-${SUFFIX}"
 SHA_URL="${URL}.sha256"
-# Mirror: gh-proxy.com — публичный reverse-proxy github releases через
-# Cloudflare. Принимает полный github.com URL и отдаёт байт-в-байт. Помогает
-# когда release-assets.githubusercontent.com заблокирован у провайдера
-# (типичная картина для российских ISP — releases/download редиректит на
+# Mirrors: публичные reverse-proxy github releases. Помогают когда
+# release-assets.githubusercontent.com заблокирован у провайдера (типично
+# для российских ISP — github.com/releases/download редиректит на
 # *.githubusercontent.com, который блокируется отдельно от github.com).
-# Override: SIGNCRAZE_URL=<полный URL>.
-MIRROR_URL="https://gh-proxy.com/${URL}"
-MIRROR_SHA_URL="https://gh-proxy.com/${SHA_URL}"
+# Несколько mirrors потому что один из них регулярно тормозит/throttle'ит:
+# 2026-05-08 наблюдалось — gh-proxy.com отдал 13KB и завис на 180s, тогда
+# как ghfast.top отдал 9MB за минуту. Перебираем по списку до первого
+# успеха. Override: SIGNCRAZE_URL=<полный URL>.
+MIRRORS_PROXIES="https://gh-proxy.com https://ghfast.top"
 if [ -n "${SIGNCRAZE_URL:-}" ]; then
   URL="$SIGNCRAZE_URL"
   SHA_URL="${SIGNCRAZE_SHA256_URL:-${URL}.sha256}"
@@ -142,41 +143,55 @@ fi
 TMP=$(mktemp "/tmp/${BINARY}.XXXXXX")
 trap 'rm -f "$TMP" "$TMP.sha256"' EXIT
 
-# Pre-check: пингуем primary с -L (следуя редиректам) — иначе HEAD на
-# github.com/releases/download/* всегда отдаёт 302 даже при заблокированном
-# asset-домене. 10s timeout вместо 60-120s на TCP connect.
-if ! probe "$URL"; then
-  echo "WARN: $URL недоступен (probe 10s timeout), переключаюсь на gh-proxy..." >&2
-  if ! probe "$MIRROR_URL"; then
-    echo "Оба зеркала недоступны (releases + gh-proxy). Проверь DNS/блокировки или используй offline:" >&2
-    echo "  scp sign-craze-${SUFFIX} router:/tmp/ && SIGNCRAZE_BIN=/tmp/sign-craze-${SUFFIX} sh install.sh" >&2
-    exit 1
-  fi
-  URL="$MIRROR_URL"
-  SHA_URL="$MIRROR_SHA_URL"
-fi
-
-# Primary download attempt. Если внезапно упал на самой загрузке — fallback.
-if ! $DL_OUT "$TMP" "$URL"; then
-  if [ "$URL" != "$MIRROR_URL" ]; then
-    echo "WARN: загрузка с $URL не удалась, пробую gh-proxy..." >&2
-    if ! probe "$MIRROR_URL"; then
-      echo "gh-proxy также недоступен (probe), отмена" >&2
-      exit 1
+# try_download <list-of-urls> <dst> — пробует каждый URL по очереди:
+# probe (5s connect / 10s total) → если живой, тянет файл. На любом сбое
+# (probe fail / DL_OUT non-zero) переходит к следующему URL. Возвращает
+# код последнего статуса; устанавливает CHOSEN_URL при успехе.
+# Минимизирует риск зависания на одном тормозном mirror — без watchdog
+# на body внутри curl, опираемся на --max-time DL_OUT (180s).
+try_download() {
+  _urls="$1"
+  _dst="$2"
+  CHOSEN_URL=""
+  for u in $_urls; do
+    if ! probe "$u"; then
+      echo "WARN: $u недоступен (probe), пробую следующий..." >&2
+      continue
     fi
-    if ! $DL_OUT "$TMP" "$MIRROR_URL"; then
-      echo "Не удалось скачать бинарь ни с releases, ни с gh-proxy" >&2
-      exit 1
+    if $DL_OUT "$_dst" "$u"; then
+      CHOSEN_URL="$u"
+      return 0
     fi
-    SHA_URL="$MIRROR_SHA_URL"
-  else
-    echo "Не удалось скачать бинарь с $URL" >&2
-    exit 1
-  fi
-fi
+    echo "WARN: загрузка с $u не удалась, пробую следующий..." >&2
+  done
+  return 1
+}
 
-# SHA256 опционален — если .sha256 отсутствует, warning
-if $DL_OUT "$TMP.sha256" "$SHA_URL" 2>/dev/null; then
+# build_url_chain <github-url> — direct + все mirrors через proxy (gh-proxy
+# / ghfast.top / ...) в порядке предпочтения. Direct пробуем первым: если
+# release-assets.githubusercontent.com доступен — это самый быстрый путь.
+build_url_chain() {
+  _orig="$1"
+  printf "%s" "$_orig"
+  for proxy in $MIRRORS_PROXIES; do
+    printf " %s/%s" "$proxy" "$_orig"
+  done
+}
+
+URL_CHAIN=$(build_url_chain "$URL")
+SHA_URL_CHAIN=$(build_url_chain "$SHA_URL")
+
+if ! try_download "$URL_CHAIN" "$TMP"; then
+  echo "Не удалось скачать бинарь ни с одного зеркала. Проверь DNS/блокировки или используй offline:" >&2
+  echo "  scp sign-craze-${SUFFIX} router:/tmp/ && SIGNCRAZE_BIN=/tmp/sign-craze-${SUFFIX} sh install.sh" >&2
+  exit 1
+fi
+URL="$CHOSEN_URL"
+
+# SHA256 опционален — если .sha256 отсутствует, warning. Проходит по той
+# же chain зеркал, что и бинарь (на случай если direct release-assets
+# заблокирован, но проксированный URL отдал бинарь).
+if try_download "$SHA_URL_CHAIN" "$TMP.sha256" 2>/dev/null; then
   EXPECTED=$(awk '{print $1}' "$TMP.sha256")
   ACTUAL=$(sha256sum "$TMP" | awk '{print $1}')
   if [ "$EXPECTED" != "$ACTUAL" ]; then
@@ -185,7 +200,7 @@ if $DL_OUT "$TMP.sha256" "$SHA_URL" 2>/dev/null; then
   fi
   echo "SHA256 OK: $ACTUAL"
 else
-  echo "WARN: $SHA_URL недоступен, SHA256 не проверен" >&2
+  echo "WARN: $SHA_URL не удалось скачать ни с одного зеркала, SHA256 не проверен" >&2
 fi
 
 chmod +x "$TMP"
