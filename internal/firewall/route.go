@@ -2,14 +2,18 @@ package firewall
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
-	scerrors "github.com/kittylabassistant/sign-craze/internal/errors"
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/log"
 )
+
+// ErrFWMarkConflict — fwmark уже используется другим инструментом
+// (например, XKeen) с другой таблицей маршрутизации.
+var ErrFWMarkConflict = errors.New("fwmark уже занят")
 
 // CheckFWMarkAvailable проверяет, что указанный fwmark не занят другим
 // инструментом (XKeen / самописные скрипты) с другой таблицей маршрутизации.
@@ -37,7 +41,7 @@ func CheckFWMarkAvailable(ctx context.Context, runner exectx.Runner, fwmark uint
 			continue
 		}
 		return fmt.Errorf("%w: %s (ожидалась таблица %d; возможно конфликт с XKeen)",
-			scerrors.ErrFWMarkConflict, strings.TrimSpace(line), ourTable)
+			ErrFWMarkConflict, strings.TrimSpace(line), ourTable)
 	}
 	return nil
 }

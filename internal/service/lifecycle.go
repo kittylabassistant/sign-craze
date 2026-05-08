@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -216,7 +217,7 @@ func (l *processLifecycle) Restart(ctx context.Context) error {
 // --- вспомогательные функции ---
 
 func writePID(path string, pid int) error {
-	if err := os.MkdirAll(dirOf(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
 	return os.WriteFile(path, []byte(strconv.Itoa(pid)+"\n"), 0o644)
@@ -289,13 +290,4 @@ func waitAlive(ctx context.Context, pid int, timeout time.Duration) error {
 		case <-time.After(startPollPeriod):
 		}
 	}
-}
-
-func dirOf(path string) string {
-	for i := len(path) - 1; i >= 0; i-- {
-		if path[i] == '/' {
-			return path[:i]
-		}
-	}
-	return "."
 }

@@ -4,6 +4,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -97,7 +98,7 @@ func (rw *rotatingWriter) Write(p []byte) (int, error) {
 }
 
 func (rw *rotatingWriter) open() error {
-	if err := os.MkdirAll(dirOf(rw.path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(rw.path), 0o755); err != nil {
 		return err
 	}
 	f, err := os.OpenFile(rw.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
@@ -119,13 +120,4 @@ func (rw *rotatingWriter) rotate() {
 	if err := rw.open(); err != nil {
 		rw.f = nil
 	}
-}
-
-func dirOf(path string) string {
-	for i := len(path) - 1; i >= 0; i-- {
-		if path[i] == '/' {
-			return path[:i]
-		}
-	}
-	return "."
 }

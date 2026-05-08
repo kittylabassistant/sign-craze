@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -30,7 +31,7 @@ type Lock struct {
 // Acquire получает эксклюзивную неблокирующую блокировку flock на указанном файле.
 // Повторяет попытку каждые 100 мс до отмены ctx.
 func Acquire(ctx context.Context, path string) (*Lock, error) {
-	if err := os.MkdirAll(dirOf(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("locks: mkdir: %w", err)
 	}
 
@@ -61,7 +62,7 @@ func Acquire(ctx context.Context, path string) (*Lock, error) {
 // TryAcquire — non-blocking вариант Acquire: одна попытка flock LOCK_NB.
 // Возвращает ErrLocked если блокировка уже захвачена. Ожидания нет.
 func TryAcquire(path string) (*Lock, error) {
-	if err := os.MkdirAll(dirOf(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("locks: mkdir: %w", err)
 	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
@@ -85,13 +86,4 @@ func (l *Lock) Release() error {
 		return fmt.Errorf("locks: разблокировка %s: %w", l.path, err)
 	}
 	return l.f.Close()
-}
-
-func dirOf(path string) string {
-	for i := len(path) - 1; i >= 0; i-- {
-		if path[i] == '/' {
-			return path[:i]
-		}
-	}
-	return "."
 }

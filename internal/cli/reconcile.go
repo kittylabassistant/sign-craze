@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/firewall"
 	"github.com/kittylabassistant/sign-craze/internal/log"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
@@ -42,7 +43,7 @@ func reconcileFirewall(ctx context.Context) error {
 	}
 
 	// Pre-check критичных правил: быстрая ветка идемпотентности.
-	ipt := firewall.New(newRunner())
+	ipt := firewall.New(exectx.OS)
 	missing := ipt.CheckCriticalRules(ctx, st.Mode, st.PolicyMark)
 	if len(missing) == 0 {
 		return nil

@@ -78,7 +78,7 @@ func newMockServer(t *testing.T, h http.HandlerFunc) (*Client, *httptest.Server)
 	t.Helper()
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-	return NewClientWithBase(srv.URL, 2*time.Second), srv
+	return newClientWithBase(srv.URL, 2*time.Second), srv
 }
 
 func TestGetPolicy_ParsesMarkAndPermit(t *testing.T) {
@@ -298,9 +298,9 @@ func TestWaitForMark_PendingThenReady(t *testing.T) {
 		}
 	})
 
-	info, err := c.WaitForMark(context.Background(), "sign-craze", 2*time.Second)
+	info, err := c.waitForMark(context.Background(), "sign-craze", 2*time.Second)
 	if err != nil {
-		t.Fatalf("WaitForMark: %v", err)
+		t.Fatalf("waitForMark: %v", err)
 	}
 	if info.Mark != 0x0FFFFAAB {
 		t.Errorf("Mark = 0x%x", info.Mark)

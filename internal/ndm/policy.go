@@ -113,7 +113,7 @@ var ErrPolicyMarkPending = errors.New("ndm: policy mark ещё не присво
 //	{"ip":{"policy":{"<name>":{"description":"<desc>","permit":{"interface":"<iface>"}}}}}
 //
 // После создания Keenetic асинхронно присваивает mark/table — вызывающий
-// должен дождаться через WaitForMark.
+// должен дождаться через waitForMark.
 func (c *Client) CreatePolicy(ctx context.Context, name, description, wanIface string) error {
 	if name == "" || wanIface == "" {
 		return fmt.Errorf("ndm: CreatePolicy: name и wanIface не могут быть пустыми")
@@ -211,12 +211,12 @@ func (c *Client) EnsurePolicy(ctx context.Context, name, description, wanIface s
 	if err := c.CreatePolicy(ctx, name, description, wanIface); err != nil {
 		return nil, err
 	}
-	return c.WaitForMark(ctx, name, 5*time.Second)
+	return c.waitForMark(ctx, name, 5*time.Second)
 }
 
-// WaitForMark опрашивает GetPolicy до тех пор, пока Keenetic не присвоит mark,
+// waitForMark опрашивает GetPolicy до тех пор, пока Keenetic не присвоит mark,
 // либо не истечёт timeout. Используется после CreatePolicy.
-func (c *Client) WaitForMark(ctx context.Context, name string, timeout time.Duration) (*PolicyInfo, error) {
+func (c *Client) waitForMark(ctx context.Context, name string, timeout time.Duration) (*PolicyInfo, error) {
 	deadline := time.Now().Add(timeout)
 	for {
 		info, err := c.GetPolicy(ctx, name)

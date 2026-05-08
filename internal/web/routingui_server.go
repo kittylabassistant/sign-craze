@@ -62,7 +62,7 @@ func registerRoutingUIRoutes(mux *http.ServeMux, s *Server) {
 		urlPath := strings.TrimPrefix(r.URL.Path, "/")
 		if urlPath == "" || urlPath == "index.html" {
 			// Отдаём index.html напрямую
-			spaServeFile(w, r, fsys, "index.html", fileServer)
+			spaServeFile(w, r, fsys, "index.html")
 			return
 		}
 		// Если файл существует в embed — отдаём его
@@ -71,12 +71,12 @@ func registerRoutingUIRoutes(mux *http.ServeMux, s *Server) {
 			return
 		}
 		// Всё остальное — SPA fallback на index.html
-		spaServeFile(w, r, fsys, "index.html", fileServer)
+		spaServeFile(w, r, fsys, "index.html")
 	})
 }
 
 // spaServeFile отдаёт конкретный файл из embed.FS без redirect-логики
 // http.FileServer (которая делает 301 для путей вида /index.html → /).
-func spaServeFile(w http.ResponseWriter, r *http.Request, fsys fs.FS, name string, _ http.Handler) {
+func spaServeFile(w http.ResponseWriter, r *http.Request, fsys fs.FS, name string) {
 	http.ServeFileFS(w, r, fsys, name)
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
 	"github.com/kittylabassistant/sign-craze/internal/core"
 	"github.com/kittylabassistant/sign-craze/internal/dpi"
+	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/log"
 	"github.com/kittylabassistant/sign-craze/internal/proxyparse"
 	"github.com/kittylabassistant/sign-craze/internal/service"
@@ -277,14 +278,9 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string, force b
 	// только потом атомарно переносит). Для остальных ядер используем общий путь:
 	// Install → RenderConfig → WriteFileAtomic → CheckConfig.
 	if coreName == "sing-box" {
-		params := singbox.DefaultConfigParams()
-		params.Mode = st.Mode
-		params.Outbounds = st.Outbounds
-		if len(st.Outbounds) > 0 {
-			params.DefaultOutboundTag = st.Outbounds[0].Tag
-		}
+		params := singboxParamsForInstall(st)
 
-		tempBin, err := singbox.PrepareAndValidate(ctx, newRunner(), singbox.DefaultCacheDir, tarPath, configPath(), params)
+		tempBin, err := singbox.PrepareAndValidate(ctx, exectx.OS, singbox.DefaultCacheDir, tarPath, configPath(), params)
 		if err != nil {
 			return fmt.Errorf("--install: %w", err)
 		}
@@ -308,7 +304,7 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string, force b
 		if err := os.MkdirAll(filepath.Dir(activeC.BinaryPath()), 0o755); err != nil {
 			return fmt.Errorf("--install: mkdir bin dir: %w", err)
 		}
-		if err := activeC.Install(ctx, newRunner(), tarPath); err != nil {
+		if err := activeC.Install(ctx, exectx.OS, tarPath); err != nil {
 			return fmt.Errorf("--install: установка %s: %w", coreName, err)
 		}
 
@@ -327,7 +323,7 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string, force b
 			return fmt.Errorf("--install: запись конфига %s: %w", coreName, err)
 		}
 
-		if err := activeC.CheckConfig(ctx, newRunner(), activeC.ConfigPath()); err != nil {
+		if err := activeC.CheckConfig(ctx, exectx.OS, activeC.ConfigPath()); err != nil {
 			return fmt.Errorf("--install: проверка конфига %s: %w", coreName, err)
 		}
 	}
@@ -499,7 +495,7 @@ func runProxyWizard(in io.Reader, out io.Writer) ([]types.Outbound, error) {
 
 func wizardURL(r *bufio.Reader, out io.Writer) ([]types.Outbound, error) {
 	fmt.Fprint(out, "URL: ")
-	url := readLine(r)
+	url, _ := readLineE(r)
 	if url == "" {
 		return nil, nil
 	}
@@ -530,14 +526,6 @@ func wizardURL(r *bufio.Reader, out io.Writer) ([]types.Outbound, error) {
 	return []types.Outbound{o}, nil
 }
 
-func readLine(r *bufio.Reader) string {
-	s, err := r.ReadString('\n')
-	if err != nil && s == "" {
-		return ""
-	}
-	return strings.TrimSpace(s)
-}
-
 // readLineE — версия readLine с распространением ошибок I/O.
 // Возвращает trimmed-строку или ошибку, если stdin не удалось прочитать
 // (EOF без newline трактуется как «пользователь оборвал» — error).
@@ -550,12 +538,3 @@ func readLineE(r *bufio.Reader) (string, error) {
 	}
 	return strings.TrimSpace(s), nil
 }
-
-// configFilePath возвращает /opt/etc/sign-craze/config.json.
-// Дублирует cli.configPath() для совместимости с тестами; будет удалён, когда
-// тесты переедут на пакетный configPath.
-func configFilePath() string {
-	return filepath.Join(singbox.DefaultConfigDir, "config.json")
-}
-
-var _ = configFilePath // silence unused if no test references

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
+	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/firewall"
 	"github.com/kittylabassistant/sign-craze/internal/geo"
 	"github.com/kittylabassistant/sign-craze/internal/ghrelease"
@@ -72,7 +73,7 @@ func handleUpdateGeo(ctx context.Context, _ []string) error {
 // провалились (декомпилятор не работает или sing-box отсутствует) — error,
 // иначе ipset молча останется пустым и geo-фильтрация не заработает.
 func populateAndSaveIPSet(ctx context.Context, fileNames []string) error {
-	runner := newRunner()
+	runner := exectx.OS
 	var allV4, allV6 []netip.Prefix
 	srsTotal, srsOK := 0, 0
 
@@ -149,14 +150,9 @@ func handleUpdateCore(ctx context.Context, _ []string) error {
 			if err != nil {
 				return fmt.Errorf("--update-core: state: %w", err)
 			}
-			params := singbox.DefaultConfigParams()
-			params.Mode = st.Mode
-			params.Outbounds = st.Outbounds
-			if len(st.Outbounds) > 0 {
-				params.DefaultOutboundTag = st.Outbounds[0].Tag
-			}
+			params := singboxParamsForInstall(st)
 
-			tempBin, err := singbox.PrepareAndValidate(ctx, newRunner(), singbox.DefaultCacheDir, res.Path, configPath(), params)
+			tempBin, err := singbox.PrepareAndValidate(ctx, exectx.OS, singbox.DefaultCacheDir, res.Path, configPath(), params)
 			if err != nil {
 				return fmt.Errorf("--update-core: %w", err)
 			}
@@ -173,10 +169,10 @@ func handleUpdateCore(ctx context.Context, _ []string) error {
 				return fmt.Errorf("--update-core: установка бинаря: %w", err)
 			}
 		} else {
-			if err := c.Install(ctx, newRunner(), res.Path); err != nil {
+			if err := c.Install(ctx, exectx.OS, res.Path); err != nil {
 				return fmt.Errorf("--update-core: установка %s: %w", c.Name(), err)
 			}
-			if err := c.CheckConfig(ctx, newRunner(), c.ConfigPath()); err != nil {
+			if err := c.CheckConfig(ctx, exectx.OS, c.ConfigPath()); err != nil {
 				return fmt.Errorf("--update-core: проверка конфига %s: %w", c.Name(), err)
 			}
 		}

@@ -79,9 +79,9 @@ func (d *Downloader) Fetch(ctx context.Context, opts FetchOptions) (FetchResult,
 	var release *types.Release
 	var err error
 	if opts.Tag != "" {
-		release, err = d.ReleaseByTag(ctx, opts.Owner, opts.Repo, opts.Tag)
+		release, err = d.releaseByTag(ctx, opts.Owner, opts.Repo, opts.Tag)
 	} else {
-		release, err = d.LatestRelease(ctx, opts.Owner, opts.Repo)
+		release, err = d.latestRelease(ctx, opts.Owner, opts.Repo)
 	}
 	if err != nil {
 		return FetchResult{}, fmt.Errorf("ghrelease: метаданные релиза %s/%s: %w", opts.Owner, opts.Repo, err)
@@ -135,15 +135,15 @@ func (d *Downloader) Fetch(ctx context.Context, opts FetchOptions) (FetchResult,
 	}, nil
 }
 
-// LatestRelease возвращает метаданные последнего релиза репозитория.
-func (d *Downloader) LatestRelease(ctx context.Context, owner, repo string) (*types.Release, error) {
+// latestRelease возвращает метаданные последнего релиза репозитория.
+func (d *Downloader) latestRelease(ctx context.Context, owner, repo string) (*types.Release, error) {
 	return d.fetchReleaseMeta(ctx, fmt.Sprintf("%s/repos/%s/%s/releases/latest", APIBaseURL, owner, repo))
 }
 
-// ReleaseByTag возвращает метаданные релиза по конкретному тегу.
+// releaseByTag возвращает метаданные релиза по конкретному тегу.
 // Используется когда требуется pinned-версия (например, собственные сборки
 // xray для MIPS лежат под отдельным tag-ом и не являются "latest").
-func (d *Downloader) ReleaseByTag(ctx context.Context, owner, repo, tag string) (*types.Release, error) {
+func (d *Downloader) releaseByTag(ctx context.Context, owner, repo, tag string) (*types.Release, error) {
 	return d.fetchReleaseMeta(ctx, fmt.Sprintf("%s/repos/%s/%s/releases/tags/%s", APIBaseURL, owner, repo, tag))
 }
 

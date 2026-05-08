@@ -51,7 +51,7 @@ func TestShort_NoDoubleV(t *testing.T) {
 }
 
 func TestGet_GoVersionNotEmpty(t *testing.T) {
-	bi := Get()
+	bi := get()
 	if bi.GoVersion == "" {
 		t.Error("BuildInfo.GoVersion пустой")
 	}

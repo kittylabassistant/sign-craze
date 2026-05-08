@@ -2,9 +2,12 @@ package singbox
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
 	"github.com/kittylabassistant/sign-craze/internal/core"
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
+	"github.com/kittylabassistant/sign-craze/internal/log"
 	"github.com/kittylabassistant/sign-craze/internal/service"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
@@ -46,8 +49,18 @@ func (coreImpl) Download(ctx context.Context, arch types.Arch, dstDir string) (c
 // Install устанавливает sing-box без валидации конфига. Caller обязан
 // вызвать CheckConfig отдельно после WriteConfig, либо использовать
 // PrepareAndValidate (валидация ДО подмены бинаря, для install/update flow).
-func (coreImpl) Install(ctx context.Context, runner exectx.Runner, archivePath string) error {
-	return Install(ctx, runner, archivePath, DefaultBinPath, "")
+func (coreImpl) Install(_ context.Context, _ exectx.Runner, archivePath string) error {
+	log.L().Info("установка sing-box", "tarball", archivePath, "dst", DefaultBinPath)
+	stream, err := openSingboxBinaryStream(archivePath)
+	if err != nil {
+		return fmt.Errorf("singbox install: распаковка tarball: %w", err)
+	}
+	defer stream.Close()
+	if _, err := atomicfs.BackupAndReplaceFromReader(DefaultBinPath, stream.Reader, 0o755); err != nil {
+		return fmt.Errorf("singbox install: запись бинаря: %w", err)
+	}
+	log.L().Info("sing-box установлен", "path", DefaultBinPath)
+	return nil
 }
 
 func (coreImpl) CheckConfig(ctx context.Context, runner exectx.Runner, configPath string) error {

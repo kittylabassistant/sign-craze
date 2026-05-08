@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/kittylabassistant/sign-craze/internal/dpi"
+	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/singbox"
 	"github.com/kittylabassistant/sign-craze/internal/state"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
@@ -37,7 +38,7 @@ func handleDPI(ctx context.Context, args []string) error {
 // detectISPInterface определяет ISP-интерфейс через `ip route show default`.
 // Общая утилита для всех DPI-функций, которые рендерят nfqws2.conf.
 func detectISPInterface(ctx context.Context) (string, error) {
-	routeRes, err := newRunner().Run(ctx, "ip", "route", "show", "default")
+	routeRes, err := exectx.OS.Run(ctx, "ip", "route", "show", "default")
 	if err != nil {
 		return "", fmt.Errorf("ip route: %w", err)
 	}

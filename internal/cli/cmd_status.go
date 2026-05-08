@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/version"
 )
 
@@ -32,7 +33,7 @@ func handleStatus(ctx context.Context, _ []string) error {
 
 	coreVer := ""
 	if _, errStat := os.Stat(c.BinaryPath()); errStat == nil {
-		v, vErr := c.BinaryVersion(ctx, newRunner())
+		v, vErr := c.BinaryVersion(ctx, exectx.OS)
 		if vErr != nil {
 			fmt.Fprintf(os.Stderr, "warn: версия %s: %v\n", c.Name(), vErr)
 		}
@@ -62,7 +63,7 @@ func handleVersion(ctx context.Context, _ []string) error {
 
 	c := mustActiveCore()
 	if _, err := os.Stat(c.BinaryPath()); err == nil {
-		ver, vErr := c.BinaryVersion(ctx, newRunner())
+		ver, vErr := c.BinaryVersion(ctx, exectx.OS)
 		if vErr == nil {
 			fmt.Printf("%s   v%s  (установлен в %s)\n", c.Name(), ver, c.BinaryPath())
 		} else {

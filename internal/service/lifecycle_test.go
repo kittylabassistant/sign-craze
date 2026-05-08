@@ -223,8 +223,8 @@ func TestDirOf(t *testing.T) {
 		{"/tmp/x.pid", "/tmp"},
 	}
 	for _, tt := range tests {
-		if got := dirOf(tt.path); got != tt.want {
-			t.Errorf("dirOf(%q) = %q, ожидалось %q", tt.path, got, tt.want)
+		if got := filepath.Dir(tt.path); got != tt.want {
+			t.Errorf("filepath.Dir(%q) = %q, ожидалось %q", tt.path, got, tt.want)
 		}
 	}
 }

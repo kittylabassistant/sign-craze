@@ -67,8 +67,8 @@ func TestDirOf(t *testing.T) {
 		{"/tmp/foo.log", "/tmp"},
 	}
 	for _, tt := range tests {
-		if got := dirOf(tt.path); got != tt.want {
-			t.Errorf("dirOf(%q) = %q, want %q", tt.path, got, tt.want)
+		if got := filepath.Dir(tt.path); got != tt.want {
+			t.Errorf("filepath.Dir(%q) = %q, want %q", tt.path, got, tt.want)
 		}
 	}
 }

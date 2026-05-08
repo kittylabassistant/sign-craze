@@ -11,6 +11,7 @@ import (
 
 	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
 	"github.com/kittylabassistant/sign-craze/internal/core"
+	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/firewall"
 	"github.com/kittylabassistant/sign-craze/internal/log"
 	"github.com/kittylabassistant/sign-craze/internal/ndm"
@@ -82,7 +83,7 @@ func doStart(ctx context.Context) error {
 	// Восстановить дамп ipset (после ребута). Не фатально — может быть
 	// первый запуск до --update-geo, тогда ipset остаются пустыми
 	// (safety-fixes #17).
-	if rstErr := firewall.RestoreIPSet(ctx, newRunner(), firewall.DefaultDumpFile); rstErr != nil {
+	if rstErr := firewall.RestoreIPSet(ctx, exectx.OS, firewall.DefaultDumpFile); rstErr != nil {
 		log.L().Warn("--start: восстановление ipset не удалось", "err", rstErr)
 	}
 
@@ -92,7 +93,7 @@ func doStart(ctx context.Context) error {
 	// зачистить netdev). Без этого следующий sing-box падает FATAL: TUNSETIFF:
 	// device or resource busy.
 	if c.Name() == "sing-box" {
-		firewall.ForceDeleteTUNDevice(ctx, newRunner(), firewall.TUNDeviceName)
+		firewall.ForceDeleteTUNDevice(ctx, exectx.OS, firewall.TUNDeviceName)
 	}
 
 	// Старт активного ядра. Sing-box создаёт TUN-интерфейс при инициализации
@@ -121,7 +122,7 @@ func doStart(ctx context.Context) error {
 			}
 			// Post-stop cleanup: kernel на slow MIPS может не освободить netdev
 			// после kill — следующая попытка получит EBUSY.
-			firewall.ForceDeleteTUNDevice(ctx, newRunner(), firewall.TUNDeviceName)
+			firewall.ForceDeleteTUNDevice(ctx, exectx.OS, firewall.TUNDeviceName)
 			if rmErr := applier.Remove(ctx); rmErr != nil {
 				log.L().Warn("--start: откат firewall не удался", "err", rmErr)
 			}
@@ -184,7 +185,7 @@ func doStop(ctx context.Context) error {
 	// kill sing-box — без этого следующий --start падает FATAL: TUNSETIFF:
 	// device or resource busy. Xray/mihomo не создают TUN-устройство.
 	if c.Name() == "sing-box" {
-		firewall.ForceDeleteTUNDevice(ctx, newRunner(), firewall.TUNDeviceName)
+		firewall.ForceDeleteTUNDevice(ctx, exectx.OS, firewall.TUNDeviceName)
 	}
 
 	// Удалить firewall — даже если state нечитаем.
@@ -438,7 +439,7 @@ func renderAndWriteConfig(ctx context.Context, c core.Core, st *state.State) err
 		return fmt.Errorf("запись конфига: %w", writeErr)
 	}
 
-	if checkErr := c.CheckConfig(ctx, newRunner(), c.ConfigPath()); checkErr != nil {
+	if checkErr := c.CheckConfig(ctx, exectx.OS, c.ConfigPath()); checkErr != nil {
 		return fmt.Errorf("проверка конфига: %w", checkErr)
 	}
 
@@ -454,7 +455,7 @@ func waitDefaultRoute(ctx context.Context, timeout time.Duration) error {
 			return ctx.Err()
 		default:
 		}
-		res, err := newRunner().Run(ctx, "ip", "route", "show", "default")
+		res, err := exectx.OS.Run(ctx, "ip", "route", "show", "default")
 		if err == nil && strings.Contains(string(res.Stdout), "default ") {
 			return nil
 		}

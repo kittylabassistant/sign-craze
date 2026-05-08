@@ -29,12 +29,12 @@ type Client struct {
 
 // NewClient создаёт клиент RCI с дефолтными baseURL и таймаутом.
 func NewClient() *Client {
-	return NewClientWithBase(DefaultBaseURL, DefaultTimeout)
+	return newClientWithBase(DefaultBaseURL, DefaultTimeout)
 }
 
-// NewClientWithBase позволяет указать кастомный baseURL (для тестов через httptest).
+// newClientWithBase позволяет указать кастомный baseURL (для тестов через httptest).
 // Таймаут применяется per-request, контекст вызывающего может быть короче.
-func NewClientWithBase(baseURL string, timeout time.Duration) *Client {
+func newClientWithBase(baseURL string, timeout time.Duration) *Client {
 	return &Client{
 		baseURL: baseURL,
 		hc:      &http.Client{Timeout: timeout},

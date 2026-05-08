@@ -20,12 +20,6 @@ import (
 	"github.com/kittylabassistant/sign-craze/internal/state"
 )
 
-// newRunner возвращает стандартный OS-runner для exec-команд.
-func newRunner() exectx.Runner { return exectx.OS }
-
-// newSingboxLifecycle возвращает Lifecycle с дефолтными путями.
-func newSingboxLifecycle() service.Lifecycle { return singbox.DefaultLifecycle() }
-
 // newDPILifecycle возвращает Lifecycle nfqws2 с дефолтными путями.
 // Используется для Stop/Status/Diag — операции по PIDFile, cmdline не критичен.
 // Для запуска (Start) использовать newDPILifecycleFromState — cmdline должен
@@ -72,7 +66,7 @@ func newFirewallApplier(s *state.State) (firewall.Applier, error) {
 	}
 	excl = append(excl, adminPrefixes...)
 	cfg.Excludes = excl
-	return firewall.NewApplier(newRunner(), cfg), nil
+	return firewall.NewApplier(exectx.OS, cfg), nil
 }
 
 // loadState читает state.json из стандартного пути.
@@ -158,6 +152,19 @@ func configParamsFromState(s *state.State) singbox.ConfigParams {
 	return params
 }
 
+// singboxParamsForInstall собирает singbox.ConfigParams для install/update-core,
+// когда routing.json ещё может не существовать. Извлечён из дублирующегося
+// блока в cmd_install.go и cmd_update.go.
+func singboxParamsForInstall(s *state.State) singbox.ConfigParams {
+	params := singbox.DefaultConfigParams()
+	params.Mode = s.Mode
+	params.Outbounds = s.Outbounds
+	if len(s.Outbounds) > 0 {
+		params.DefaultOutboundTag = s.Outbounds[0].Tag
+	}
+	return params
+}
+
 // regenerateConfig генерирует config.json sing-box из state и атомарно записывает.
 // Если бинарь sing-box установлен, выполняет валидацию (sing-box check -c) перед записью.
 func regenerateConfig(ctx context.Context, s *state.State) error {
@@ -165,7 +172,7 @@ func regenerateConfig(ctx context.Context, s *state.State) error {
 		return fmt.Errorf("regenerateConfig: state is nil")
 	}
 	params := configParamsFromState(s)
-	return singbox.WriteConfig(ctx, newRunner(), params, singbox.DefaultBinPath, configPath())
+	return singbox.WriteConfig(ctx, exectx.OS, params, singbox.DefaultBinPath, configPath())
 }
 
 // ensureConfigFresh регенерирует config.json только если рендер из текущих
@@ -194,5 +201,5 @@ func ensureConfigFresh(ctx context.Context, s *state.State) error {
 		}
 		log.L().Info("config.json устарел, регенерация")
 	}
-	return singbox.WriteConfig(ctx, newRunner(), params, singbox.DefaultBinPath, configPath())
+	return singbox.WriteConfig(ctx, exectx.OS, params, singbox.DefaultBinPath, configPath())
 }

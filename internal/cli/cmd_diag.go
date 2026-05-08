@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/kittylabassistant/sign-craze/internal/diag"
+	"github.com/kittylabassistant/sign-craze/internal/exectx"
 )
 
 func init() {
@@ -14,7 +15,7 @@ func init() {
 
 func handleDiag(ctx context.Context, _ []string) error {
 	c := mustActiveCore()
-	deps := diag.DefaultDeps(newRunner(), c.NewLifecycle(), newDPILifecycle())
+	deps := diag.DefaultDeps(exectx.OS, c.NewLifecycle(), newDPILifecycle())
 	results := diag.Run(ctx, diag.DefaultChecks(deps))
 
 	for _, r := range results {

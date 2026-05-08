@@ -135,7 +135,7 @@ func marshalYAMLInline(m map[string]any) string {
 		if i > 0 {
 			sb.WriteString(", ")
 		}
-		sb.WriteString(yamlKey(k))
+		sb.WriteString(k)
 		sb.WriteString(": ")
 		sb.WriteString(yamlValue(m[k]))
 	}
@@ -166,9 +166,6 @@ func priorityKeys(m map[string]any) []string {
 	sort.Strings(rest)
 	return append(result, rest...)
 }
-
-// yamlKey возвращает ключ; кавычки не нужны (ключи всегда safe ASCII).
-func yamlKey(k string) string { return k }
 
 // yamlValue сериализует произвольное значение в YAML flow-стиль.
 func yamlValue(v any) string {

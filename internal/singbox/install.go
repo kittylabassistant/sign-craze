@@ -61,46 +61,6 @@ func PrepareAndValidate(ctx context.Context, runner exectx.Runner, workDir, tarP
 	return tempBin, nil
 }
 
-// Install устанавливает бинарь sing-box из tarball в binDst.
-// Алгоритм:
-//  1. Резервная копия текущего бинаря (если существует).
-//  2. Распаковка tarball в temp-директорию.
-//  3. Атомарная запись бинаря в binDst с правами 0755.
-//  4. Проверка конфига через `sing-box check -c configPath` (если configPath не пустой).
-//  5. При ошибке шага 4 — откат через RestoreBackup.
-//
-// Deprecated: для нового кода используйте PrepareAndValidate + atomicfs.BackupAndReplace,
-// чтобы валидация конфига происходила ДО установки бинаря.
-func Install(ctx context.Context, runner exectx.Runner, tarPath, binDst, configPath string) error {
-	log.L().Info("установка sing-box", "tarball", tarPath, "dst", binDst)
-
-	stream, err := openSingboxBinaryStream(tarPath)
-	if err != nil {
-		return fmt.Errorf("singbox install: распаковка tarball: %w", err)
-	}
-	defer stream.Close()
-
-	backupPath, err := atomicfs.BackupAndReplaceFromReader(binDst, stream.Reader, 0o755)
-	if err != nil {
-		return fmt.Errorf("singbox install: запись бинаря: %w", err)
-	}
-
-	if configPath != "" {
-		if err := checkConfig(ctx, runner, binDst, configPath); err != nil {
-			log.L().Warn("конфиг невалиден, откат бинаря", "backup", backupPath, "err", err)
-			if backupPath != "" {
-				if restoreErr := atomicfs.RestoreBackup(backupPath, binDst); restoreErr != nil {
-					return fmt.Errorf("singbox install: конфиг невалиден И откат не удался: %w (откат: %w)", err, restoreErr)
-				}
-			}
-			return fmt.Errorf("singbox install: проверка конфига: %w", err)
-		}
-	}
-
-	log.L().Info("sing-box установлен", "path", binDst)
-	return nil
-}
-
 // elfMagic — первые 4 байта Linux ELF-бинаря (\x7f E L F).
 var elfMagic = []byte{0x7f, 'E', 'L', 'F'}
 
@@ -214,30 +174,5 @@ func checkConfig(ctx context.Context, runner exectx.Runner, binPath, configPath 
 			err, dur, res.ExitCode, res.Stderr, res.Stdout)
 	}
 	log.L().Info("sing-box check: ok", "duration", dur.String())
-	return nil
-}
-
-// Backup создаёт резервную копию бинаря по binPath.
-// Возвращает путь к бэкапу или пустую строку если файл не существует.
-func Backup(ctx context.Context, binPath string) (string, error) {
-	if _, err := os.Stat(binPath); os.IsNotExist(err) {
-		return "", nil
-	}
-	data, err := os.ReadFile(binPath)
-	if err != nil {
-		return "", fmt.Errorf("singbox backup: чтение бинаря: %w", err)
-	}
-	backupPath, err := atomicfs.BackupAndReplace(binPath, data, 0o755)
-	if err != nil {
-		return "", fmt.Errorf("singbox backup: %w", err)
-	}
-	return backupPath, nil
-}
-
-// Restore восстанавливает бинарь из резервной копии.
-func Restore(ctx context.Context, backupPath, binPath string) error {
-	if err := atomicfs.RestoreBackup(backupPath, binPath); err != nil {
-		return fmt.Errorf("singbox restore: %w", err)
-	}
 	return nil
 }

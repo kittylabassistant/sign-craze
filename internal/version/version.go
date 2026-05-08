@@ -20,9 +20,9 @@ type BuildInfo struct {
 	Dirty     bool
 }
 
-// Get возвращает информацию о сборке.
+// get возвращает информацию о сборке.
 // В dev-сборке без VCS-тегов поля Commit/BuildTime могут быть пустыми.
-func Get() BuildInfo {
+func get() BuildInfo {
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
 		return BuildInfo{GoVersion: "unknown"}
@@ -58,7 +58,7 @@ func Short() string {
 
 // String возвращает строку вида "v0.1.0 (коммит abc1234, 2026-04-27)".
 func String() string {
-	bi := Get()
+	bi := get()
 	sb := new(strings.Builder)
 	sb.WriteString(Short())
 	if bi.Commit != "" {

@@ -324,12 +324,3 @@ func InstallAssets(ipkPath, blobDir, luaDir string) error {
 	}
 	return nil
 }
-
-// InstallBlobs — обратно-совместимая обёртка. Распаковывает только blob-файлы.
-// Для полного набора ресурсов используйте InstallAssets.
-//
-// Deprecated: используйте InstallAssets с blobDir + luaDir.
-func InstallBlobs(ipkPath, blobDir string) error {
-	// Используем тот же blobDir и временный luaDir рядом — caller хочет blobs only.
-	return InstallAssets(ipkPath, blobDir, filepath.Join(filepath.Dir(blobDir), "lua"))
-}

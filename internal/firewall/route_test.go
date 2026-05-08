@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	scerrors "github.com/kittylabassistant/sign-craze/internal/errors"
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
 )
 
@@ -46,7 +45,7 @@ func TestCheckFWMarkAvailable_ConflictDifferentTable(t *testing.T) {
 	if err == nil {
 		t.Fatal("ожидалась ошибка конфликта")
 	}
-	if !errors.Is(err, scerrors.ErrFWMarkConflict) {
+	if !errors.Is(err, ErrFWMarkConflict) {
 		t.Errorf("ожидался ErrFWMarkConflict, получено %T: %v", err, err)
 	}
 }

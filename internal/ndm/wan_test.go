@@ -37,7 +37,7 @@ func TestDetectWANInterface_RealKeeneticResponse(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClientWithBase(srv.URL, 5*time.Second)
+	c := newClientWithBase(srv.URL, 5*time.Second)
 	iface, err := c.DetectWANInterface(context.Background())
 	if err != nil {
 		t.Fatalf("DetectWANInterface: %v", err)
@@ -55,7 +55,7 @@ func TestDetectWANInterface_PluralRoutes(t *testing.T) {
 		_, _ = io.WriteString(w, body)
 	}))
 	defer srv.Close()
-	c := NewClientWithBase(srv.URL, 5*time.Second)
+	c := newClientWithBase(srv.URL, 5*time.Second)
 	iface, err := c.DetectWANInterface(context.Background())
 	if err != nil {
 		t.Fatalf("DetectWANInterface: %v", err)

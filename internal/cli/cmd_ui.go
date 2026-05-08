@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/routing"
 	"github.com/kittylabassistant/sign-craze/internal/service"
 	"github.com/kittylabassistant/sign-craze/internal/singbox"
@@ -102,8 +103,8 @@ func uiLifecycle() (service.Lifecycle, error) {
 // runUIServer собирает web.ServerConfig и блокируется на ListenAndServe
 // до отмены ctx. RoutingUI всегда включён: --ui — явная команда оператора.
 func runUIServer(ctx context.Context) error {
-	runner := newRunner()
-	singboxLC := newSingboxLifecycle()
+	runner := exectx.OS
+	singboxLC := singbox.DefaultLifecycle()
 	dpiLC := newDPILifecycle()
 
 	statusReader := state.NewStatusReader(

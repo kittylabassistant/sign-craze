@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/kittylabassistant/sign-craze/internal/core"
+	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/state"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
@@ -127,11 +128,11 @@ func handleCoreInstall(ctx context.Context, args []string) error {
 	}
 
 	fmt.Printf("Установка в %s...\n", c.BinaryPath())
-	if err := c.Install(ctx, newRunner(), dl.Path); err != nil {
+	if err := c.Install(ctx, exectx.OS, dl.Path); err != nil {
 		return fmt.Errorf("--core-install: install: %w", err)
 	}
 
-	ver, vErr := c.BinaryVersion(ctx, newRunner())
+	ver, vErr := c.BinaryVersion(ctx, exectx.OS)
 	if vErr != nil {
 		fmt.Printf("Установлено %s в %s (версия не прочитана: %v)\n", c.Name(), c.BinaryPath(), vErr)
 	} else {
@@ -177,7 +178,7 @@ func handleCoreList(ctx context.Context, _ []string) error {
 		}
 		installed := "не установлено"
 		if _, err := os.Stat(c.BinaryPath()); err == nil {
-			ver, vErr := c.BinaryVersion(ctx, newRunner())
+			ver, vErr := c.BinaryVersion(ctx, exectx.OS)
 			if vErr == nil {
 				installed = "v" + ver
 			} else {
