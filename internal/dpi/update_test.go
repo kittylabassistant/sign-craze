@@ -1,6 +1,7 @@
 package dpi
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -84,5 +85,32 @@ func TestShouldUpdate_Threshold(t *testing.T) {
 	}
 	if !ShouldUpdate(old, 24) {
 		t.Error("ShouldUpdate(old=25h, interval=24h) должно быть true")
+	}
+}
+
+func TestResilientResolver_NotNil(t *testing.T) {
+	r := resilientResolver()
+	if r == nil {
+		t.Fatal("resilientResolver() = nil")
+	}
+	if !r.PreferGo {
+		t.Error("resilientResolver: PreferGo должен быть true для использования custom Dial")
+	}
+	if r.Dial == nil {
+		t.Error("resilientResolver: Dial callback должен быть установлен")
+	}
+}
+
+func TestFallbackDNSServers_NotEmpty(t *testing.T) {
+	if len(fallbackDNSServers) == 0 {
+		t.Fatal("fallbackDNSServers не должен быть пустым (без fallback Auto-update сломается на Keenetic+DNSCrypt)")
+	}
+	for i, s := range fallbackDNSServers {
+		if s == "" {
+			t.Errorf("fallbackDNSServers[%d] пустая строка", i)
+		}
+		if !strings.HasSuffix(s, ":53") {
+			t.Errorf("fallbackDNSServers[%d]=%q должен оканчиваться на :53", i, s)
+		}
 	}
 }

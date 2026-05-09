@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"sort"
 	"strings"
@@ -33,6 +34,54 @@ const updateHTTPTimeout = 30 * time.Second
 // upstream-листы — десятки KB; 2 MB защита от мусорных URL и DDoS.
 const updateMaxBodySize = 2 * 1024 * 1024
 
+// fallbackDNSServers — публичные DNS-серверы для резолва hostlist-источников
+// если системный resolver недоступен или фильтрует домены. Применимо к
+// Keenetic + DNSCrypt-Entware, где /etc/resolv.conf указывает на
+// 127.0.0.1:53, и dnscrypt-proxy может блокировать raw.githubusercontent.com
+// (CDN Fastly попадал в списки фильтрации в 2024-2026).
+//
+// Cloudflare 1.1.1.1 первым: типично быстрее на cellular/EU-маршрутах.
+// Quad9 9.9.9.9 — privacy-focused, малверный фильтр (бонус но не critical).
+// Google 8.8.8.8 — fallback (стабильный, но логирует запросы).
+var fallbackDNSServers = []string{"1.1.1.1:53", "9.9.9.9:53", "8.8.8.8:53"}
+
+// fallbackDNSTimeout — потолок одного DNS-запроса к fallback-серверу. На
+// slow MIPS softfloat UDP-resolve к публичным DNS занимает 50-200ms;
+// 3s — щедрый запас на cellular jitter.
+const fallbackDNSTimeout = 3 * time.Second
+
+// resilientResolver возвращает net.Resolver, который сначала пробует
+// системный (PreferGo=true читает /etc/resolv.conf), и при ошибке —
+// fallback на fallbackDNSServers по очереди.
+//
+// На Keenetic с DNSCrypt-127.0.0.1 системный resolve может вернуть
+// "i/o timeout" (DNSCrypt офлайн или фильтрует) или NXDOMAIN (черный
+// список). В обоих случаях — пробуем публичные DNS напрямую.
+//
+// Используется только для UpdateHostlist; обычные DNS-резолвы sign-craze
+// (например в singbox/outbound) не затрагиваются — они должны идти через
+// системный DNS чтобы пользовательский DNSCrypt-конфиг работал.
+func resilientResolver() *net.Resolver {
+	return &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			d := net.Dialer{Timeout: fallbackDNSTimeout}
+			conn, err := d.DialContext(ctx, network, address)
+			if err == nil {
+				return conn, nil
+			}
+			log.L().Debug("dpi update: системный DNS недоступен, fallback",
+				"system_addr", address, "err", err)
+			for _, fb := range fallbackDNSServers {
+				if c, e := d.DialContext(ctx, "udp", fb); e == nil {
+					return c, nil
+				}
+			}
+			return nil, err
+		},
+	}
+}
+
 // UpdateHostlist скачивает hostlist'ы из urls, объединяет с extraTargets
 // (state.DPITargets — пользовательские локальные домены), убирает дубликаты,
 // сортирует и атомарно записывает в dst.
@@ -50,9 +99,15 @@ func UpdateHostlist(ctx context.Context, urls, extraTargets []string, dst string
 		return report, fmt.Errorf("dpi update: пустой dst")
 	}
 
+	resolver := resilientResolver()
+	dialer := &net.Dialer{
+		Timeout:  10 * time.Second,
+		Resolver: resolver,
+	}
 	client := &http.Client{
 		Timeout: updateHTTPTimeout,
 		Transport: &http.Transport{
+			DialContext:           dialer.DialContext,
 			TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12},
 			DisableKeepAlives:     true,
 			ResponseHeaderTimeout: updateHTTPTimeout / 2,
