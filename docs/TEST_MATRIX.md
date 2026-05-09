@@ -24,13 +24,13 @@
 |-----------------------------|:----:|:-----------:|:------:|:------------:|-------------------------------------------------------------------------------------------------------------|
 | `internal/atomicfs`         | ✅   | ❌          | ❌      | ❌            | `atomicfs/atomicfs_test.go`                                                                                 |
 | `internal/backup`           | ✅   | ❌          | ❌      | ✅            | `backup/backup_test.go`, `backup/helper_test.go`                                                            |
-| `internal/cli`              | ✅   | ❌          | ❌      | ✅            | `cli/smoke_test.go`, `cli/dispatch_test.go`                                                                 |
+| `internal/cli`              | ✅   | ❌          | ❌      | ✅            | `cli/smoke_test.go`, `cli/dispatch_test.go`, `cli/cmd_reapply_test.go`                                      |
 | `internal/diag`             | ✅   | ❌          | ⚠️      | ✅            | `diag/diag_test.go`                                                                                         |
-| `internal/dpi`              | ✅   | ❌          | ⚠️      | ✅            | `dpi/config_test.go`, `dpi/lifecycle_test.go`, `dpi/nfqueue_test.go`, `dpi/download_test.go`, `dpi/install_test.go` |
+| `internal/dpi`              | ✅   | ❌          | ⚠️      | ✅            | `dpi/config_test.go`, `dpi/lifecycle_test.go`, `dpi/nfqueue_test.go`, `dpi/download_test.go`, `dpi/install_test.go`, `dpi/update_test.go` |
 | `internal/errors`           | ✅   | ❌          | ❌      | ❌            | `errors/errors_test.go`                                                                                     |
 | `internal/exectx`           | ✅   | ❌          | ❌      | ❌            | `exectx/exec_test.go`                                                                                       |
 | `internal/firewall`         | ✅   | ✅          | ⚠️      | ✅            | `firewall/{applier,iptables,ipset,ipset_persist,route,preflight}_test.go`, `firewall/integration_test.go`   |
-| `internal/firewall/modes`   | ✅   | ❌          | ⚠️      | ✅            | `modes/{tproxy,hybrid,redirect,excludes,ports}_test.go`                                                     |
+| `internal/firewall/modes`   | ✅   | ❌          | ⚠️      | ✅            | `modes/{tproxy,hybrid,redirect,excludes,ports,policy_dpi}_test.go`                                          |
 | `internal/geo`              | ✅   | ❌          | ⚠️      | ✅            | `geo/{srs,ipset,decompile}_test.go`                                                                         |
 | `internal/ghrelease`        | ✅   | ❌          | ❌      | ❌            | `ghrelease/downloader_test.go`                                                                              |
 | `internal/locks`            | ✅   | ❌          | ⚠️      | ✅            | `locks/file_test.go`                                                                                        |
@@ -113,6 +113,45 @@ go test -tags=integration -v -timeout 60s ./internal/firewall/...
 `--backup`, `--restore`, `--config-backup`, `--config-restore`,
 `--reapply` (Hidden).
 
+### Throttle-тесты `--reapply` (v0.8.0)
+
+**Файл:** `internal/cli/cmd_reapply_test.go`
+
+| Тест                                      | Что проверяет                                          |
+|-------------------------------------------|--------------------------------------------------------|
+| `TestReapplyThrottle_NoMarker_NotThrottled`   | Без маркера — reapply не дросселируется                |
+| `TestReapplyThrottle_RecentMarker_Throttled`  | Маркер 1с назад при пороге 5с → дросселируется         |
+| `TestReapplyThrottle_OldMarker_NotThrottled`  | Маркер 10с назад при пороге 5с → не дросселируется     |
+| `TestReapplyThrottlePeriod_Sane`              | Период throttle в допустимом диапазоне [1с, 60с]       |
+
+---
+
+## 4а. Unit-тесты DPI (v0.8.0)
+
+**Файл:** `internal/dpi/update_test.go`
+
+| Тест                          | Что проверяет                                                      |
+|-------------------------------|---------------------------------------------------------------------|
+| `TestParseHostLine`           | Парсинг hosts- и Adblock-форматов (15+ кейсов), sanitize           |
+| `TestLooksLikeHostname`       | Валидация DNS-допустимых строк                                      |
+| `TestShouldUpdate_Disabled`   | Интервал обновления = 0 или -1 → обновление отключено              |
+| `TestShouldUpdate_NeverUpdated` | Пустой или битый timestamp → обновление нужно                    |
+| `TestShouldUpdate_Threshold`  | Свежий timestamp → пропустить, старый → обновить                   |
+
+---
+
+## 4б. Unit-тесты `firewall/modes` — Policy+DPI (v0.8.0)
+
+**Файл:** `internal/firewall/modes/policy_dpi_test.go`
+
+| Тест                                                      | Что проверяет                                                  |
+|-----------------------------------------------------------|----------------------------------------------------------------|
+| `TestPolicyDPIRules_БезWANInterface_JumpБезФильтра`       | Back-compat: jump без флага `-o` при отсутствии WAN-интерфейса |
+| `TestPolicyDPIRules_СWANInterface_JumpСодержитO`          | При WAN-интерфейсе (eth3) jump содержит `-o eth3`              |
+| `TestPolicyDPIRules_VPNExcludeIPs_RETURNПередNFQUEUE`    | Для каждого exclude-IP генерируется правило RETURN перед NFQUEUE |
+| `TestPolicyDPIRules_VPNExcludeIPs_ПустыеСтрокиИгнорируются` | Пустые строки в exclude-списке игнорируются (sanitize)      |
+| `TestPolicyDPIRules_СчётчикПравил`                        | Итоговый счётчик: excludes + tcp + udp + 1 jump               |
+
 ---
 
 ## 5. E2E на железе (Phase 9.8 — открыт)
@@ -177,6 +216,7 @@ go test -tags=integration -v -timeout 60s ./internal/firewall/...
 | Phase 7 — release | ✅ | cross-compile build matrix в CI |
 | Phase 8 — CLI-команды | ✅ | `cli/smoke_test.go`, `backup/`, `diag/`, `state/`, `ndm/`, `ghrelease/`, `selfupdate/`, `proxyparse/`, `service/netfilter_hook_test.go` |
 | Phase 9 — policy mode | 🚧 | `ndm/policy_test.go`, `ndm/wan_test.go` — unit. **E2E hardware: ❌** |
+| v0.8.0 — DPI update + policy-DPI rules + reapply throttle | ✅ | `dpi/update_test.go` (5 unit), `firewall/modes/policy_dpi_test.go` (5 unit), `cli/cmd_reapply_test.go` (4 unit) — все pass |
 
 ---
 

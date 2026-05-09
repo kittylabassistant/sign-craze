@@ -33,6 +33,9 @@ Go-утилита для управления межсетевым экрано�
 - Гео-фильтрация через SRS rule-set (выборочная загрузка по SHA256)
 - Встроенный Web UI (только из LAN): Zashboard `:9090`, admin API `:9091`, Routing Editor `:9092` (vanilla Preact + htm SPA)
 - Selective DPI: desync только для выбранных доменов/SNI через `--dpi-targets`
+- WAN-фильтр в DPI-правилах: NFQUEUE захватывает только ISP-трафик (`-o $WAN_IFACE`), не трогая LAN-bridge и TUN
+- VPN-exclude (`--dpi-exclude-ips`): RETURN перед NFQUEUE для заданных IP — сохраняет TLS-маскировку Reality-handshake sing-box к собственному серверу и downstream-VPN-клиентов на том же эндпоинте
+- Auto-update hostlist (`--dpi-update-interval 24`): автообновление списка DPI-доменов раз в 24 ч из upstream-источников (zapret, Flowseal discord/youtube); `--dpi-update-now` — принудительный запуск
 - Firewall watchdog: автовосстановление iptables-правил каждые 30 с при работающем `--ui on`
 - Управление портами и исключениями без перезапуска
 - Резервное копирование и восстановление конфигурации
@@ -132,6 +135,42 @@ sign-craze --ui on
 - [wiki/Recipe-RU-Direct.md](wiki/Recipe-RU-Direct.md) — рецепт "РФ direct, остальное VPN"
 - [wiki/Recipes.md](wiki/Recipes.md) — индекс всех рецептов
 
+## DPI: auto-update hostlist и VPN-исключения (v0.8.0)
+
+### Auto-update hostlist
+
+Включить автообновление списка DPI-доменов раз в 24 ч из upstream:
+
+```bash
+# Задать источники (по умолчанию уже включены zapret + Flowseal discord/youtube)
+sign-craze --dpi-update-urls \
+  https://raw.githubusercontent.com/bol-van/zapret/master/ipset/zapret-hosts-user.txt.example,\
+https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/lists/list-youtube.txt,\
+https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/lists/list-discord.txt
+
+# Включить авто-обновление раз в сутки
+sign-craze --dpi-update-interval 24
+
+# Обновить немедленно
+sign-craze --dpi-update-now
+```
+
+### VPN-exclude (Reality/VLESS)
+
+Защита TLS-маскировки Reality-handshake: NFQUEUE не трогает трафик к указанным IP.
+Нужно, если sing-box подключается к собственному Reality-серверу или downstream-клиенты на роутере используют тот же VPN-эндпоинт.
+
+```bash
+# Добавить IP VPN-сервера в исключения
+sign-craze --dpi-exclude-ips 203.0.113.1,2001:db8::1
+
+# Проверить список
+sign-craze --dpi-exclude-ips-list
+
+# Применить изменения
+sign-craze --restart
+```
+
 ## Web UI
 
 **Web UI** (только из LAN):
@@ -176,6 +215,11 @@ sign-craze --dpi on|off              Включить / выключить DPI-�
 sign-craze --dpi-strategy <пресет>   Установить стратегию DPI
 sign-craze --dpi-targets <домены>    Selective DPI: desync только для указанных SNI (через запятую; clear — сбросить)
 sign-craze --dpi-targets-list        Показать текущий список DPI-целей
+sign-craze --dpi-exclude-ips <IP>    IP/IPv6-адреса, исключённые из NFQUEUE (Reality VPN-эндпоинты); clear — сбросить
+sign-craze --dpi-exclude-ips-list    Показать список IP-исключений DPI
+sign-craze --dpi-update-urls <URL>   Источники для auto-update hostlist (через запятую; clear — отключить)
+sign-craze --dpi-update-interval <ч> Период авто-обновления hostlist в часах (0 — выкл, рекомендуется 24)
+sign-craze --dpi-update-now         Принудительно обновить hostlist из dpi-update-urls прямо сейчас
 
 sign-craze --port-add <порт>    Добавить порт в проксируемый набор
 sign-craze --port-del <порт>    Удалить порт

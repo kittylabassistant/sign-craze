@@ -5,6 +5,20 @@
 
 ---
 
+## [0.8.0] — 2026-05-09
+
+### Added
+- **WAN-фильтр в DPI-правилах**: `PolicyDPIRules` принимает `wanIface` — jump POSTROUTING получает `-o $WAN_IFACE`, NFQUEUE ловит только трафик через WAN.
+- **`state.dpi_exclude_ips`**: IP-адреса, исключаемые из nfqws2-десинка (RETURN-правила перед NFQUEUE). Защищает Reality VPN handshakes к собственному серверу и downstream-VPN-клиентов; передаётся в `PolicyDPIRules` как `vpnExcludeIPs`.
+- **Auto-update hostlist**: `state.dpi_update_urls` + `state.dpi_update_interval_hours` + `state.dpi_last_update` — watchdog goroutine качает список хостов каждые N часов из upstream (bol-van/zapret, Flowseal/zapret-discord-youtube), парсит hosts/Adblock формат, atomic write в `/opt/etc/sign-craze/dpi-hostlist.txt`.
+- **Новые CLI-флаги**: `--dpi-exclude-ips`, `--dpi-exclude-ips-list`, `--dpi-update-urls`, `--dpi-update-interval`, `--dpi-update-now`.
+
+### Changed
+- **`--reapply` использует `Reconcile` вместо `Apply`**: throttle 5 секунд через mtime-маркер `/opt/var/run/sign-craze-reapply.last`. Ранее NDM netfilter.d hook вызывал Apply пачкой 5–10 раз/сек (263 reapply/час в production).
+- **WAN автодетект перенесён в `applyInternal` до `switch mode`**: ранее WAN заполнялся в `ensureWANUIDrop` после DPI-rules — DPI-jump получал пустую строку.
+
+---
+
 ## [0.7.1] — 2026-05-08
 
 ### Added

@@ -491,3 +491,130 @@ sign-craze --diag > /tmp/diag.txt 2>&1
 cat /opt/var/log/sign-craze/sing-box.log >> /tmp/diag.txt
 cat /opt/var/log/sign-craze/boot.log >> /tmp/diag.txt
 ```
+
+---
+
+## 13. Deploy v0.8.0 на Keenetic
+
+> **BusyBox `wget` не поддерживает HTTPS на Entware.** Для загрузки обязательно нужен `/opt/bin/curl` (из пакета `curl`). Убедитесь, что пакет установлен: `opkg install curl`.
+
+Выберите архитектуру:
+
+| Модель | ARCH |
+|--------|------|
+| KN-1410, KN-1810 | `mips` |
+| KN-1910, KN-2010 и новее | `mipsle` |
+| Современные ARM-роутеры | `arm7` или `arm64` |
+
+```bash
+ARCH=mips  # подставить нужную архитектуру
+ssh -p 222 root@<router> "
+  /opt/bin/curl -fsSL -o /tmp/sc.new https://github.com/kittylabassistant/sign-craze/releases/download/v0.8.0/sign-craze-${ARCH} &&
+  /opt/bin/curl -fsSL -o /tmp/sc.sha https://github.com/kittylabassistant/sign-craze/releases/download/v0.8.0/sign-craze-${ARCH}.sha256 &&
+  cd /tmp && sha256sum -c sc.sha &&
+  mv /opt/sbin/sign-craze /opt/sbin/sign-craze.bak &&
+  mv /tmp/sc.new /opt/sbin/sign-craze &&
+  chmod +x /opt/sbin/sign-craze &&
+  /opt/sbin/sign-craze --restart
+"
+```
+
+**Проверка после deploy:**
+
+```sh
+sign-craze --version
+# → v0.8.0
+
+sign-craze --status
+# → sing-box+nfqws2 запущены
+
+iptables -t mangle -L POSTROUTING -n -v | grep signcraze_policy_dpi
+# → -o eth3 (WAN-интерфейс)
+
+iptables -t mangle -L signcraze_policy_dpi -n -v | head -5
+# → первые правила RETURN
+
+ls -la /opt/etc/sign-craze/dpi-hostlist.txt
+# → файл существует
+
+tail /opt/var/log/sign-craze/sign-craze.log | grep -E "reapply|dpi"
+# → не более 12 reapply/час
+```
+
+---
+
+## 14. Auto-update hostlist (24h)
+
+Автоматическая загрузка и обновление hostlist для DPI-обхода по расписанию.
+
+```sh
+sign-craze --dpi-update-urls https://raw.githubusercontent.com/bol-van/zapret/master/ipset/zapret-hosts-user.txt.example,https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/lists/list-youtube.txt,https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/lists/list-discord.txt
+sign-craze --dpi-update-interval 24
+sign-craze --dpi-update-now
+sign-craze --restart
+```
+
+| Флаг | Описание |
+|------|----------|
+| `--dpi-update-urls` | Список URL через запятую — источники hostlist |
+| `--dpi-update-interval` | Интервал обновления в часах (24 = раз в сутки) |
+| `--dpi-update-now` | Принудительно скачать hostlist немедленно |
+
+**Проверка:**
+
+```sh
+ls -la /opt/etc/sign-craze/dpi-hostlist.txt
+sign-craze --dpi-targets-list
+```
+
+---
+
+## 15. VPN-exclude
+
+Исключение IP VPN-эндпоинта из DPI/proxy-правил — трафик к VPN-серверу идёт напрямую.
+
+**1. Найти IP VPN-эндпоинта:**
+
+```sh
+tcpdump -i eth3 host <vpn-server-domain>
+# Смотреть на первый IP в SYN-пакетах к VPN-порту
+```
+
+**2. Добавить исключение:**
+
+```sh
+sign-craze --dpi-exclude-ips <vpn_ip>
+# Несколько IP — через запятую: --dpi-exclude-ips 1.2.3.4,5.6.7.8
+```
+
+**3. Применить:**
+
+```sh
+sign-craze --restart
+```
+
+**Проверка:**
+
+```sh
+sign-craze --status
+iptables -t mangle -L signcraze_policy_dpi -n -v | grep RETURN
+```
+
+---
+
+## 16. Rollback v0.8.0
+
+Если после deploy v0.8.0 возникли проблемы — откат к предыдущему бинарю (`sign-craze.bak`):
+
+```bash
+ssh root@<router> "/opt/sbin/sign-craze --stop && mv /opt/sbin/sign-craze /tmp/sc.failed && mv /opt/sbin/sign-craze.bak /opt/sbin/sign-craze && /opt/sbin/sign-craze --start"
+```
+
+Проверить версию после отката:
+
+```sh
+sign-craze --version
+sign-craze --status
+```
+
+> Если `.bak` отсутствует — восстановить через `--install-offline` или скачать нужную версию из GitHub Releases вручную (см. секцию [13. Deploy v0.8.0](#13-deploy-v080-на-keenetic)).

@@ -111,6 +111,63 @@ Legacy-имена `proxy`, `dpi`, `hybrid` принимаются для обр�
 
 Цепочка `signcraze_policy_dpi` устанавливается в `mangle:POSTROUTING` (только policy+DPI).
 
+## Packet path: режим policy (TPROXY/REDIRECT) — v0.8.0
+
+WAN-интерфейс определяется автоматически через `ip route show default` в `applyInternal()` до выбора режима.
+
+```plain
+LAN client ─► br0 (mangle:PREROUTING):
+  ├─ mark==0xffffaab → signcraze_policy → TPROXY 127.0.0.1:7895 mark=0x53
+  │     ├─ ip rule: fwmark 0x53 lookup 83
+  │     ├─ table 83: local default → sing-box socket (userspace)
+  │     └─ sing-box → outbound к VPN-серверу
+  │
+  └─ без mark → main route → eth3 (WAN)
+
+mangle:POSTROUTING  -o $WAN_IFACE  (signcraze_policy_dpi):
+  ├─ -d <DPIExcludeIPs[0]> -j RETURN   ← VPN-эндпоинты: Reality-fingerprint
+  ├─ -d <DPIExcludeIPs[1]> -j RETURN     нельзя десинхать (ISP обнаружит VPN)
+  │   ...
+  └─ -p tcp/udp --dport <DPI-ports> -j NFQUEUE 300
+        nfqws2 десинхает ClientHello → ISP видит модифицированный пакет
+```
+
+**Исключение VPN-эндпоинтов (`DPIExcludeIPs`)**: Reality маскируется под TLS-fingerprint
+реального хоста. nfqws2-десинк ломает этот fingerprint, что позволяет ISP детектировать VPN.
+Кроме того, downstream-клиенты с собственным VPN-клиентом к тому же эндпоинту выйдут из строя.
+Решение: `state.DPIExcludeIPs` + best-effort резолв первого `outbound.Server`.
+Перед каждым блоком NFQUEUE-портов добавляются RETURN-правила для каждого IP из этого списка.
+
+## Auto-update hostlist (v0.8.0)
+
+Подсистема периодического обновления DPI-листа запускается горутиной внутри `--service-watchdog`
+(`cmd_service_watchdog.go`):
+
+```plain
+watchdog loop (горутина):
+  → тикер 1 час
+  → ShouldUpdate(state.DPILastUpdate, IntervalHours)
+      если да → dpi.UpdateHostlist(ctx, urls, extraTargets, dst)
+                   ├─ HTTP-загрузка каждого URL (timeout 30s, max body 2MB)
+                   ├─ парсинг hosts/Adblock-форматов
+                   ├─ merge + deduplicate
+                   └─ atomic write (atomicfs) → dst
+  → ошибка одного URL не прерывает обновление (best-effort)
+```
+
+Ограничения: HTTP timeout 30s учитывает медленный TLS-хендшейк на MIPS; body cap 2MB
+защищает от OOM на роутерах с 128MB RAM.
+
+## Reapply throttle (v0.8.0)
+
+Путь `--reapply` защищён маркером `/opt/var/run/sign-craze-reapply.last` (mtime):
+
+- Throttle-период: **5 секунд**.
+- При срабатывании вызывается `Reconcile` (idempotent re-apply) — без pre-flights и
+  без auto-rollback, в отличие от полного `Apply`.
+- Это исключает каскадный reapply при одновременных внешних событиях (перезапуск
+  init.d shim, watchdog-тик).
+
 ## Идентификаторы
 
 | Элемент | Значение |

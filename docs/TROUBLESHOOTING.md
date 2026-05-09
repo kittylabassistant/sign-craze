@@ -121,6 +121,26 @@ sign-craze --diag            # 2. PASS/WARN/FAIL по 12 проверкам
 | После ребута policy в UI есть, но трафик не проксируется | `SaveConfig` не выполнился до ребута → mark изменился | `--diag` → `keenetic-policy WARN: mark в RCI не совпадает с state` | `sign-craze --start` обновит mark; или `--stop && --start` |
 | Policy не переживает ребут — исчезает из UI | `ndm.SaveConfig` не вызывался при последнем старте | `grep -i saveconfig /opt/var/log/sign-craze/sign-craze.log` | `sign-craze --restart` — SaveConfig вызывается при каждом `--start` в `policy` |
 
+### DPI и nfqws2
+
+| Симптом | Вероятная причина | Команда проверки | Fix |
+| --------- | ------------------- | ----------------- | ----- |
+| YouTube не открывается на TV/STB/PC — SNI блокируется ISP | Устройство не получает mark `0x53`: не входит в Keenetic policy «sign-craze», nfqws2 не обрабатывает его трафик | `iptables -t mangle -nvL signcraze_policy` — строка с IP устройства отсутствует | Добавить устройство в policy «sign-craze» в Keenetic UI (Приоритеты подключений). Альтернатива: расширить список обхода через `sign-craze --dpi-update-urls <url> --restart` |
+| Reality VPN handshake ломается у downstream-устройства (Beelink/RPi4) с собственным VPN-клиентом к тому же эндпоинту | nfqws2 в POSTROUTING десинкает TLS ClientHello к VPN-серверу; пакеты к VPN-IP попадают в NFQUEUE и модифицируются | `iptables -t mangle -nvL \| grep NFQUEUE` — счётчик растёт на трафике к VPN-IP | `sign-craze --dpi-exclude-ips <vpn_ip> --restart` — добавляет RETURN-правило перед NFQUEUE для указанного IP. Автоматически: IP первого `outbound.server` из конфига резолвится best-effort и исключается при старте |
+| NFQUEUE счётчик UDP/443 = 0 (в выводе `iptables -t mangle -nvL`) | В v0.8.0 jump имеет `-o $WAN_IFACE`: QUIC-трафик устройств в policy уходит через TPROXY до POSTROUTING, минуя цепочку на `eth3` | `iptables -t mangle -nvL \| grep NFQUEUE` | Нормальное поведение v0.8.0. Если QUIC-клиентов нет в policy и счётчик всё равно 0 — проверить `sign-craze --diag` |
+
+### Логи и служебные события
+
+| Симптом | Вероятная причина | Команда проверки | Fix |
+| --------- | ------------------- | ----------------- | ----- |
+| Лог заспамлен `--reapply: правила восстановлены` (200+ INFO/час) | NDM netfilter.d hook вызывает `--reapply` пачкой 5–10 раз/сек при каждом NDM-событии | `tail -f /opt/var/log/sign-craze/sign-craze.log \| grep reapply` | В v0.8.0 реализован throttle 5 с через mtime-маркер `/opt/var/run/sign-craze-reapply.last` — обновить до актуальной версии |
+
+### Hostlist и DPI-обновления
+
+| Симптом | Вероятная причина | Команда проверки | Fix |
+| --------- | ------------------- | ----------------- | ----- |
+| Hostlist auto-update не срабатывает | `dpi_update_urls` пустой или `dpi_update_interval_hours = 0`; watchdog goroutine стартует с задержкой 5 минут после `--service-watchdog` (прогрев DNS/NTP) | `grep "dpi updater" /opt/var/log/sign-craze/sign-craze.log` — нет записей | Убедиться что в state заданы непустой `dpi_update_urls` и `dpi_update_interval_hours > 0` (рекомендуется 24). Принудительное обновление: `sign-craze --dpi-update-now` |
+
 ---
 
 ## Сбор support bundle
