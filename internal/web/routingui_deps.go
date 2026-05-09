@@ -24,4 +24,8 @@ type RoutingUIDeps struct {
 	// Может регенерировать config.json (через cli.regenerateConfig).
 	// Может быть nil — тогда ответ просто {needs_restart: true}.
 	OnApply func(ctx context.Context) error
+
+	// OnRestart вызывается после OnApply для перезапуска core-сервиса.
+	// Если nil — возвращается {needs_restart: true}, пользователь перезапускает вручную.
+	OnRestart func(ctx context.Context) error
 }

@@ -177,6 +177,14 @@ func runUIServer(ctx context.Context) error {
 			}
 			return regenerateConfig(ctx, fresh)
 		},
+		OnRestart: func(ctx context.Context) error {
+			return withLock(ctx, func() error {
+				if err := doStop(ctx); err != nil {
+					slog.Warn("OnRestart: stop не удался, продолжаем", "err", err)
+				}
+				return doStart(ctx)
+			})
+		},
 	}
 
 	cfg := web.ServerConfig{

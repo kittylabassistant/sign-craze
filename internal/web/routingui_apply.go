@@ -29,5 +29,13 @@ func (s *Server) apiApply(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if s.cfg.RoutingUI != nil && s.cfg.RoutingUI.OnRestart != nil {
+		if err := s.cfg.RoutingUI.OnRestart(r.Context()); err != nil {
+			http.Error(w, "restart: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]any{"needs_restart": false})
+		return
+	}
 	writeJSON(w, map[string]any{"needs_restart": true})
 }

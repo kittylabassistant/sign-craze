@@ -943,8 +943,8 @@ function App() {
   const cfg = state?.config || {};
   const inbounds  = cfg.inbounds  || [];
   const outbounds = cfg.outbounds || [];
-  const rules     = cfg.route?.rules || [];
-  const ruleSets  = cfg.route?.rule_set || [];
+  const rules     = cfg.rules     || [];
+  const ruleSets  = cfg.rule_sets || [];
 
   return html`
     <${Fragment}>
