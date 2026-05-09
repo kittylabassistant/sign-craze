@@ -24,9 +24,9 @@ func TestParseHostLine(t *testing.T) {
 		{"||example.com$third-party", "example.com"},
 		{"!comment-adblock", ""},
 		{"EXAMPLE.COM", "example.com"},
-		{"plainword", ""}, // no dot → не hostname
-		{"<html>", ""},    // мусор
-		{"foo bar baz", ""},        // первое поле "foo" не хост (нет точки)
+		{"plainword", ""},   // no dot → не hostname
+		{"<html>", ""},      // мусор
+		{"foo bar baz", ""}, // первое поле "foo" не хост (нет точки)
 		{"foo.com bar baz", "foo.com"},
 	}
 	for _, c := range cases {

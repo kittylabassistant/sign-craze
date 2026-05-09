@@ -125,7 +125,7 @@ func collectVPNExcludeIPs(s *state.State) []string {
 	if len(s.Outbounds) > 0 {
 		host := s.Outbounds[0].Server
 		if host != "" {
-			if addrs, err := net.LookupHost(host); err == nil {
+			if addrs, err := net.DefaultResolver.LookupHost(context.Background(), host); err == nil {
 				for _, ip := range addrs {
 					if _, ok := seen[ip]; ok {
 						continue

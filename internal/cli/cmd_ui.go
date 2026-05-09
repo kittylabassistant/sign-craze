@@ -179,8 +179,8 @@ func runUIServer(ctx context.Context) error {
 		},
 		OnRestart: func(ctx context.Context) error {
 			return withLock(ctx, func() error {
-				if err := doStop(ctx); err != nil {
-					slog.Warn("OnRestart: stop не удался, продолжаем", "err", err)
+				if stopErr := doStop(ctx); stopErr != nil {
+					slog.Warn("OnRestart: stop не удался, продолжаем", "err", stopErr)
 				}
 				return doStart(ctx)
 			})

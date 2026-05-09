@@ -35,11 +35,11 @@ func IsModuleLoaded(name string) bool {
 // FindKernelModule возвращает путь к .ko-файлу через glob /lib/modules/*/<name>.ko.
 // Если найдено несколько — возвращает первый. Если ничего не найдено — пустая строка.
 func FindKernelModule(name string) string {
-	matches, _ := filepath.Glob(fmt.Sprintf("/lib/modules/*/%s.ko", name))
-	if len(matches) > 0 {
-		return matches[0]
+	matches, err := filepath.Glob(fmt.Sprintf("/lib/modules/*/%s.ko", name))
+	if err != nil || len(matches) == 0 {
+		return ""
 	}
-	return ""
+	return matches[0]
 }
 
 // EnsureKernelModule загружает kernel-модуль через `insmod` если он ещё не загружен.

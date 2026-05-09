@@ -61,6 +61,18 @@ type Downloader struct {
 	// nil → DefaultMirrors (direct → gh-proxy.com → jsdelivr). Тесты
 	// переопределяют для проверки fallback-логики; production — оставляет nil.
 	Mirrors []URLRewriter
+
+	// BodyIdleTimeout переопределяет пакетный bodyIdleTimeout для экземпляра.
+	// 0 → использовать пакетный дефолт (30s). Тесты выставляют малое значение,
+	// не трогая глобальную переменную — без race при параллельных тестах.
+	BodyIdleTimeout time.Duration
+}
+
+func (d *Downloader) idleTimeout() time.Duration {
+	if d.BodyIdleTimeout > 0 {
+		return d.BodyIdleTimeout
+	}
+	return bodyIdleTimeout
 }
 
 // New создаёт Downloader со стандартным HTTP-клиентом.
@@ -316,7 +328,8 @@ func (d *Downloader) tryMirrorDownload(ctx context.Context, url, dstFile, savedE
 
 	idleStop := make(chan struct{})
 	go func() {
-		ticker := time.NewTicker(bodyIdleTimeout / 3)
+		timeout := d.idleTimeout()
+		ticker := time.NewTicker(timeout / 3)
 		defer ticker.Stop()
 		var lastRead int64
 		stagnantSince := time.Now()
@@ -331,7 +344,7 @@ func (d *Downloader) tryMirrorDownload(ctx context.Context, url, dstFile, savedE
 					stagnantSince = time.Now()
 					continue
 				}
-				if time.Since(stagnantSince) >= bodyIdleTimeout {
+				if time.Since(stagnantSince) >= timeout {
 					log.L().Warn("ghrelease: body idle timeout, отменяю загрузку",
 						"mirror", host, "получено_байт", cur, "пауза_сек", int(time.Since(stagnantSince).Seconds()))
 					cancel()

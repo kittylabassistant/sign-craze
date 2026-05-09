@@ -209,11 +209,6 @@ func TestFetch_ByTag(t *testing.T) {
 // зеркало (наблюдение 2026-05-08: ghfast.top отдал headers и 0 байт
 // тела за 5 минут) валит всю загрузку, хотя следующее работоспособно.
 func TestDownloadAsset_BodyIdleTimeout_FailsOverToNextMirror(t *testing.T) {
-	// Уменьшаем idle timeout чтобы тест шёл миллисекундами, не 30s.
-	oldTimeout := bodyIdleTimeout
-	bodyIdleTimeout = 200 * time.Millisecond
-	defer func() { bodyIdleTimeout = oldTimeout }()
-
 	content := []byte("real-payload-from-mirror-B")
 	stallEnter := make(chan struct{}, 1)
 
@@ -259,6 +254,7 @@ func TestDownloadAsset_BodyIdleTimeout_FailsOverToNextMirror(t *testing.T) {
 	// серверы, всё остальное (release-meta) проходит direct, чтобы fetchReleaseMeta
 	// не попало в stall-сервер.
 	d := New()
+	d.BodyIdleTimeout = 200 * time.Millisecond
 	d.Mirrors = []URLRewriter{
 		func(u string) string {
 			if strings.Contains(u, "example.invalid") {

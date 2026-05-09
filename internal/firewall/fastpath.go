@@ -157,8 +157,8 @@ func enableRouteLocalnet() error {
 	if _, err := os.Stat(path); err != nil {
 		return nil // не Linux или sysctl нет — silently skip
 	}
-	cur, _ := readSysctl(path)
-	if cur == "1" {
+	cur, err := readSysctl(path)
+	if err != nil || cur == "1" {
 		return nil
 	}
 	return writeSysctl(path, "1")
