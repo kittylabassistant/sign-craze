@@ -214,6 +214,36 @@ func configParamsFromState(s *state.State) singbox.ConfigParams {
 		log.L().Warn("routing.json: ошибка загрузки, используется legacy",
 			"path", routing.DefaultPath, "err", err)
 	} else if rc != nil {
+		// Миграция inbound-режима: если state.Inbound=tproxy, но routing.json
+		// содержит legacy TUN inbound (от v0.6.x bootstrap), фильтруем TUN из
+		// rc.Inbounds. Без миграции Render() считает RoutingConfig.Inbounds
+		// "явно заданными" и пропускает TPROXY-генерацию → sing-box стартует
+		// с TUN inbound, но iptables направляют через TPROXY → marked-трафик
+		// LAN-клиентов попадает в local socket 7895, который не существует
+		// (sing-box слушает signbox-tun) → reset, нет интернета.
+		// См. v0.8.3 release notes.
+		if s.Inbound == "tproxy" && len(rc.Inbounds) > 0 {
+			filtered := rc.Inbounds[:0]
+			removed := 0
+			for _, in := range rc.Inbounds {
+				if in.Type == "tun" {
+					removed++
+					continue
+				}
+				filtered = append(filtered, in)
+			}
+			if removed > 0 {
+				rc.Inbounds = filtered
+				log.L().Warn("routing.json: legacy TUN inbound удалён из RoutingConfig (state.inbound=tproxy)",
+					"removed_count", removed,
+					"hint", "запустите --restart, и Render автогенерирует TPROXY-inbound из state",
+				)
+				if err := routing.Save(routing.DefaultPath, rc); err != nil {
+					log.L().Warn("routing.json: не удалось сохранить миграцию",
+						"path", routing.DefaultPath, "err", err)
+				}
+			}
+		}
 		params.RoutingConfig = rc
 		// Если в RoutingConfig есть outbounds — DefaultOutboundTag берётся из первого.
 		if len(rc.Outbounds) > 0 && params.DefaultOutboundTag == "" {

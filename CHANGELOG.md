@@ -5,6 +5,12 @@
 
 ---
 
+## [0.8.3] — 2026-05-09
+
+### Fixed
+- **Миграция routing.json: legacy TUN inbound → автогенерация TPROXY**: на установках v0.6.x → v0.8.x с `state.inbound=tproxy` файл `routing.json` мог содержать TUN-inbound от bootstrap (`auto_route:true, stack:system, signbox-tun`). `Render()` видел `RoutingConfig.Inbounds` непустым → пропускал TPROXY-инъекцию → sing-box стартовал с TUN inbound, а iptables направляли marked-трафик LAN-клиентов в `127.0.0.1:7895` (где никто не слушал) → reset, нет интернета. Теперь `configParamsFromState()` фильтрует TUN-inbound при `state.inbound=tproxy` и пересохраняет routing.json.
+- **Verify**: `netstat -tlnp | grep 7895` после `--restart` должен показать `sing-box` LISTEN (не пусто). Если пусто — ручной фикс: `jq 'del(.inbounds)' /opt/etc/sign-craze/routing.json > /tmp/r && mv /tmp/r /opt/etc/sign-craze/routing.json && sign-craze --restart`.
+
 ## [0.8.2] — 2026-05-09
 
 ### Fixed
