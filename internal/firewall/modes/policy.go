@@ -209,14 +209,38 @@ var PolicyDPIUDPPorts = []string{"443", "19200:19400", "50000:50100"}
 // DPI-блокировок (TLS+QUIC) и Discord voice. На каждый элемент — отдельное
 // правило `--dport` (xt_multiport не загружен в Keenetic 4.9 ядре).
 //
+// wanIface — Linux-имя WAN (eth3, ppp0). Если задан, jump-правило в
+// POSTROUTING ограничивается `-o <wanIface>` — это исключает loopback,
+// внутренние интерфейсы и трафик-на-TUN от попадания в NFQUEUE (важно
+// для производительности на slow MIPS: без фильтра nfqws2 десинхронизирует
+// и пакеты к VPN-серверу, что бесполезно). Пустая строка → fallback на
+// безусловный jump (back-compat).
+//
+// vpnExcludeIPs — список IP-адресов VPN-эндпоинтов, которые не должны
+// проходить DPI-десинхронизацию. Reality VPN маскируется под TLS реального
+// хоста, и nfqws2-desync на ClientHello к VPN-серверу либо сломает
+// маскировку, либо бесполезен. Каждый IP вставляется как RETURN-правило
+// в начало signcraze_policy_dpi.
+//
 // keenMark передаётся для совместимости с прежним signature, но в
 // POSTROUTING-схеме не используется (sing-box свои пакеты помечает 0x53,
 // LAN-mark теряется при TPROXY-перехвате до POSTROUTING).
-func PolicyDPIRules(keenMark uint32, nfqueueNum int) []RuleSpec {
+func PolicyDPIRules(keenMark uint32, nfqueueNum int, wanIface string, vpnExcludeIPs []string) []RuleSpec {
 	queue := fmt.Sprintf("%d", nfqueueNum)
 	_ = keenMark // зарезервирован для будущего фильтра по mark
 
-	rules := make([]RuleSpec, 0, len(PolicyDPITCPPorts)+len(PolicyDPIUDPPorts)+1)
+	rules := make([]RuleSpec, 0, len(vpnExcludeIPs)+len(PolicyDPITCPPorts)+len(PolicyDPIUDPPorts)+1)
+	// Exclude VPN-эндпоинты: трафик sing-box к Reality-серверу должен идти
+	// без модификаций (десинхронизация ClientHello ломает маскировку).
+	for _, ip := range vpnExcludeIPs {
+		if ip == "" {
+			continue
+		}
+		rules = append(rules, RuleSpec{
+			Table: "mangle", Chain: PolicyDPIChainName,
+			Args: []string{"-d", ip, "-j", "RETURN"},
+		})
+	}
 	for _, port := range PolicyDPITCPPorts {
 		rules = append(rules, RuleSpec{
 			Table: "mangle", Chain: PolicyDPIChainName,
@@ -236,9 +260,13 @@ func PolicyDPIRules(keenMark uint32, nfqueueNum int) []RuleSpec {
 		})
 	}
 	// Переход POSTROUTING → signcraze_policy_dpi (один раз, в конце).
+	jumpArgs := []string{"-j", PolicyDPIChainName}
+	if wanIface != "" {
+		jumpArgs = append([]string{"-o", wanIface}, jumpArgs...)
+	}
 	rules = append(rules, RuleSpec{
 		Table: "mangle", Chain: "POSTROUTING",
-		Args: []string{"-j", PolicyDPIChainName},
+		Args: jumpArgs,
 	})
 	return rules
 }

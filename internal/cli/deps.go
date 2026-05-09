@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
 	"os"
 	"path/filepath"
 
@@ -48,6 +49,11 @@ func newDPILifecycleFromState(st *state.State, iface string) service.Lifecycle {
 // SkipTUNCheck определяется по активному ядру: sing-box работает через TUN
 // (pre-flight CheckTUNAvailable обязателен), xray/mihomo — через TProxy и
 // не создают TUN-устройство (проверка ложно фейлится в среде без TUN).
+//
+// VPNExcludeIPs мерджит state.DPIExcludeIPs (явные IP от пользователя — для
+// downstream-VPN-клиентов) с резолвом server у первого outbound (sing-box к
+// собственному Reality-серверу). Десинхронизация на этих IP отключается, чтобы
+// не ломать TLS-маскировку VPN-handshake.
 func newFirewallApplier(s *state.State) (firewall.Applier, error) {
 	cfg := firewall.DefaultConfig()
 	cfg.Ports = append([]uint16(nil), s.Ports...)
@@ -68,7 +74,49 @@ func newFirewallApplier(s *state.State) (firewall.Applier, error) {
 	}
 	excl = append(excl, adminPrefixes...)
 	cfg.Excludes = excl
+
+	cfg.VPNExcludeIPs = collectVPNExcludeIPs(s)
 	return firewall.NewApplier(exectx.OS, cfg), nil
+}
+
+// collectVPNExcludeIPs собирает список IP-эндпоинтов VPN, для которых отключается
+// nfqws2-десинхронизация:
+//   - state.DPIExcludeIPs (явные IP от пользователя — главный механизм управления);
+//   - резолв первого outbound.Server (best-effort: ошибка резолва игнорируется,
+//     явные DPIExcludeIPs остаются единственным барьером).
+//
+// Дубликаты удаляются. Резолв homelabcloud.ru и подобных хостов идёт через
+// system resolver — у нас нет гарантии что Keenetic-DNS вернёт реальный IP
+// (Reality маскируется под другие домены), поэтому DPIExcludeIPs — авторитетный
+// источник; outbound.Server-резолв — опортунистическое дополнение.
+func collectVPNExcludeIPs(s *state.State) []string {
+	seen := make(map[string]struct{}, len(s.DPIExcludeIPs)+1)
+	out := make([]string, 0, len(s.DPIExcludeIPs)+1)
+	for _, ip := range s.DPIExcludeIPs {
+		if ip == "" {
+			continue
+		}
+		if _, ok := seen[ip]; ok {
+			continue
+		}
+		seen[ip] = struct{}{}
+		out = append(out, ip)
+	}
+	if len(s.Outbounds) > 0 {
+		host := s.Outbounds[0].Server
+		if host != "" {
+			if addrs, err := net.LookupHost(host); err == nil {
+				for _, ip := range addrs {
+					if _, ok := seen[ip]; ok {
+						continue
+					}
+					seen[ip] = struct{}{}
+					out = append(out, ip)
+				}
+			}
+		}
+	}
+	return out
 }
 
 // loadState читает state.json из стандартного пути.

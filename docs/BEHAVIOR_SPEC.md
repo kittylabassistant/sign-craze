@@ -241,6 +241,56 @@ sign-craze --dpi-targets clear
 Печатает текущий список DPI targets (один на строку) либо сообщение, что desync
 применяется ко всему трафику.
 
+### `--dpi-exclude-ips <IP-список через запятую | clear>`
+
+Список IP-адресов, для которых nfqws2-десинхронизация **не применяется**:
+RETURN-правила вставляются в начало `signcraze_policy_dpi` перед NFQUEUE-портами.
+Назначение — сохранение TLS-маскировки исходящих VPN-handshakes (sing-box к
+собственному Reality-серверу, downstream-VPN-клиенты роутера).
+
+Каждый IP валидируется через `netip.ParseAddr` (IPv4/IPv6). `clear` очищает
+список.
+
+```bash
+sign-craze --dpi-exclude-ips 167.17.177.54,2606:4700::1
+sign-craze --dpi-exclude-ips clear
+```
+
+При активном `DPIEnabled` изменения применяются после `--restart`.
+
+### `--dpi-exclude-ips-list`
+
+Печатает текущий список IP-исключений DPI (один на строку).
+
+### `--dpi-update-urls <URL-список через запятую | clear>`
+
+URL-источники для auto-update hostlist (B.3). Каждый URL должен начинаться с
+`http://` или `https://`. Скачанные строки парсятся как hostlist (одна запись
+на строку, поддерживается формат hosts/Adblock), объединяются с
+`state.dpi_targets`, дедуплицируются и атомарно пишутся в
+`/opt/etc/sign-craze/dpi-hostlist.txt`.
+
+Рекомендованные источники (в `dpi.DefaultUpdateURLs`):
+
+```
+https://raw.githubusercontent.com/bol-van/zapret/master/ipset/zapret-hosts-user.txt.example
+https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/lists/list-youtube.txt
+https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/lists/list-discord.txt
+```
+
+`clear` отключает auto-update.
+
+### `--dpi-update-interval <часы>`
+
+Период auto-update hostlist в часах. `0` — выключено, рекомендуется `24`.
+Watchdog-демон (`--service-watchdog`) проверяет `state.dpi_last_update`
+раз в час и запускает обновление, если прошло больше `interval`.
+
+### `--dpi-update-now`
+
+Принудительный одноразовый запуск UpdateHostlist. Использует список из
+`state.dpi_update_urls`. После успеха обновляет `state.dpi_last_update`.
+
 ### `--core-list`
 
 Выводит список зарегистрированных ядер (sing-box / xray / mihomo) с указанием активного.
@@ -387,7 +437,7 @@ Chain PREROUTING
   -j signcraze              # переход в основную цепочку маркировки
 
 Chain POSTROUTING
-  -j signcraze_policy_dpi   # только если DPIEnabled=true
+  -o $WAN_IFACE -j signcraze_policy_dpi   # только если DPIEnabled=true
 
 Chain signcraze
   ! -s 127.0.0.0/8 ! -s 169.254.0.0/16 ! -i lo \
@@ -398,9 +448,36 @@ Chain signcraze
     -m comment --comment "signcraze:mark-policy-udp"
 
 Chain signcraze_policy_dpi  # только если DPIEnabled=true; в POSTROUTING
-  -p tcp -m multiport --dport 80,443,2053:2096,8443 -j NFQUEUE --queue-num 300 --queue-bypass
-  -p udp -m multiport --dport 443,19200:19400,50000:50100 -j NFQUEUE --queue-num 300 --queue-bypass
+  # RETURN для каждого IP из state.DPIExcludeIPs (Reality-маскировка VPN)
+  -d <vpn_endpoint_ip> -j RETURN
+  ...
+  -p tcp --dport 80   -j NFQUEUE --queue-num 300 --queue-bypass
+  -p tcp --dport 443  -j NFQUEUE --queue-num 300 --queue-bypass
+  -p tcp --dport 2053:2096 -j NFQUEUE --queue-num 300 --queue-bypass
+  -p tcp --dport 8443 -j NFQUEUE --queue-num 300 --queue-bypass
+  -p udp --dport 443  -j NFQUEUE --queue-num 300 --queue-bypass
+  -p udp --dport 19200:19400 -j NFQUEUE --queue-num 300 --queue-bypass
+  -p udp --dport 50000:50100 -j NFQUEUE --queue-num 300 --queue-bypass
 ```
+
+**`-o $WAN_IFACE`** на jump-правиле: NFQUEUE срабатывает только для трафика,
+реально уходящего через WAN-интерфейс ISP. Без фильтра NFQUEUE захватывал бы
+loopback, br0 (LAN bridge) и трафик-к-TUN — это лишняя CPU-нагрузка на slow
+MIPS и потенциально ломает Reality-маскировку sing-box-исходящих handshakes
+к VPN-серверу. Имя WAN определяется автодетектом через `ip route show default`
+до запуска DPI-rules.
+
+**RETURN для VPN-эндпоинтов**: для каждого IP из `state.dpi_exclude_ips` (плюс
+best-effort резолв первого `outbounds[].server`) вставляется правило
+`-d <ip> -j RETURN` ПЕРЕД NFQUEUE-портами. Это исключает TLS-десинхронизацию
+для:
+1. Исходящего sing-box → Reality-сервера (десинк ломает маскировку под
+   `ads.x5.ru` или другой `server_name`).
+2. Downstream-устройств (Beelink, RPi4) с собственным VPN-клиентом к тому же
+   VPN-эндпоинту.
+
+xt_multiport не загружен в стоковом ядре Keenetic 4.9, поэтому `--dport` —
+одно правило на порт/диапазон.
 
 **Почему `signcraze_policy_dpi` в POSTROUTING, а не PREROUTING:** в режиме
 `policy` весь LAN-трафик с keenetic-mark переотмечается в `0x53` → ip rule

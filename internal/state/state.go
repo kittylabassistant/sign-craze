@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/netip"
 	"os"
 
 	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
@@ -60,8 +61,28 @@ type State struct {
 	// DPITargets — список доменов/паттернов для selective DPI desync.
 	// Пусто = nfqws2 пытается desync для всего трафика (текущее поведение).
 	// Заполнено = nfqws2 запускается с --hostlist, desync только для match.
-	DPITargets     []string `json:"dpi_targets,omitempty"`
-	BootTimeoutSec int      `json:"boot_timeout_sec,omitempty"` // таймаут waitDefaultRoute, 0 = default 60
+	DPITargets []string `json:"dpi_targets,omitempty"`
+	// DPIExcludeIPs — список IP-адресов, для которых nfqws2-desync не применяется.
+	// Используется для VPN-эндпоинтов (sign-box → Reality-сервер, downstream-VPN
+	// клиентов): десинхронизация TLS ClientHello к VPN-IP ломает Reality-маскировку
+	// либо бесполезна. RETURN-правила вставляются в начало signcraze_policy_dpi
+	// перед NFQUEUE-портами.
+	DPIExcludeIPs []string `json:"dpi_exclude_ips,omitempty"`
+	// DPIUpdateURLs — URL-источники с hostlist-доменами для auto-update.
+	// Каждая строка файла = один домен (комментарии # и пустые строки игнорируются).
+	// Пусто = auto-update выключен. Скачанные домены merge с пресетами и пишутся
+	// в /opt/etc/sign-craze/hostlist.txt при каждом цикле обновления.
+	// Рекомендуемые источники:
+	//   github.com/bol-van/zapret (ipset/zapret-hosts-user.txt.example)
+	//   github.com/flowseal/zapret-discord-youtube (lists/list-*.txt)
+	DPIUpdateURLs []string `json:"dpi_update_urls,omitempty"`
+	// DPIUpdateIntervalHours — период auto-update в часах. 0 = выключено,
+	// рекомендуется 24h. Меньше 1h игнорируется (защита от DDoS upstream).
+	DPIUpdateIntervalHours int `json:"dpi_update_interval_hours,omitempty"`
+	// DPILastUpdate — RFC3339-таймштамп последнего успешного auto-update.
+	// Watchdog запускает следующее обновление, когда now() > DPILastUpdate + interval.
+	DPILastUpdate  string `json:"dpi_last_update,omitempty"`
+	BootTimeoutSec int    `json:"boot_timeout_sec,omitempty"` // таймаут waitDefaultRoute, 0 = default 60
 
 	// Поля режима ModePolicy: интеграция с Keenetic IP Policy через RCI.
 	// PolicyMark и PolicyTable — кеш runtime-значений, актуальные читаются
@@ -157,6 +178,12 @@ func Load(path string) (*State, error) {
 	}
 	if s.DPITargets == nil {
 		s.DPITargets = []string{}
+	}
+	if s.DPIExcludeIPs == nil {
+		s.DPIExcludeIPs = []string{}
+	}
+	if s.DPIUpdateURLs == nil {
+		s.DPIUpdateURLs = []string{}
 	}
 	if s.PolicyName == "" {
 		s.PolicyName = DefaultPolicyName
@@ -278,6 +305,14 @@ func (s *State) Validate() error {
 		default:
 			return fmt.Errorf("state: неизвестный inbound %q (допустимо: tun, tproxy)", s.Inbound)
 		}
+	}
+	for _, ip := range s.DPIExcludeIPs {
+		if _, err := netip.ParseAddr(ip); err != nil {
+			return fmt.Errorf("state: dpi_exclude_ips содержит некорректный IP %q: %w", ip, err)
+		}
+	}
+	if s.DPIUpdateIntervalHours < 0 {
+		return fmt.Errorf("state: dpi_update_interval_hours не может быть отрицательным")
 	}
 	return nil
 }

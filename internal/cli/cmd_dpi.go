@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"net/netip"
 	"os"
 	"strings"
 
@@ -19,6 +20,11 @@ func init() {
 	Register(Cmd{Long: "--dpi-update", Help: "обновить бинарь nfqws2", Handler: handleDPIUpdate})
 	Register(Cmd{Long: "--dpi-targets", Help: "selective DPI: список доменов через запятую (пусто/clear = все)", Handler: handleDPITargets})
 	Register(Cmd{Long: "--dpi-targets-list", Help: "показать активные DPI targets", Handler: handleDPITargetsList})
+	Register(Cmd{Long: "--dpi-exclude-ips", Help: "IP без DPI-десинка через запятую (пусто/clear = нет исключений)", Handler: handleDPIExcludeIPs})
+	Register(Cmd{Long: "--dpi-exclude-ips-list", Help: "показать IP-исключения DPI", Handler: handleDPIExcludeIPsList})
+	Register(Cmd{Long: "--dpi-update-urls", Help: "URL-источники hostlist для auto-update (через запятую, clear = выкл)", Handler: handleDPIUpdateURLs})
+	Register(Cmd{Long: "--dpi-update-interval", Help: "период auto-update hostlist в часах (0 = выкл, рекомендуется 24)", Handler: handleDPIUpdateInterval})
+	Register(Cmd{Long: "--dpi-update-now", Help: "немедленно скачать и применить hostlist из dpi_update_urls", Handler: handleDPIUpdateNow})
 }
 
 func handleDPI(ctx context.Context, args []string) error {
@@ -284,6 +290,154 @@ func handleDPITargetsList(_ context.Context, _ []string) error {
 		fmt.Println(t)
 	}
 	return nil
+}
+
+func handleDPIExcludeIPs(ctx context.Context, args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("--dpi-exclude-ips: требуется список IP (или 'clear' для очистки)")
+	}
+	raw := strings.TrimSpace(args[0])
+	var ips []string
+	switch raw {
+	case "clear", "none", "-", "":
+		ips = nil
+	default:
+		for _, part := range strings.Split(raw, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			if _, err := netip.ParseAddr(part); err != nil {
+				return fmt.Errorf("--dpi-exclude-ips: некорректный IP %q: %w", part, err)
+			}
+			ips = append(ips, part)
+		}
+	}
+	return withLock(ctx, func() error {
+		st, err := loadState()
+		if err != nil {
+			return err
+		}
+		st.DPIExcludeIPs = ips
+		if err := saveState(st); err != nil {
+			return err
+		}
+		if len(ips) == 0 {
+			fmt.Println("DPI exclude-IPs очищены.")
+		} else {
+			fmt.Printf("DPI exclude-IPs: %d адрес(ов). Перезапустите: sign-craze --restart\n", len(ips))
+		}
+		return nil
+	})
+}
+
+func handleDPIExcludeIPsList(_ context.Context, _ []string) error {
+	st, err := loadState()
+	if err != nil {
+		return err
+	}
+	if len(st.DPIExcludeIPs) == 0 {
+		fmt.Println("DPI exclude-IPs не заданы.")
+		return nil
+	}
+	for _, ip := range st.DPIExcludeIPs {
+		fmt.Println(ip)
+	}
+	return nil
+}
+
+func handleDPIUpdateURLs(ctx context.Context, args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("--dpi-update-urls: требуется список URL (или 'clear' для отключения)")
+	}
+	raw := strings.TrimSpace(args[0])
+	var urls []string
+	switch raw {
+	case "clear", "none", "-", "":
+		urls = nil
+	default:
+		for _, part := range strings.Split(raw, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			if !strings.HasPrefix(part, "http://") && !strings.HasPrefix(part, "https://") {
+				return fmt.Errorf("--dpi-update-urls: URL %q должен начинаться с http:// или https://", part)
+			}
+			urls = append(urls, part)
+		}
+	}
+	return withLock(ctx, func() error {
+		st, err := loadState()
+		if err != nil {
+			return err
+		}
+		st.DPIUpdateURLs = urls
+		if err := saveState(st); err != nil {
+			return err
+		}
+		if len(urls) == 0 {
+			fmt.Println("DPI auto-update выключен.")
+		} else {
+			fmt.Printf("DPI auto-update URLs: %d. Запустите: sign-craze --dpi-update-now\n", len(urls))
+		}
+		return nil
+	})
+}
+
+func handleDPIUpdateInterval(ctx context.Context, args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("--dpi-update-interval: требуется число часов (0 = выкл)")
+	}
+	hours := 0
+	if _, err := fmt.Sscanf(strings.TrimSpace(args[0]), "%d", &hours); err != nil {
+		return fmt.Errorf("--dpi-update-interval: некорректное число %q: %w", args[0], err)
+	}
+	if hours < 0 {
+		return fmt.Errorf("--dpi-update-interval: значение не может быть отрицательным")
+	}
+	return withLock(ctx, func() error {
+		st, err := loadState()
+		if err != nil {
+			return err
+		}
+		st.DPIUpdateIntervalHours = hours
+		if err := saveState(st); err != nil {
+			return err
+		}
+		if hours == 0 {
+			fmt.Println("DPI auto-update interval=0 (отключено).")
+		} else {
+			fmt.Printf("DPI auto-update interval=%dч.\n", hours)
+		}
+		return nil
+	})
+}
+
+func handleDPIUpdateNow(ctx context.Context, _ []string) error {
+	return withLock(ctx, func() error {
+		st, err := loadState()
+		if err != nil {
+			return err
+		}
+		if len(st.DPIUpdateURLs) == 0 {
+			return fmt.Errorf("--dpi-update-now: dpi_update_urls пуст; задайте через --dpi-update-urls")
+		}
+		report, err := dpi.UpdateHostlist(ctx, st.DPIUpdateURLs, st.DPITargets, dpi.DefaultHostlistPath)
+		if err != nil {
+			return fmt.Errorf("--dpi-update-now: %w", err)
+		}
+		st.DPILastUpdate = report.Timestamp.UTC().Format("2006-01-02T15:04:05Z07:00")
+		if err := saveState(st); err != nil {
+			return fmt.Errorf("--dpi-update-now: сохранение state: %w", err)
+		}
+		fmt.Printf("Hostlist обновлён: %d доменов, %d источников успешно, %d ошибок.\n",
+			report.TotalHosts, report.SourcesOK, report.SourcesFailed)
+		if st.DPIEnabled {
+			fmt.Println("Перезапустите для применения: sign-craze --restart")
+		}
+		return nil
+	})
 }
 
 func handleDPIUpdate(ctx context.Context, _ []string) error {

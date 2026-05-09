@@ -61,6 +61,12 @@ type Config struct {
 	// В режиме ModeFull DPI-правила являются частью HybridRules.
 	DPIEnabled bool
 
+	// VPNExcludeIPs — IP-адреса VPN-эндпоинтов, исключаемые из NFQUEUE-десинка.
+	// Резолвится из state.Outbounds[].Server при build firewall config.
+	// В PolicyDPIRules вставляется как RETURN-правила перед NFQUEUE-портами,
+	// чтобы не ломать Reality-маскировку sing-box к собственному VPN-серверу.
+	VPNExcludeIPs []string
+
 	// WANIface — имя WAN-интерфейса в Linux (eth0, ppp0 и т.п. — НЕ Keenetic-имя).
 	// Apply добавляет INPUT DROP TCP/UDP для всех UI-портов (9090, 9091, 9092)
 	// с WAN_IF — единственный сетевой барьер от внешнего доступа к Web UI,
@@ -178,6 +184,17 @@ func (a *applierImpl) Apply(ctx context.Context, mode types.Mode) error {
 }
 
 func (a *applierImpl) applyInternal(ctx context.Context, mode types.Mode) error {
+	// WAN автодетект — нужен ДО applyPolicyMode для PolicyDPIRules `-o $WAN`-фильтра,
+	// чтобы NFQUEUE не ловил трафик-к-TUN/loopback. ensureWANUIDrop ниже использует
+	// уже заполненный a.cfg.WANIface.
+	if a.cfg.WANIface == "" {
+		iface, err := netif.DetectWANIface(ctx, a.runner)
+		if err != nil {
+			return fmt.Errorf("firewall: WANIface не задан и автодетект не удался: %w", err)
+		}
+		a.cfg.WANIface = iface
+		log.L().Info("firewall: WAN автодетект", "iface", iface)
+	}
 	switch mode {
 	case types.ModePolicy:
 		if err := a.applyPolicyMode(ctx); err != nil {
@@ -204,9 +221,9 @@ func (a *applierImpl) applyInternal(ctx context.Context, mode types.Mode) error 
 var uiPorts = []string{"9090", "9091", "9092"}
 
 // ensureWANUIDrop добавляет INPUT DROP TCP/UDP на UI-порты для WAN-интерфейса.
-// Если WANIface пуст — пытается автодетект через `ip route show default`.
-// Fail-secure: при невозможности определить WAN — return error (без сетевого
-// барьера UI без auth доступен из интернета).
+// applyInternal заполняет a.cfg.WANIface через автодетект ДО вызова этой функции,
+// поэтому здесь ожидается уже непустой WANIface. Дополнительный fallback оставлен
+// на случай прямого вызова из Reconcile или тестов.
 func (a *applierImpl) ensureWANUIDrop(ctx context.Context) error {
 	if a.cfg.WANIface == "" {
 		iface, err := netif.DetectWANIface(ctx, a.runner)
@@ -271,8 +288,12 @@ func (a *applierImpl) applyPolicyMode(ctx context.Context) error {
 
 	// 3. DPI-правила (если включено) — добавляются ПЕРЕД policy-правилами,
 	// чтобы NFQUEUE сработал до перемаркировки и подъёма в TUN-таблицу.
+	// WAN-фильтр (`-o $WAN`) исключает трафик-в-TUN/loopback от NFQUEUE.
+	// VPNExcludeIPs защищает Reality-маскировку sing-box к собственному
+	// VPN-серверу: десинк на этих IP не применяется (RETURN перед NFQUEUE).
 	if a.cfg.DPIEnabled {
-		for _, spec := range modes.PolicyDPIRules(a.cfg.PolicyMark, a.cfg.NFQueueNum) {
+		dpiRules := modes.PolicyDPIRules(a.cfg.PolicyMark, a.cfg.NFQueueNum, a.cfg.WANIface, a.cfg.VPNExcludeIPs)
+		for _, spec := range dpiRules {
 			if err := a.ipt.EnsureRule(ctx, spec.Table, spec.Chain, spec.Args...); err != nil {
 				return err
 			}
