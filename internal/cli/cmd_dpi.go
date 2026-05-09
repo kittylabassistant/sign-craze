@@ -143,9 +143,16 @@ func dpiEnable(ctx context.Context) error {
 }
 
 // writeDPIConfig пишет nfqws2.conf и (опционально) dpi-hostlist.txt из state.
+//
 // st.DPIStrategy непустой → override NFQWS_ARGS (TCP/TLS-блок).
-// st.DPITargets непустой → hostlist пишется атомарно, --hostlist=<path> добавляется.
-// st.DPITargets пустой → флаг --hostlist не добавляется (desync для всего трафика).
+//
+// Hostlist (--hostlist=<path>) подключается если выполнено хотя бы одно:
+//  1. st.DPITargets непустой → hostlist пишется атомарно из этого списка;
+//  2. /opt/etc/sign-craze/dpi-hostlist.txt существует (auto-update создал
+//     из upstream-источников) — флаг ставится без перезаписи файла.
+//
+// Если оба условия false → флаг --hostlist не добавляется (desync для
+// всего трафика).
 func writeDPIConfig(iface string, st *state.State) error {
 	params := dpi.DefaultConfigParams()
 	params.ISPInterface = iface
@@ -153,10 +160,12 @@ func writeDPIConfig(iface string, st *state.State) error {
 		params.Args = st.DPIStrategy
 	}
 	if st != nil && len(st.DPITargets) > 0 {
-		params.HostlistPath = dpi.DefaultHostlistPath
 		if err := dpi.WriteHostlist(dpi.DefaultHostlistPath, st.DPITargets); err != nil {
 			return fmt.Errorf("hostlist: %w", err)
 		}
+	}
+	if hostlistShouldApply(st) {
+		params.HostlistPath = dpi.DefaultHostlistPath
 	}
 	if err := dpi.GenerateConfig(params, dpi.DefaultConfigPath); err != nil {
 		return fmt.Errorf("config: %w", err)

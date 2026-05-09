@@ -29,17 +29,37 @@ func newDPILifecycle() service.Lifecycle { return dpi.DefaultLifecycle() }
 
 // newDPILifecycleFromState возвращает Lifecycle nfqws2 с cmdline, собранным из
 // текущего state. Если state.DPIStrategy непустой — он переопределяет
-// NFQWS_ARGS (TCP/TLS-блок). DPITargets подключается через --hostlist=.
+// NFQWS_ARGS (TCP/TLS-блок).
+//
+// HostlistPath подключается через --hostlist= если выполнено хотя бы одно:
+//  1. state.DPITargets непустой (явные домены от пользователя);
+//  2. /opt/etc/sign-craze/dpi-hostlist.txt существует на диске (auto-update
+//     создал файл из upstream-источников; см. dpi.UpdateHostlist).
+//
+// Без проверки (2) auto-update скачивает файл, но nfqws2 запускается без
+// --hostlist и десинкает весь трафик — теряется selective-эффект.
 func newDPILifecycleFromState(st *state.State, iface string) service.Lifecycle {
 	params := dpi.DefaultConfigParams()
 	params.ISPInterface = iface
 	if st != nil && st.DPIStrategy != "" {
 		params.Args = st.DPIStrategy
 	}
-	if st != nil && len(st.DPITargets) > 0 {
+	if hostlistShouldApply(st) {
 		params.HostlistPath = dpi.DefaultHostlistPath
 	}
 	return dpi.NewLifecycle(dpi.DefaultBinPath, params, dpi.DefaultPIDFile)
+}
+
+// hostlistShouldApply возвращает true если nfqws2 должен запускаться с
+// --hostlist=. Условие: явные DPITargets, либо файл уже создан auto-update'ом.
+func hostlistShouldApply(st *state.State) bool {
+	if st != nil && len(st.DPITargets) > 0 {
+		return true
+	}
+	if _, err := os.Stat(dpi.DefaultHostlistPath); err == nil {
+		return true
+	}
+	return false
 }
 
 // newFirewallApplier строит Applier из state: пробрасывает ports/excludes/admin
