@@ -236,6 +236,17 @@ sign-craze --dpi-targets discord.com,youtube.com,googlevideo.com
 sign-craze --dpi-targets clear
 ```
 
+#### Инвариант: hostlist apply без явных DPITargets (v0.8.2)
+
+`nfqws2` запускается с флагом `--hostlist=<path>` если выполнено хотя бы одно
+условие:
+- `state.dpi_targets` непуст, **или**
+- файл `/opt/etc/sign-craze/dpi-hostlist.txt` существует на диске.
+
+Без второго условия auto-update создавал бы файл hostlist, но nfqws2 его не
+читал (флаг не передавался), пока в `dpi_targets` не добавить хотя бы одну
+запись вручную.
+
 ### `--dpi-targets-list`
 
 Печатает текущий список DPI targets (один на строку) либо сообщение, что desync
@@ -273,16 +284,15 @@ URL-источники для auto-update hostlist (B.3). Каждый URL до�
 Рекомендованные источники (в `dpi.DefaultUpdateURLs`):
 
 ```
-https://raw.githubusercontent.com/bol-van/zapret/master/ipset/zapret-hosts-user.txt.example
-https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/lists/list-youtube.txt
-https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/lists/list-discord.txt
+https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/lists/list-general.txt
+https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/lists/list-google.txt
 ```
 
 `clear` отключает auto-update.
 
 ### `--dpi-update-interval <часы>`
 
-Период auto-update hostlist в часах. `0` — выключено, рекомендуется `24`.
+Период auto-update hostlist в часах. `0` — выключено. Умолчание: `24`.
 Watchdog-демон (`--service-watchdog`) проверяет `state.dpi_last_update`
 раз в час и запускает обновление, если прошло больше `interval`.
 
@@ -290,6 +300,14 @@ Watchdog-демон (`--service-watchdog`) проверяет `state.dpi_last_up
 
 Принудительный одноразовый запуск UpdateHostlist. Использует список из
 `state.dpi_update_urls`. После успеха обновляет `state.dpi_last_update`.
+
+#### Resilient DNS для UpdateHostlist (v0.8.1)
+
+Скачивание hostlist использует `net.Resolver{PreferGo: true}` с кастомным
+`Dial`-цепочкой: системный resolver → fallback `1.1.1.1:53` → `9.9.9.9:53` →
+`8.8.8.8:53`. Применяется **только** к HTTP-запросам auto-update URLs.
+Обычные DNS-резолвы sign-craze (sing-box, outbound.server) идут через системный
+resolver без override — пользовательский DNSCrypt/DoH сохраняется.
 
 ### `--core-list`
 
@@ -583,14 +601,18 @@ Hook фильтрует event'ы по `type`/`table` (только mangle и ips
 
 `--reapply` — hidden CLI-команда:
 
-1. Non-blocking flock на `/opt/var/lock/sign-craze.lock`. При занятой блокировке
+1. **Throttle 5 s** (v0.8.0): проверяет mtime маркера
+   `/opt/var/run/sign-craze-reapply.last`. Если с последнего reapply прошло
+   менее 5 с — exit 0. NDM netfilter.d hook генерирует пачку 5–10 вызовов за
+   секунду при NDM-событиях; throttle предотвращает шторм reapply на медленном
+   MIPS softfloat. После успешного apply маркер обновляется через `os.Chtimes`.
+2. Non-blocking flock на `/opt/var/lock/sign-craze.lock`. При занятой блокировке
    (другой mutator работает) — exit 0; mutator сам сделает Apply.
-2. Status sing-box: если процесс не запущен — exit 0 (правила без живого TUN
+3. Status sing-box: если процесс не запущен — exit 0 (правила без живого TUN
    маршрутизировали бы в несуществующий dev).
-3. `applierImpl.Apply(ctx, mode)` идемпотентно восстанавливает chain'ы и
-   правила. Не вызывает `AttachTUN` (TUN жив пока sing-box жив; default-route
-   в table 83 NDM не трогает).
-4. Все ошибки логируются как Warn, exit 0 ВСЕГДА — hook не должен ломать
+4. `Applier.Reconcile(ctx, mode)` — idempotent re-apply (не `Apply`): не
+   выполняет pre-flight проверки и auto-rollback. Не вызывает `AttachTUN`.
+5. Все ошибки логируются как Warn, exit 0 ВСЕГДА — hook не должен ломать
    обработку NDM event-chain.
 
 `--uninstall` удаляет hook вместе с другими установленными файлами.
@@ -678,6 +700,15 @@ Watchdog — автономный демон, запускаемый init.d shim
 
 **Lifecycle**: watchdog запускается shim'ом при старте Entware и остаётся живым независимо от состояния `--ui on/off`. Завершается при `S99signcraze stop`.
 
+### Миграция routing.json TUN→TPROXY (v0.8.3)
+
+При генерации конфига sing-box (`configParamsFromState`) если `state.inbound =
+tproxy`, функция фильтрует TUN-inbound из `RoutingConfig.Inbounds` (тип `"tun"`)
+и пересохраняет `routing.json`. Это устраняет проблему установок v0.6.x→v0.8.x:
+после апгрейда до tproxy bootstrap мог оставить TUN inbound в routing.json, из-за
+чего sing-box стартовал в TUN-режиме, тогда как iptables направляли marked трафик
+в `127.0.0.1:7895` (TPROXY-порт), где никто не слушал.
+
 ### `--stop` при уже остановленном сервисе
 
 Идемпотентно. Если PID-файл отсутствует или процесс не найден: логирует INFO "не запущен", выходит с кодом 0.
@@ -723,7 +754,8 @@ SIGHUP-перезагрузки нет. Изменения конфига тре
     │       └── sing-box.log
     └── run/
         ├── sign-craze-singbox.pid
-        └── sign-craze-nfqws2.pid
+        ├── sign-craze-nfqws2.pid
+        └── sign-craze-reapply.last   # mtime-маркер throttle --reapply (v0.8.0)
 ```
 
 ---

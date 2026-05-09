@@ -168,6 +168,78 @@ watchdog loop (горутина):
 - Это исключает каскадный reapply при одновременных внешних событиях (перезапуск
   init.d shim, watchdog-тик).
 
+## DNS fallback chain (v0.8.1)
+
+Применяется **только** к HTTP-клиенту в `dpi.UpdateHostlist` — не затрагивает DNS,
+используемый sing-box или другими подсистемами sign-craze.
+
+Корень проблемы: на Keenetic DNSCrypt-Entware занимает `127.0.0.1:53` и фильтрует
+`raw.githubusercontent.com` (CDN Fastly попадал в blocklists 2024–2026).
+Стандартный `net.DefaultResolver` молча получал NXDOMAIN, и обновление hostlist падало.
+
+`internal/dpi/update.go::resilientResolver` — кастомный `net.Resolver` с
+`PreferGo: true` и цепочкой fallback-серверов в `Dial`:
+
+```plain
+resilientResolver.LookupHost(host):
+  попытка 1 → системный резолвер (127.0.0.1:53, DNSCrypt-Entware)
+  попытка 2 → 1.1.1.1:53   (Cloudflare)
+  попытка 3 → 9.9.9.9:53   (Quad9)
+  попытка 4 → 8.8.8.8:53   (Google)
+  каждая попытка timeout=5s; первый успешный ответ возвращается немедленно
+```
+
+`http.Client` в `UpdateHostlist` получает кастомный `Transport` с этим резолвером
+через `DialContext`. Исходящие HTTP-запросы идут напрямую (минуя политику sing-box).
+
+Файл: `internal/dpi/update.go`
+
+## Hostlist apply rule (v0.8.2)
+
+`internal/cli/deps.go::hostlistShouldApply()` — предикат, определяющий, нужно ли
+передавать `--hostlist=<path>` в аргументы запуска nfqws2.
+
+Логика:
+
+```plain
+hostlistShouldApply(state, path) bool:
+  state.DPITargets непуст  →  true  (явные цели, hostlist актуален)
+  файл path существует     →  true  (файл уже есть — пусть nfqws2 использует)
+  иначе                    →  false (hostlist не передаётся)
+```
+
+До v0.8.2 `auto-update` мог записать `dpi-hostlist.txt`, но если `state.DPITargets`
+был пуст (цели не настроены), nfqws2 запускался без `--hostlist` и игнорировал файл.
+Теперь наличие файла само по себе является достаточным условием.
+
+Файл: `internal/cli/deps.go`
+
+## Routing config migration (v0.8.3)
+
+`internal/cli/deps.go::configParamsFromState()` выполняет однократную миграцию
+`/opt/etc/sign-craze/routing.json` при обнаружении устаревшей конфигурации.
+
+Корень проблемы: при обновлении v0.6.x → v0.8.x routing.json мог содержать TUN-inbound
+(`"type":"tun"`), оставшийся от bootstrap. Метод `Render()` проверял inbound-режим
+по `state.Inbound` и при `"tproxy"` ожидал TPROXY-inbound, но пропускал инъекцию,
+если TUN-запись уже присутствовала. Результат: sing-box стартовал в TUN-режиме,
+слушал `127.0.0.1:7895` — НИКТО НЕ СЛУШАЛ → TCP reset для всего fwmark-трафика.
+
+```plain
+configParamsFromState(state):
+  если state.Inbound == "tproxy":
+    загрузить routing.json
+    отфильтровать inbounds с type=="tun"
+    если фильтрация что-то удалила:
+      atomicfs.Write(routing.json, обновлённый конфиг)
+      slog.Info("migrated: removed stale tun inbound")
+  вернуть configParams
+```
+
+Миграция идемпотентна: повторный вызов ничего не меняет, если TUN-inbound уже удалён.
+
+Файл: `internal/cli/deps.go`
+
 ## Идентификаторы
 
 | Элемент | Значение |

@@ -128,6 +128,13 @@ sign-craze --diag            # 2. PASS/WARN/FAIL по 12 проверкам
 | YouTube не открывается на TV/STB/PC — SNI блокируется ISP | Устройство не получает mark `0x53`: не входит в Keenetic policy «sign-craze», nfqws2 не обрабатывает его трафик | `iptables -t mangle -nvL signcraze_policy` — строка с IP устройства отсутствует | Добавить устройство в policy «sign-craze» в Keenetic UI (Приоритеты подключений). Альтернатива: расширить список обхода через `sign-craze --dpi-update-urls <url> --restart` |
 | Reality VPN handshake ломается у downstream-устройства (Beelink/RPi4) с собственным VPN-клиентом к тому же эндпоинту | nfqws2 в POSTROUTING десинкает TLS ClientHello к VPN-серверу; пакеты к VPN-IP попадают в NFQUEUE и модифицируются | `iptables -t mangle -nvL \| grep NFQUEUE` — счётчик растёт на трафике к VPN-IP | `sign-craze --dpi-exclude-ips <vpn_ip> --restart` — добавляет RETURN-правило перед NFQUEUE для указанного IP. Автоматически: IP первого `outbound.server` из конфига резолвится best-effort и исключается при старте |
 | NFQUEUE счётчик UDP/443 = 0 (в выводе `iptables -t mangle -nvL`) | В v0.8.0 jump имеет `-o $WAN_IFACE`: QUIC-трафик устройств в policy уходит через TPROXY до POSTROUTING, минуя цепочку на `eth3` | `iptables -t mangle -nvL \| grep NFQUEUE` | Нормальное поведение v0.8.0. Если QUIC-клиентов нет в policy и счётчик всё равно 0 — проверить `sign-craze --diag` |
+| После `--dpi-update-now` файл `dpi-hostlist.txt` создан, но nfqws2 десинкает ВЕСЬ трафик, а не только хосты из листа | До v0.8.2 nfqws2 получал `--hostlist=<path>` только если `state.dpi_targets` непуст. Auto-update создавал файл на диске, но не дописывал `DPITargets` — selective-режим не активировался | `ps -ef \| grep nfqws2` — аргументы без `--hostlist=` | Обновиться до v0.8.2+ (auto-detect файла на диске). Временный fix: `sign-craze --dpi-targets youtube.com,googlevideo.com --restart` |
+
+### Миграция и upgrade
+
+| Симптом | Вероятная причина | Команда проверки | Fix |
+| --------- | ------------------- | ----------------- | ----- |
+| После upgrade v0.6.x → v0.8.x: `state.inbound=tproxy`, интернет не работает, marked-трафик от LAN-клиентов получает RST; `netstat -tlnp \| grep 7895` пуст | Legacy `routing.json` от v0.6.x bootstrap содержал TUN-inbound (`auto_route:true, stack:system, signbox-tun`). `Render()` видел `RoutingConfig.Inbounds` непустым и пропускал TPROXY-инъекцию; sing-box стартовал с TUN, iptables направляли marked-пакеты на `127.0.0.1:7895` где никто не слушал → RST | `cat /opt/etc/sign-craze/routing.json \| jq '.inbounds'` — есть `"type":"tun"` при `state.inbound=tproxy`; `netstat -tlnp \| grep sing-box` показывает TUN, не TPROXY | С v0.8.3 авто-миграция в `configParamsFromState()`. Manual fix для застрявших установок: `jq 'del(.inbounds)' /opt/etc/sign-craze/routing.json > /tmp/r && mv /tmp/r /opt/etc/sign-craze/routing.json && sign-craze --restart` |
 
 ### Логи и служебные события
 
@@ -140,6 +147,7 @@ sign-craze --diag            # 2. PASS/WARN/FAIL по 12 проверкам
 | Симптом | Вероятная причина | Команда проверки | Fix |
 | --------- | ------------------- | ----------------- | ----- |
 | Hostlist auto-update не срабатывает | `dpi_update_urls` пустой или `dpi_update_interval_hours = 0`; watchdog goroutine стартует с задержкой 5 минут после `--service-watchdog` (прогрев DNS/NTP) | `grep "dpi updater" /opt/var/log/sign-craze/sign-craze.log` — нет записей | Убедиться что в state заданы непустой `dpi_update_urls` и `dpi_update_interval_hours > 0` (рекомендуется 24). Принудительное обновление: `sign-craze --dpi-update-now` |
+| `--dpi-update-now` падает с `no such host` или `i/o timeout` для `raw.githubusercontent.com` | Keenetic DNSCrypt-Entware на `127.0.0.1:53` фильтрует Fastly CDN, на которой хостится `raw.githubusercontent.com`, либо системный resolver недоступен | `nslookup raw.githubusercontent.com` — SERVFAIL/NXDOMAIN или таймаут; `nslookup raw.githubusercontent.com 1.1.1.1` — возвращает IP | С v0.8.1 встроен fallback на `1.1.1.1`/`9.9.9.9`/`8.8.8.8` — обновиться до v0.8.1+ |
 
 ---
 

@@ -117,12 +117,12 @@ go test -tags=integration -v -timeout 60s ./internal/firewall/...
 
 **Файл:** `internal/cli/cmd_reapply_test.go`
 
-| Тест                                      | Что проверяет                                          |
-|-------------------------------------------|--------------------------------------------------------|
-| `TestReapplyThrottle_NoMarker_NotThrottled`   | Без маркера — reapply не дросселируется                |
-| `TestReapplyThrottle_RecentMarker_Throttled`  | Маркер 1с назад при пороге 5с → дросселируется         |
-| `TestReapplyThrottle_OldMarker_NotThrottled`  | Маркер 10с назад при пороге 5с → не дросселируется     |
-| `TestReapplyThrottlePeriod_Sane`              | Период throttle в допустимом диапазоне [1с, 60с]       |
+| Тест                                      | Что проверяет                                                    |
+|-------------------------------------------|------------------------------------------------------------------|
+| `TestReapplyThrottled_FirstRun`           | Отсутствие маркера → false (дросселирование не срабатывает)      |
+| `TestReapplyThrottled_Recent`             | Недавний reapply → true (пропустить повтор)                      |
+| `TestReapplyThrottled_Old`                | Старый маркер → false (повтор разрешён)                          |
+| `TestTouchReapplyMarker_CreatesFile`      | Создаёт файл-маркер если отсутствует                             |
 
 ---
 
@@ -137,6 +137,8 @@ go test -tags=integration -v -timeout 60s ./internal/firewall/...
 | `TestShouldUpdate_Disabled`   | Интервал обновления = 0 или -1 → обновление отключено              |
 | `TestShouldUpdate_NeverUpdated` | Пустой или битый timestamp → обновление нужно                    |
 | `TestShouldUpdate_Threshold`  | Свежий timestamp → пропустить, старый → обновить                   |
+| `TestResilientResolver_NotNil`    | DNS-резолвер не nil после инициализации (sanity)                |
+| `TestFallbackDNSServers_NotEmpty` | Список fallback DNS-серверов не пустой (sanity)                 |
 
 ---
 
@@ -144,13 +146,13 @@ go test -tags=integration -v -timeout 60s ./internal/firewall/...
 
 **Файл:** `internal/firewall/modes/policy_dpi_test.go`
 
-| Тест                                                      | Что проверяет                                                  |
-|-----------------------------------------------------------|----------------------------------------------------------------|
-| `TestPolicyDPIRules_БезWANInterface_JumpБезФильтра`       | Back-compat: jump без флага `-o` при отсутствии WAN-интерфейса |
-| `TestPolicyDPIRules_СWANInterface_JumpСодержитO`          | При WAN-интерфейсе (eth3) jump содержит `-o eth3`              |
-| `TestPolicyDPIRules_VPNExcludeIPs_RETURNПередNFQUEUE`    | Для каждого exclude-IP генерируется правило RETURN перед NFQUEUE |
-| `TestPolicyDPIRules_VPNExcludeIPs_ПустыеСтрокиИгнорируются` | Пустые строки в exclude-списке игнорируются (sanitize)      |
-| `TestPolicyDPIRules_СчётчикПравил`                        | Итоговый счётчик: excludes + tcp + udp + 1 jump               |
+| Тест                                                      | Что проверяет                                                    |
+|-----------------------------------------------------------|------------------------------------------------------------------|
+| `TestPolicyDPIRules_HasWANInterfaceFilter`                | Jump-правило содержит флаг `-o $WAN_IFACE`                       |
+| `TestPolicyDPIRules_BackwardCompat_EmptyWAN`              | Пустой wanIface → jump без флага `-o` (back-compat)              |
+| `TestPolicyDPIRules_VPNExcludeIPsBeforeNFQUEUE`          | RETURN-правила для VPN-exclude генерируются перед NFQUEUE        |
+| `TestPolicyDPIRules_VPNExcludeIPsEmpty`                   | Без exclude-IP цепочка не содержит лишних RETURN-правил          |
+| `TestPolicyDPIRules_OrderInvariant`                       | Порядок: все RETURN строго до NFQUEUE-правил                     |
 
 ---
 

@@ -494,7 +494,7 @@ cat /opt/var/log/sign-craze/boot.log >> /tmp/diag.txt
 
 ---
 
-## 13. Deploy v0.8.0 на Keenetic
+## 13. Deploy v0.8.x на Keenetic
 
 > **BusyBox `wget` не поддерживает HTTPS на Entware.** Для загрузки обязательно нужен `/opt/bin/curl` (из пакета `curl`). Убедитесь, что пакет установлен: `opkg install curl`.
 
@@ -508,9 +508,10 @@ cat /opt/var/log/sign-craze/boot.log >> /tmp/diag.txt
 
 ```bash
 ARCH=mips  # подставить нужную архитектуру
+VERSION=v0.8.3  # целевая версия
 ssh -p 222 root@<router> "
-  /opt/bin/curl -fsSL -o /tmp/sc.new https://github.com/kittylabassistant/sign-craze/releases/download/v0.8.0/sign-craze-${ARCH} &&
-  /opt/bin/curl -fsSL -o /tmp/sc.sha https://github.com/kittylabassistant/sign-craze/releases/download/v0.8.0/sign-craze-${ARCH}.sha256 &&
+  /opt/bin/curl -fsSL -o /tmp/sc.new https://github.com/kittylabassistant/sign-craze/releases/download/${VERSION}/sign-craze-${ARCH} &&
+  /opt/bin/curl -fsSL -o /tmp/sc.sha https://github.com/kittylabassistant/sign-craze/releases/download/${VERSION}/sign-craze-${ARCH}.sha256 &&
   cd /tmp && sha256sum -c sc.sha &&
   mv /opt/sbin/sign-craze /opt/sbin/sign-craze.bak &&
   mv /tmp/sc.new /opt/sbin/sign-craze &&
@@ -523,7 +524,7 @@ ssh -p 222 root@<router> "
 
 ```sh
 sign-craze --version
-# → v0.8.0
+# → v0.8.3
 
 sign-craze --status
 # → sing-box+nfqws2 запущены
@@ -602,9 +603,9 @@ iptables -t mangle -L signcraze_policy_dpi -n -v | grep RETURN
 
 ---
 
-## 16. Rollback v0.8.0
+## 16. Rollback v0.8.x
 
-Если после deploy v0.8.0 возникли проблемы — откат к предыдущему бинарю (`sign-craze.bak`):
+Если после deploy возникли проблемы — откат к предыдущему бинарю (`sign-craze.bak`):
 
 ```bash
 ssh root@<router> "/opt/sbin/sign-craze --stop && mv /opt/sbin/sign-craze /tmp/sc.failed && mv /opt/sbin/sign-craze.bak /opt/sbin/sign-craze && /opt/sbin/sign-craze --start"
@@ -617,4 +618,98 @@ sign-craze --version
 sign-craze --status
 ```
 
-> Если `.bak` отсутствует — восстановить через `--install-offline` или скачать нужную версию из GitHub Releases вручную (см. секцию [13. Deploy v0.8.0](#13-deploy-v080-на-keenetic)).
+> Если `.bak` отсутствует — восстановить через `--install-offline` или скачать нужную версию из GitHub Releases вручную (см. секцию [13. Deploy v0.8.x](#13-deploy-v08x-на-keenetic)).
+
+---
+
+## 17. Verify и migration после upgrade с v0.6.x
+
+### Проверка inbound-конфига
+
+```sh
+netstat -tlnp | grep 7895
+# Ожидаемо: sing-box LISTEN на TCP+UDP 0.0.0.0:7895
+# Если пусто — возможна проблема с TUN-inbound
+```
+
+Если `netstat` не показывает порт — проверить наличие TUN-inbound в `routing.json`:
+
+```sh
+cat /opt/etc/sign-craze/routing.json | jq '.inbounds'
+# Если вывод непустой и содержит type:"tun" — migration не сработала автоматически
+```
+
+**Ручное исправление:**
+
+```sh
+jq 'del(.inbounds)' /opt/etc/sign-craze/routing.json > /tmp/r && \
+  mv /tmp/r /opt/etc/sign-craze/routing.json && \
+  sign-craze --restart
+```
+
+После перезапуска повторно проверить `netstat -tlnp | grep 7895`.
+
+### Проверка hostlist auto-update
+
+```sh
+ls -la /opt/etc/sign-craze/dpi-hostlist.txt
+# Файл должен появиться через 24h после установки или после --dpi-update-now
+
+wc -l /opt/etc/sign-craze/dpi-hostlist.txt
+# Ожидаемо: десятки–сотни строк
+```
+
+### Проверка DNS fallback (v0.8.1+)
+
+Если системный resolver возвращает SERVFAIL для github.com (например, DNSCrypt фильтрует upstream) — `--dpi-update-now` должен использовать fallback DNS и завершаться успешно:
+
+```sh
+sign-craze --dpi-update-now
+# Ожидаемо: успешно скачан hostlist, обновлён счётчик строк
+# При SERVFAIL на системном resolver — fallback DNS подхватывает автоматически
+```
+
+---
+
+## 18. CLI auto-update hostlist
+
+Управление автоматическим обновлением DPI-hostlist из внешних источников.
+
+**Установить интервал (часы):**
+
+```sh
+sign-craze --dpi-update-interval 24
+```
+
+**Задать источники (URL через запятую):**
+
+```sh
+sign-craze --dpi-update-urls "https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/lists/list-general.txt,https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/lists/list-youtube.txt"
+```
+
+**Принудительное обновление немедленно:**
+
+```sh
+sign-craze --dpi-update-now
+```
+
+**VPN-исключения — RETURN перед NFQUEUE:**
+
+```sh
+sign-craze --dpi-exclude-ips "1.2.3.4,5.6.7.8"
+sign-craze --restart
+```
+
+**Проверить текущий список исключений:**
+
+```sh
+sign-craze --dpi-exclude-ips-list
+```
+
+| Флаг | Описание |
+|------|----------|
+| `--dpi-update-interval` | Интервал авто-обновления в часах |
+| `--dpi-update-urls` | Список URL через запятую — источники hostlist |
+| `--dpi-update-now` | Скачать hostlist немедленно, не ждать таймера |
+| `--dpi-exclude-ips` | IP-адреса через запятую — RETURN перед NFQUEUE |
+| `--dpi-exclude-ips-list` | Показать текущие исключения |
