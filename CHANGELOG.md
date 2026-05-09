@@ -5,6 +5,17 @@
 
 ---
 
+## [0.8.2] — 2026-05-09
+
+### Fixed
+- **Hostlist применяется при auto-update без явных `DPITargets`**: ранее `--hostlist=<path>` ставился только при непустом `state.dpi_targets`. Теперь подключается и если файл `/opt/etc/sign-craze/dpi-hostlist.txt` существует на диске (создан auto-update'ом). Без фикса selective-DPI после `--dpi-update-urls` не работал.
+- **`DefaultUpdateURLs` исправлены** на актуальные пути: `Flowseal/zapret-discord-youtube/lists/list-general.txt` и `list-google.txt` (не существующие `list-discord.txt`/`list-youtube.txt`). `bol-van/zapret` исключён из дефолтов — в master нет static hostlist, всё генерируется shell-скриптами.
+
+## [0.8.1] — 2026-05-09
+
+### Fixed
+- **Resilient DNS resolver для UpdateHostlist**: Keenetic + DNSCrypt-Entware на `127.0.0.1:53` могут фильтровать `raw.githubusercontent.com` (наблюдалось при v0.8.0 deploy). UpdateHostlist теперь использует `net.Resolver` с custom Dial: системный nameserver → fallback `1.1.1.1:53` → `9.9.9.9:53` → `8.8.8.8:53`. Применимо ТОЛЬКО к auto-update; обычный DNS sign-craze идёт через системный resolver.
+
 ## [0.8.0] — 2026-05-09
 
 ### Added

@@ -294,13 +294,17 @@ func ShouldUpdate(lastUpdate string, intervalHours int) bool {
 }
 
 // DefaultUpdateURLs — рекомендованный стартовый набор источников.
-// bol-van/zapret — апстрим nfqws/zapret (MIT), files обновляются эпизодически.
-// flowseal/zapret-discord-youtube — community-листы для актуальных DPI-блоков
-// Discord+YouTube в РФ, обновляются регулярно.
+// Flowseal/zapret-discord-youtube — community-листы для актуальных DPI-блоков
+// в РФ, обновляются регулярно. list-general.txt — Discord/Cloudflare/CDN
+// домены (~80 шт), list-google.txt — YouTube/Google services (~10 шт).
+//
+// bol-van/zapret в master не имеет static hostlist — все списки генерируются
+// shell-скриптами на основе других источников (antifilter, antizapret),
+// поэтому в DefaultUpdateURLs он не включён.
+//
 // Эти URL показываются юзеру в --help/install как пример; реальная подписка —
 // через `--dpi-update-urls <urls>`.
 var DefaultUpdateURLs = []string{
-	"https://raw.githubusercontent.com/bol-van/zapret/master/ipset/zapret-hosts-user.txt.example",
-	"https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/lists/list-youtube.txt",
-	"https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/lists/list-discord.txt",
+	"https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/lists/list-general.txt",
+	"https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/lists/list-google.txt",
 }
