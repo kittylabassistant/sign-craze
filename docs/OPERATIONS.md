@@ -205,6 +205,74 @@ sign-craze --core-install mihomo
 
 ---
 
+## 5а. Multi-core operations (v1.0.0+)
+
+### Переключение ядра
+
+```sh
+sign-craze --core xray
+sign-craze --restart
+sign-craze --status        # active core: xray
+```
+
+`--restart` вызывает `ensureConfigFreshForCore` — генерирует `config.json` (или эквивалент) для **активного** ядра и только для него. Если до смены работал `sing-box`, его конфиг при переключении на `xray` не трогается и не используется при старте.
+
+### routing.json — core-agnostic
+
+`routing.json` не привязан к конкретному ядру. Он описывает routing-политику (inbound, outbounds, правила) на нейтральном уровне, а `Apply` транслирует его в формат активного ядра:
+
+| Ядро | Формат конфига | Метод трансляции routing.json |
+|------|---------------|-------------------------------|
+| `sing-box` | JSON (config.json) | прямой маппинг, SRS rule-set |
+| `xray` | JSON (config.json) | `geosite:`/`geoip:` prefix-матчер; `rule_set` не пишется |
+| `mihomo` | YAML (config.yaml) | `.mrs` → `rule-providers` секция |
+
+Правила из `routing.json` переносятся при смене ядра без изменений — никакой ручной правки не требуется.
+
+### Что делает Apply per-core
+
+**`--restart` (или Apply после `--core <name>`):**
+
+1. `ensureConfigFreshForCore` определяет активное ядро через `state.Core`.
+2. Генерирует конфиг ядра из `routing.json` + `state.json`.
+3. Для **xray**: `rule_set` URL-источники транслируются в `geosite:` / `geoip:` матчеры; `.dat`-файлы ядро ищет сам.
+4. Для **mihomo**: `.srs` URL конвертируется в `.mrs` и прописывается в `rule-providers`.
+5. Для **sing-box**: `.srs` rule-set передаётся напрямую; TUN inbound создаётся если `needsTUN(core) == true`.
+6. Firewall (iptables/ipset) применяется через единый `Applier.Apply` — не зависит от ядра.
+
+### Presets per-core
+
+Web UI (`:9092`) и `--preset` транслируют preset-источники через per-core таблицу соответствия (`ruleSetSources`). URL пресета резолвится через `c.GeoFormat()` — правильный формат выбирается автоматически:
+
+| Preset-источник | sing-box | xray | mihomo |
+|----------------|----------|------|--------|
+| geoip-ru | `.srs` URL | `geoip:ru` | `.mrs` URL |
+| geosite-category-ads | `.srs` URL | `geosite:category-ads` | `.mrs` URL |
+| custom domain list | inline domains | inline domains | inline domains |
+
+Для смены preset после переключения ядра: откройте Web UI `:9092`, выберите preset, нажмите Apply — конфиг активного ядра будет перегенерирован.
+
+### Несовместимости — warnings, не блокировки
+
+`POST /api/validate` (и Web UI) поверхностно проверяют routing.json на несовместимости с активным ядром и возвращают warnings в JSON, но **не блокируют Apply**:
+
+| Условие | Ядро | Уровень |
+|---------|------|---------|
+| TUN inbound в routing.json | xray, mihomo | warning |
+| `.srs` URL в rule_set | xray | warning (нет поддержки SRS) |
+| `.dat`-URL в rule_set | sing-box | warning |
+
+Чтобы убрать warning TUN-inbound при переходе на xray — переапплите preset из Web UI: конфиг пересоздастся без TUN.
+
+**Проверка:**
+
+```sh
+sign-craze --status    # active core: xray|mihomo|sing-box
+curl http://localhost:9092/api/validate   # проверить warnings
+```
+
+---
+
 ## 6. Backup / Restore
 
 ### 6.1 Полный backup

@@ -85,6 +85,68 @@ RAM: nfqws2 ~3 MB RSS, sing-box 20-30 MB, sign-craze + watchdog ~10 MB. Итог
 
 Discord voice использует UDP/QUIC без TLS SNI в открытом виде — фильтр по hostname не срабатывает. Для voice/video нужны другие техники (например, маршрутизация через прокси-outbound через geosite-discord rule в sing-box).
 
+## Мульти-ядерность
+
+### Что такое мульти-ядерность и зачем?
+
+sign-craze поддерживает три взаимозаменяемых прокси-ядра. Выбор зависит от протокола:
+
+| Ядро | Когда использовать |
+|---|---|
+| **sing-box** (умолчание) | Большинство конфигураций: VLESS/VMess/Trojan/Shadowsocks, TUN-режим на стоковом ядре Keenetic |
+| **xray** | PQ-VLESS (постквантовое шифрование), Vision UDP443, xhttp packet-up режимы — сценарии жёсткого DPI |
+| **mihomo** | Hysteria2, TUIC, WireGuard — протоколы, нативно реализованные в mihomo/Meta |
+
+Переключение ядра:
+
+```sh
+sign-craze --core xray --restart     # переключиться на xray
+sign-craze --core sing-box --restart # вернуться обратно
+sign-craze --core-list               # показать доступные ядра
+```
+
+При переключении `routing.json` сохраняется без изменений — он core-agnostic. Каждое ядро читает один и тот же файл и переводит правила в свой нативный формат.
+
+### Routing UI работает с xray/mihomo одинаково как с sing-box?
+
+Да, начиная с v1.0.0. Web UI `:9092` полностью унифицирован: один и тот же редактор inbounds/outbounds/rules/presets работает для всех трёх ядер. Apply (`POST /api/apply`) генерирует конфиг активного ядра:
+- sing-box → `/opt/etc/sign-craze/config.json` (JSON)
+- xray → `/opt/etc/sign-craze/xray/config.json` (JSON)
+- mihomo → `/opt/etc/sign-craze/mihomo/config.yaml` (YAML)
+
+Preview соответственно отдаёт `application/json` для sing-box/xray и `application/yaml` для mihomo.
+
+Если routing.json содержит конструкции, несовместимые с активным ядром, кнопка **Validate** покажет предупреждения (не ошибки) — Apply при этом не блокируется.
+
+### Переключил ядро, Preview показывает warning — что делать?
+
+Самая частая причина: при переключении с sing-box на mihomo в `routing.json` остались URL с `.srs`-форматом rule_set, которые mihomo не поддерживает (ему нужны `.mrs`).
+
+Решение — повторно применить активный пресет для обновления URL под текущее ядро:
+
+1. Открыть `http://<router>:9092` → вкладка **Routing** → кнопка **Пресеты ▾**.
+2. Выбрать нужный пресет (например `sign-craze-default` или `ru-direct`) → нажать **Применить**.
+3. Нажать **Apply**.
+4. Выполнить `sign-craze --restart`.
+
+Пресет автоматически подставит правильные URL для активного ядра (`.srs` для sing-box, `.mrs` для mihomo, translation в matcher для xray).
+
+Либо через REST API:
+
+```sh
+curl -sX POST http://<router>:9092/api/presets/sign-craze-default/apply
+curl -sX POST http://<router>:9092/api/apply
+sign-craze --restart
+```
+
+### Почему пресет block-ads не работает на xray?
+
+Пресет `block-ads` использует rule_set `geosite-category-ads-all` из SagerNet/sing-geosite (`.srs` формат). Xray не использует механизм rule_set — вместо этого sign-craze автоматически транслирует `geosite-category-ads-all` в xray matcher `domain: ["geosite:category-ads-all"]`, что требует наличия `geosite.dat` на роутере.
+
+Если xray у вас работает через встроенные geosite/geoip данные — пресет будет работать. Если нет — Validate покажет warning `refilter rule_set без .dat-эквивалента`.
+
+Для надёжной блокировки рекламы на xray добавьте явное правило через **Routing → + Добавить** с полем `domain_keyword` или `domain_suffix`, либо переключитесь на sing-box (`--core sing-box`) где `.srs` работает нативно.
+
 ## Routing
 
 ### Как сделать чтобы РФ-сайты не шли через VPN?

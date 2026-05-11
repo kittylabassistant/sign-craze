@@ -256,4 +256,24 @@ type Asset struct {
 type CoreRenderParams struct {
 	Mode      Mode
 	Outbounds []Outbound
+
+	// RoutingConfig — пользовательский routing (inbounds/outbounds/rules/rule_sets).
+	// Если nil — ядро использует только Outbounds (legacy путь, backward compat
+	// для тестов и raw-CLI flows без routing.json).
+	//
+	// Каждое ядро транслирует RoutingConfig в свою натив-форму:
+	//   - sing-box: route.rules[]/inbounds[]/outbounds[] (1:1 mapping)
+	//   - xray:     routing.rules[] (RuleSet→geosite:/geoip: matchers, dokodemo-door inbound)
+	//   - mihomo:   rules:/rule-providers:/proxies: (TYPE,VALUE,ACTION format)
+	RoutingConfig *RoutingConfig
+
+	// InboundMode — режим входящего соединения: "tun" или "tproxy".
+	// Пустая строка — backward compat (sing-box: TUN; xray/mihomo: TProxy всегда).
+	// Управляется флагом state.Inbound. Эффективен только для sing-box (xray/mihomo
+	// игнорируют, у них inbound фиксированный).
+	InboundMode string
+
+	// DefaultOutboundTag — fallback тег для final outbound, если RoutingConfig.Final
+	// пустой. Берётся из state.Outbounds[0].Tag в CLI слое.
+	DefaultOutboundTag string
 }

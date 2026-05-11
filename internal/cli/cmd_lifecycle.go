@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -9,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
 	"github.com/kittylabassistant/sign-craze/internal/core"
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/firewall"
@@ -43,23 +41,15 @@ func doStart(ctx context.Context) error {
 		return fmt.Errorf("--start: %s не установлен (запустите --install)", c.Name())
 	}
 
-	// Рендеринг и запись конфига активного ядра.
+	// Рендеринг и запись конфига активного ядра — единый путь для всех ядер.
+	// ensureConfigFreshForCore читает routing.json, прокидывает CoreRenderParams
+	// (RoutingConfig + InboundMode + DefaultOutboundTag) в c.RenderConfig.
 	//
-	// Для sing-box сохраняем legacy-путь с fast-path оптимизацией:
-	// ensureConfigFresh пропускает `sing-box check -c` если конфиг
-	// на диске идентичен рендеру — это важно на slow MIPS softfloat,
-	// где `sing-box check` занимает десятки секунд.
-	//
-	// Для xray и mihomo используем новый путь: Core.RenderConfig(st) →
-	// fast-path bytes.Equal → atomicfs.WriteFileAtomic → CheckConfig.
-	if c.Name() == "sing-box" {
-		if regenErr := ensureConfigFresh(ctx, st); regenErr != nil {
-			return fmt.Errorf("--start: regenerate config: %w", regenErr)
-		}
-	} else {
-		if regenErr := renderAndWriteConfig(ctx, c, st); regenErr != nil {
-			return fmt.Errorf("--start: render config (%s): %w", c.Name(), regenErr)
-		}
+	// Fast-path bytes.Equal пропускает CheckConfig если конфиг идентичен — это
+	// важно на slow MIPS softfloat, где sing-box check / xray test / mihomo -t
+	// занимают десятки секунд.
+	if regenErr := ensureConfigFreshForCore(ctx, c, st); regenErr != nil {
+		return fmt.Errorf("--start: regenerate config (%s): %w", c.Name(), regenErr)
 	}
 
 	// В режиме ModePolicy: гарантировать наличие IP-policy в Keenetic RCI
@@ -87,12 +77,14 @@ func doStart(ctx context.Context) error {
 		log.L().Warn("--start: восстановление ipset не удалось", "err", rstErr)
 	}
 
-	// Pre-cleanup TUN — только для sing-box (xray/mihomo не создают TUN).
+	// Pre-cleanup TUN — только когда активное ядро создаёт TUN-интерфейс.
+	// sing-box при state.Inbound!="tproxy" создаёт signbox-tun; xray/mihomo
+	// всегда TProxy. needsTUN инкапсулирует эту логику.
 	// Убрать сталый signbox-tun если остался от предыдущего failed --start
 	// (sing-box убит SIGKILL до закрытия TUN fd, kernel на slow MIPS не успевает
 	// зачистить netdev). Без этого следующий sing-box падает FATAL: TUNSETIFF:
 	// device or resource busy.
-	if c.Name() == "sing-box" {
+	if needsTUN(c, st) {
 		firewall.ForceDeleteTUNDevice(ctx, exectx.OS, firewall.TUNDeviceName)
 	}
 
@@ -107,9 +99,9 @@ func doStart(ctx context.Context) error {
 		return fmt.Errorf("--start: %s: %w", c.Name(), startErr)
 	}
 
-	// TUN attach — только для sing-box. Дождаться появления TUN-интерфейса и
-	// установить default-route в нашу таблицу.
-	if c.Name() == "sing-box" {
+	// TUN attach — только когда ядро создаёт TUN. Дождаться появления
+	// TUN-интерфейса и установить default-route в нашу таблицу.
+	if needsTUN(c, st) {
 		if attachErr := applier.AttachTUN(ctx, firewall.TUNDeviceName); attachErr != nil {
 			// Подсветить причину: чаще всего sing-box упал или просто медленно
 			// инициализирует TUN. Tail sing-box.log даёт юзеру немедленный сигнал
@@ -180,19 +172,20 @@ func doStop(ctx context.Context) error {
 		log.L().Debug("--stop: core stop", "core", c.Name(), "err", err)
 	}
 
-	// Принудительно зачистить TUN-интерфейс — только для sing-box.
-	// На slow MIPS Keenetic kernel иногда не освобождает netdev сразу после
-	// kill sing-box — без этого следующий --start падает FATAL: TUNSETIFF:
-	// device or resource busy. Xray/mihomo не создают TUN-устройство.
-	if c.Name() == "sing-box" {
-		firewall.ForceDeleteTUNDevice(ctx, exectx.OS, firewall.TUNDeviceName)
-	}
-
 	// Удалить firewall — даже если state нечитаем.
 	st, err := loadState()
 	if err != nil {
 		st = state.Default()
 	}
+
+	// Принудительно зачистить TUN-интерфейс — только когда ядро создаёт TUN.
+	// На slow MIPS Keenetic kernel иногда не освобождает netdev сразу после
+	// kill — без этого следующий --start падает FATAL: TUNSETIFF: device or
+	// resource busy. Xray/mihomo (и sing-box+tproxy) TUN не создают.
+	if needsTUN(c, st) {
+		firewall.ForceDeleteTUNDevice(ctx, exectx.OS, firewall.TUNDeviceName)
+	}
+
 	applier, err := newFirewallApplier(st)
 	if err != nil {
 		return fmt.Errorf("--stop: firewall init: %w", err)
@@ -412,39 +405,20 @@ func lastSingboxLogLines(n int) string {
 	return strings.Join(lines, " | ")
 }
 
-// renderAndWriteConfig рендерит конфиг через Core.RenderConfig и атомарно
-// записывает его на диск. Реализует fast-path: если рендер байт-в-байт совпадает
-// с текущим содержимым файла — запись и CheckConfig пропускаются.
+// needsTUN сообщает, требуется ли TUN-интерфейс для активного ядра.
 //
-// Используется для ядер кроме sing-box (у которого свой optimised flow через
-// ensureConfigFresh + WriteConfig).
-func renderAndWriteConfig(ctx context.Context, c core.Core, st *state.State) error {
-	want, err := c.RenderConfig(types.CoreRenderParams{
-		Mode:      st.Mode,
-		Outbounds: st.Outbounds,
-	})
-	if err != nil {
-		return fmt.Errorf("render: %w", err)
+// Sing-box создаёт signbox-tun только когда state.Inbound!="tproxy" (если
+// явно tproxy — sing-box использует TPROXY inbound, TUN не нужен).
+// Xray и mihomo всегда работают через TProxy + fwmark, TUN не создают.
+//
+// Используется в doStart/doStop для условного TUN cleanup и AttachTUN.
+// Альтернатива (Core.Inbound() string в интерфейсе) хуже, потому что
+// решение зависит от state.Inbound, а интерфейс stateless.
+func needsTUN(c core.Core, st *state.State) bool {
+	if c == nil || c.Name() != "sing-box" {
+		return false
 	}
-
-	// Fast-path: если файл идентичен рендеру — пропускаем запись и check.
-	if got, readErr := os.ReadFile(c.ConfigPath()); readErr == nil {
-		if bytes.Equal(bytes.TrimSpace(got), bytes.TrimSpace(want)) {
-			return nil
-		}
-		log.L().Info("конфиг устарел, регенерация", "core", c.Name())
-	}
-
-	if writeErr := atomicfs.WriteFileAtomic(c.ConfigPath(), want, 0o640); writeErr != nil {
-		return fmt.Errorf("запись конфига: %w", writeErr)
-	}
-
-	if checkErr := c.CheckConfig(ctx, exectx.OS, c.ConfigPath()); checkErr != nil {
-		return fmt.Errorf("проверка конфига: %w", checkErr)
-	}
-
-	log.L().Info("конфиг записан", "core", c.Name(), "path", c.ConfigPath())
-	return nil
+	return st == nil || st.Inbound != "tproxy"
 }
 
 func waitDefaultRoute(ctx context.Context, timeout time.Duration) error {

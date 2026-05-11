@@ -6,11 +6,22 @@ import (
 	"fmt"
 	"net/netip"
 	"os"
+	"strings"
 
 	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
 	"github.com/kittylabassistant/sign-craze/internal/log"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
+
+// ValidCores — список валидных значений State.Core. Должен совпадать с
+// ядрами, зарегистрированными в registry (см. internal/cli/cores.go init()).
+// При добавлении нового ядра обновляйте здесь и в registry параллельно;
+// тест internal/cli/cores_sync_test.go ловит расхождение через core.Names().
+//
+// Не используем core.Names() напрямую: state-пакет должен быть foundation-уровня
+// без зависимостей на core (cli → state, cli → core; state → core нарушил бы
+// слоистую иерархию).
+var ValidCores = []string{"sing-box", "xray", "mihomo"}
 
 // DefaultPolicyName — имя IP-policy в Keenetic RCI для режима ModePolicy.
 const DefaultPolicyName = "sign-craze"
@@ -293,10 +304,16 @@ func (s *State) Validate() error {
 		}
 	}
 	if s.Core != "" {
-		switch s.Core {
-		case "sing-box", "xray", "mihomo":
-		default:
-			return fmt.Errorf("state: неизвестное ядро %q (допустимо: sing-box, xray, mihomo)", s.Core)
+		valid := false
+		for _, name := range ValidCores {
+			if s.Core == name {
+				valid = true
+				break
+			}
+		}
+		if !valid {
+			return fmt.Errorf("state: неизвестное ядро %q (допустимо: %s)",
+				s.Core, strings.Join(ValidCores, ", "))
 		}
 	}
 	if s.Inbound != "" {

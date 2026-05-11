@@ -60,12 +60,16 @@ func (coreImpl) ParseVersion(line string) (string, error) {
 // RenderConfig генерирует config.json xray из types.CoreRenderParams.
 // Canonical-данные берутся напрямую из Outbound.Protocol/Transport/TLS/Proto
 // (Phase D.4.2: OutboundCanonicals параллельная карта упразднена).
+//
+// Если rp.RoutingConfig задан — он используется как источник outbounds/rules
+// (приоритет над rp.Outbounds для outbound-списка, rp.Outbounds остаётся
+// fallback для legacy CLI flows без routing.json).
 func (coreImpl) RenderConfig(rp types.CoreRenderParams) ([]byte, error) {
 	p := DefaultConfigParams()
-	p.Outbounds = rp.Outbounds
+	p.Outbounds = effectiveOutbounds(rp)
 	// Собираем Canonicals из inline-полей каждого Outbound.
-	p.Canonicals = make(map[string]types.Canonical, len(rp.Outbounds))
-	for _, ob := range rp.Outbounds {
+	p.Canonicals = make(map[string]types.Canonical, len(p.Outbounds))
+	for _, ob := range p.Outbounds {
 		if ob.Protocol != "" {
 			p.Canonicals[ob.Tag] = types.Canonical{
 				Protocol:  ob.Protocol,
@@ -75,10 +79,34 @@ func (coreImpl) RenderConfig(rp types.CoreRenderParams) ([]byte, error) {
 			}
 		}
 	}
-	if len(rp.Outbounds) > 0 {
-		p.DefaultTag = rp.Outbounds[0].Tag
-	}
+	p.DefaultTag = effectiveDefaultTag(rp, p.Outbounds)
+	p.RoutingConfig = rp.RoutingConfig
 	return Render(p)
+}
+
+// effectiveOutbounds возвращает actual outbound-список для рендера.
+// Приоритет: RoutingConfig.Outbounds (если непустой) → rp.Outbounds.
+// Так xray UI на 9092 видит outbound'ы, добавленные через POST /api/outbounds.
+func effectiveOutbounds(rp types.CoreRenderParams) []types.Outbound {
+	if rp.RoutingConfig != nil && len(rp.RoutingConfig.Outbounds) > 0 {
+		return rp.RoutingConfig.Outbounds
+	}
+	return rp.Outbounds
+}
+
+// effectiveDefaultTag — final outbound tag. Приоритет:
+// rp.DefaultOutboundTag → RoutingConfig.Final → первый outbound.
+func effectiveDefaultTag(rp types.CoreRenderParams, outs []types.Outbound) string {
+	if rp.DefaultOutboundTag != "" {
+		return rp.DefaultOutboundTag
+	}
+	if rp.RoutingConfig != nil && rp.RoutingConfig.Final != "" {
+		return rp.RoutingConfig.Final
+	}
+	if len(outs) > 0 {
+		return outs[0].Tag
+	}
+	return ""
 }
 
 func (coreImpl) ValidateOutbound(ob types.Outbound) error {

@@ -40,9 +40,9 @@
 | `internal/selfupdate`       | ✅   | ❌          | ⚠️      | ✅            | `selfupdate/update_test.go`                                                                                 |
 | `internal/service`          | ✅   | ❌          | ⚠️      | ✅            | `service/{lifecycle,netfilter_hook,shim}_test.go`                                                           |
 | `internal/singbox`          | ✅   | ❌          | ⚠️      | ✅            | `singbox/{config,download,install,version}_test.go`                                                         |
-| `internal/state`            | ✅   | ❌          | ❌      | ❌            | `state/state_test.go`, `state/managers_test.go`                                                             |
+| `internal/state`            | ✅   | ❌          | ❌      | ❌            | `state/state_test.go`, `state/managers_test.go`, `state/cores_sync_test.go`                                 |
 | `internal/version`          | ✅   | ❌          | ❌      | ❌            | `version/version_test.go`                                                                                   |
-| `internal/web`              | ✅   | ❌          | ⚠️      | ✅            | `web/{api,auth,clash,server,ws}_test.go`                                                                    |
+| `internal/web`              | ✅   | ❌          | ⚠️      | ✅            | `web/{api,auth,clash,server,ws}_test.go`, `web/routingui_multicore_test.go`                                 |
 
 **Легенда:** ✅ покрыто / ❌ не покрыто / ⚠️ частично (сценарий в test-roadmap, не автоматизирован)
 
@@ -156,6 +156,25 @@ go test -tags=integration -v -timeout 60s ./internal/firewall/...
 
 ---
 
+## 4в. E2E тесты multi-core routing (v1.0.0)
+
+**Файл:** `internal/web/routingui_multicore_test.go`
+
+| Тест | Что покрывает |
+|------|---------------|
+| `TestE2E_FullFlow_Xray` | Полный цикл: загрузка routing.json → Apply с активным ядром xray → проверка, что config.json содержит dokodemo-door (tproxy), `rule_set` отсутствует, geosite/geoip матчеры присутствуют |
+| `TestE2E_FullFlow_Mihomo` | Полный цикл с mihomo: routing.json → Apply → config.yaml содержит `rule-providers` секцию с `.mrs` URL; TUN inbound не блокирует apply |
+| `TestE2E_PresetApply_PerCore` | Применение preset через `/api/routing/preset` при каждом из трёх ядер: URL резолвится через `c.GeoFormat()`, результирующий конфиг корректен для данного ядра |
+| `TestE2E_Validate_Warnings_XrayTunInbound` | `POST /api/validate` с routing.json, содержащим TUN inbound, при активном ядре xray: ответ содержит warning, HTTP 200 (не ошибка), Apply после validate не падает |
+
+**Файл:** `internal/state/cores_sync_test.go`
+
+| Тест | Что покрывает |
+|------|---------------|
+| `TestValidCores_SyncWithRegistry` | `state.ValidCores` package var содержит ровно те же ядра, что зарегистрированы в core registry — ловит drift при добавлении нового ядра без обновления ValidCores |
+
+---
+
 ## 5. E2E на железе (Phase 9.8 — открыт)
 
 **Устройство:** Keenetic KN-1810, mipsle, GOMIPS=softfloat.
@@ -197,6 +216,14 @@ go test -tags=integration -v -timeout 60s ./internal/firewall/...
 | `xray-check`              | golden canonical xray configs → `xray test`                         | push main, PR     |
 | `mihomo-check`            | golden canonical mihomo YAML → `mihomo -t`                          | push main, PR     |
 
+**Build-tag CI mapping:**
+
+| Build tag / CI job | Назначение |
+|-------------------|------------|
+| `singboxcheck` (CI `singbox-check`) | валидация canonical sing-box конфигов через `sing-box check` |
+| `xraycheck` (CI `xray-check`) | валидация canonical xray конфигов через `xray test` |
+| `mihomocheck` (CI `mihomo-check`) | валидация canonical mihomo YAML через `mihomo -t` |
+
 ### Что НЕ запускается в CI (ручная процедура)
 
 - E2E на железе (Keenetic KN-1810): `scripts/e2e/run.sh` — оркестрованный прогон на устройстве
@@ -219,6 +246,7 @@ go test -tags=integration -v -timeout 60s ./internal/firewall/...
 | Phase 8 — CLI-команды | ✅ | `cli/smoke_test.go`, `backup/`, `diag/`, `state/`, `ndm/`, `ghrelease/`, `selfupdate/`, `proxyparse/`, `service/netfilter_hook_test.go` |
 | Phase 9 — policy mode | 🚧 | `ndm/policy_test.go`, `ndm/wan_test.go` — unit. **E2E hardware: ❌** |
 | v0.8.0 — DPI update + policy-DPI rules + reapply throttle | ✅ | `dpi/update_test.go` (5 unit), `firewall/modes/policy_dpi_test.go` (5 unit), `cli/cmd_reapply_test.go` (4 unit) — все pass |
+| v1.0.0 — unified multi-core routing | ✅ | `web/routingui_multicore_test.go` (e2e), `state/cores_sync_test.go` (unit) — см. §4в |
 
 ---
 

@@ -2,7 +2,26 @@
 
 ## Концепция
 
-sign-craze управляет sing-box-маршрутизацией через файл `/opt/etc/sign-craze/routing.json`. Файл редактируется через UI на порту `:9092` либо напрямую в текстовом редакторе. После изменений sign-craze рендерит итоговый `/opt/etc/sign-craze/config.json` через шаблон `tun.json.tmpl` и перезапускает sing-box.
+sign-craze управляет маршрутизацией через единый файл `/opt/etc/sign-craze/routing.json`. Файл редактируется через UI на порту `:9092` либо напрямую в текстовом редакторе. После изменений sign-craze рендерит конфиг **активного прокси-ядра** и перезапускает его.
+
+Начиная с v1.0.0 routing.json является **core-agnostic**: он содержит универсальные правила, которые каждое ядро (sing-box, xray, mihomo) переводит в свой нативный формат при рендеринге. Переключение ядра не требует изменений routing.json.
+
+## Унифицированный routing для всех ядер
+
+Один и тот же файл `routing.json` работает для любого активного ядра. Flow выглядит так:
+
+1. Добавить rule в UI `:9092` (или через REST `POST /api/rules`).
+2. Нажать **Apply** (или `POST /api/apply`).
+3. sign-craze читает `routing.json`, определяет активное ядро и вызывает его адаптер.
+4. Адаптер переводит универсальные правила в нативный формат ядра и записывает конфиг.
+5. Запустить `sign-craze --restart`.
+
+Пример: правило `rule_set: ["geosite-youtube"], outbound: "direct"` превращается в:
+- **sing-box** → `"route": {"rules": [{"rule_set": ["geosite-youtube"], "outbound": "direct"}]}`
+- **xray** → `"routing": {"rules": [{"domain": ["geosite:youtube"], "outboundTag": "direct"}]}`
+- **mihomo** → строка `RULE-SET,geosite-youtube,DIRECT` в секции `rules:` + запись в `rule-providers:`
+
+Правило добавляется один раз — формат определяется ядром автоматически при Apply.
 
 ## Порты sign-craze
 
@@ -24,13 +43,16 @@ sign-craze управляет sing-box-маршрутизацией через �
 buildEffectiveModel (BaseRules + UserRules + Final)
            │
            ▼
-tun.json.tmpl → /opt/etc/sign-craze/config.json
-           │
-           ▼
-sing-box (требуется sign-craze --restart)
+    ┌──────┴──────┬──────────────────┐
+    ▼             ▼                  ▼
+sing-box       xray              mihomo
+config.json    xray/config.json  mihomo/config.yaml
+    │             │                  │
+    └──────────────▼─────────────────┘
+           активное ядро (требуется sign-craze --restart)
 ```
 
-После нажатия Apply в UI sign-craze применяет изменения в памяти, записывает `config.json` и сигнализирует о необходимости перезапустить sing-box командой `sign-craze --restart`. Без `--restart` новые правила в сетевой трафик не попадут.
+После нажатия Apply в UI sign-craze применяет изменения в памяти, записывает конфиг **активного ядра** и сигнализирует о необходимости перезапустить его командой `sign-craze --restart`. Без `--restart` новые правила в сетевой трафик не попадут.
 
 ## Быстрый рецепт: РФ-сайты напрямую, остальное через VPN
 
@@ -60,12 +82,29 @@ sing-box (требуется sign-craze --restart)
 
 ## Валидация
 
-Перед применением UI `:9092` запускает встроенный validate: проверяет теги outbound, синтаксис rule_set, дублирующиеся правила. Ошибки выводятся до записи файла — apply не происходит при невалидном состоянии.
+Перед применением UI `:9092` запускает встроенный validate: проверяет теги outbound, синтаксис rule_set, дублирующиеся правила. **Ошибки** (невалидный конфиг) блокируют apply. **Предупреждения** (несовместимые конструкции для активного ядра) отображаются в UI, но не блокируют Apply.
 
-Ручная валидация через CLI:
+Типичные предупреждения при смене ядра:
+- `rule_set URL .srs несовместим с mihomo — нужен .mrs` → повторно применить пресет
+- `TUN inbound несовместим с xray/mihomo` → TUN inbound игнорируется, используется TProxy
+- `refilter rule_set без эквивалента на xray` → правило пропускается для xray
+
+Ручная валидация через API:
 
 ```sh
+# Validate с показом предупреждений
+curl -sX POST http://router:9092/api/validate | jq '{ok, errors, warnings}'
+```
+
+Ручная валидация конфига ядра напрямую:
+
+```sh
+# sing-box
 sing-box check -c /opt/etc/sign-craze/config.json
+# xray
+xray test -c /opt/etc/sign-craze/xray/config.json
+# mihomo
+mihomo -t -d /opt/etc/sign-craze/mihomo/
 ```
 
 ## Применение изменений

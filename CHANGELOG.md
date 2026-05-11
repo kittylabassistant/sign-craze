@@ -5,6 +5,38 @@
 
 ---
 
+## [1.0.0] — 2026-05-12
+
+### Added
+- **Унификация routing для xray и mihomo**: web UI на порту 9092 теперь принимает inbound/outbound/rules/rule_sets/presets для любого активного ядра без ошибок. Apply (`POST /api/apply`) регенерирует конфиг активного ядра (`/opt/etc/sign-craze/xray/config.json` или `mihomo/config.yaml`), не только sing-box.
+- **`types.CoreRenderParams.RoutingConfig`**: новые поля `RoutingConfig`, `InboundMode`, `DefaultOutboundTag`. Все три ядра консумируют единый `pkg/types.RoutingConfig` и переводят в свою натив-форму через адаптер.
+- **Xray translation `RuleSet → geosite:/geoip: matcher`**: префиксы `geosite-`/`geoip-` в `RouteRule.RuleSet` автоматически конвертируются в xray `domain: ["geosite:X"]` / `ip: ["geoip:X"]` matchers. Xray использует встроенный geosite.dat/geoip.dat, отдельный rule_set entry не создаётся.
+- **Mihomo `rule-providers`**: `RuleSets` с `.mrs` URL транслируются в mihomo `rule-providers:` секцию + `RULE-SET,tag,action` строки.
+- **Per-core preset URLs**: `ruleSetSources` translation table в `routingui_presets.go`. При `apiPresetsApply` URL резолвится под `c.GeoFormat()`: sing-box → `.srs` (SagerNet/sing-*), mihomo → `.mrs` (MetaCubeX/meta-rules-dat), xray → translation в matcher (URL не нужен).
+- **Validator с warnings**: `RoutingUIDeps.Validator` callback ловит несовместимости (TUN inbound на xray/mihomo, `.srs` URL на mihomo, refilter rule_set на xray) и surface их в `apiValidate` response как `Warnings[]`. Не блокирует apply.
+- **`apiPreview` Content-Type**: автодетект формата активного ядра — `application/yaml` для mihomo, `application/json` для sing-box/xray.
+- **e2e тесты multi-core**: `TestE2E_FullFlow_Xray`, `TestE2E_FullFlow_Mihomo`, `TestE2E_PresetApply_PerCore`, `TestE2E_Validate_Warnings_XrayTunInbound` в `internal/web/routingui_multicore_test.go`.
+- **`TestValidCoresMatchesRegistry`**: ловит drift между `state.ValidCores` и `core.Names()` (registry).
+
+### Changed
+- **`cmd_lifecycle.go` унификация**: убрано ветвление `if c.Name() == "sing-box"`. Все ядра идут через единый `ensureConfigFreshForCore(ctx, c, st)` который читает `routing.json` и зовёт `c.RenderConfig`. TUN-cleanup инкапсулирован в helper `needsTUN(c, st)` (sing-box+TUN inbound only).
+- **`regenerateConfig` core-aware**: пишет в `c.ConfigPath()`, не в захардкоженный `/opt/etc/sign-craze/config.json`. Apply через UI теперь корректно обновляет конфиг активного ядра.
+- **`state.ValidCores`**: package var вместо хардкода в switch. Тест `cores_sync_test.go` ловит drift с registry.
+- **`probeTProxyKernel()`**: вынесен из `cli/deps.go` в `internal/singbox/probe.go` (singbox-specific, не общий слой).
+
+### Fixed
+- **Xray/mihomo игнорировали routing.json**: при `--start` с активным xray/mihomo `renderAndWriteConfig` использовал только `st.Outbounds`, не загружая `routing.json`. Все пользовательские rules/inbounds/outbounds из UI пропадали при перезапуске. Теперь `ensureConfigFreshForCore` читает routing.json и прокидывает в `CoreRenderParams.RoutingConfig`.
+- **Apply через 9092 был бесполезен для xray/mihomo**: `OnApply → regenerateConfig → singbox.WriteConfig(/opt/etc/sign-craze/config.json)` писал в sing-box путь даже когда активное ядро xray. Apply не обновлял конфиг работающего xray, нужен был ручной `--restart`.
+- **Preview на mihomo отдавал JSON**: hardcoded `Content-Type: application/json` в `apiPreview` ломал UI-парсер для YAML конфига mihomo.
+- **Xray render фейлил на direct/block outbound**: при добавлении direct outbound через UI xray.Render возвращал ошибку "canonical отсутствует". Теперь `direct`/`block` пропускаются в loop, добавляются автоматически через `freedom`/`blackhole`.
+
+### Migration
+- **Routing.json остаётся core-agnostic**: при переключении `--core` существующий `routing.json` сохраняется. Несовместимые конструкции (`.srs` URL на mihomo, refilter rule_set на xray) surfaced через `apiValidate` warnings — пользователь видит их в UI и применяет preset заново.
+- **`renderAndWriteConfig` удалена** в `internal/cli/cmd_lifecycle.go`: используйте `ensureConfigFreshForCore` (в `deps.go`) — она работает для всех ядер.
+- **Downgrade с xray/mihomo на старый бинарь**: если бинарь не знает xray, `core.Active("xray")` вернёт ошибку → `doStart` падает с clear message. Перед downgrade выполните `sign-craze --core sing-box --restart`.
+
+---
+
 ## [0.8.3] — 2026-05-09
 
 ### Fixed

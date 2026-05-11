@@ -327,6 +327,33 @@ resolver без override — пользовательский DNSCrypt/DoH со�
 
 ---
 
+### Унифицированный routing для всех ядер (v1.0.0+)
+
+`routing.json` (`/opt/etc/sign-craze/routing.json`) — единый core-agnostic
+источник правил маршрутизации, inbound, outbound, rule_set и presets для всех
+трёх ядер. Web UI на порту 9092 принимает изменения для активного ядра без
+ошибок; при `Apply` каждое ядро через свой адаптер транслирует `RoutingConfig`
+в native-форму:
+
+| Ядро | Format конфига | Routing native-форма | RuleSet translation |
+|---|---|---|---|
+| sing-box | JSON | `route.rules[]` + `route.rule_set[]` | прямой `.srs` URL |
+| xray | JSON | `routing.rules[]` (field type) | `geosite-X`/`geoip-X` → `domain:["geosite:X"]`/`ip:["geoip:X"]` matcher |
+| mihomo | YAML | `rules:` (TYPE,VALUE,ACTION) + `rule-providers:` | `.mrs` URL в rule-providers |
+
+Несовместимые конструкции (TUN inbound на xray/mihomo, `.srs` URL на mihomo,
+RuleSet без `geosite-`/`geoip-` префикса на xray) **не блокируют** apply, но
+surfaced через `POST /api/validate` как `Warnings[]` для отображения в UI.
+
+Apply (`POST /api/apply`) регенерирует конфиг **активного ядра**, не
+sing-box-only: пишет в `c.ConfigPath()` (зависит от `core.Active(state.Core)`).
+
+Built-in presets (`/api/presets/<name>/apply`) используют translation table
+`ruleSetSources` для резолва per-core URL — один и тот же preset работает на
+всех трёх ядрах.
+
+---
+
 ### `--mode policy|full`
 
 Переключает режим маршрутизации. Для применения требует перезапуска (`--restart`).

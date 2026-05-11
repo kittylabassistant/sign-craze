@@ -25,10 +25,15 @@
 ## Ограничения проекта
 
 Sign-craze — Go-утилита для управления firewall/маршрутизацией на роутерах
-Keenetic поверх Entware: установка `sing-box`, опционально `nfqws2`,
+Keenetic поверх Entware: установка sing-box / xray / mihomo, опционально `nfqws2`,
 конфигурация policy/full режима, web-UI на портах `:9090`/`:9091`/`:9092`.
 Проект работает в условиях встраиваемого Linux: ограниченный RAM,
 отсутствие systemd/nftables, MIPS/ARM SoC.
+
+Начиная с **v1.0.0** архитектура мульти-ядерная: единый `pkg/types.RoutingConfig`
+транслируется в натив-форматы sing-box (JSON), xray (JSON) и mihomo (YAML)
+через адаптеры `internal/core/*/coreadapter.go`. Web UI `:9092` унифицирован
+для всех трёх ядер.
 
 Из этого следуют технические инварианты, которые нельзя нарушать в PR:
 
@@ -42,6 +47,11 @@ Keenetic поверх Entware: установка `sing-box`, опциональ
 - Любое изменение публичного CLI и lifecycle команд проходит через
   обсуждение в issue: меняется контракт, на который опираются
   пользователи и скрипты установки.
+- Добавление нового ядра требует обновления **четырёх** мест одновременно:
+  регистрация в `internal/cli/cores.go`, адаптер `internal/core/<name>/coreadapter.go`,
+  обновление `state.ValidCores` в `internal/state/state.go` и добавление
+  entry в `internal/web/routingui_presets.go` (ruleSetSources).
+  Тест `cores_sync_test.go` ловит drift между `ValidCores` и registry.
 
 ## Чем можно помочь
 
@@ -197,8 +207,14 @@ Smoke-test в QEMU `qemu-user-static` ловит часть проблем
 - **Go 1.25+**. Используем `log/slog` (структурированные логи),
   `embed.FS` (шаблоны sing-box), `context` (отмена/таймауты).
 - **Layout** — `cmd/` для main, `internal/` для приватной логики,
-  `pkg/` только если код реально предназначен к импорту извне
-  (на момент написания — пусто и так должно остаться).
+  `pkg/types` для core-agnostic типов (`RoutingConfig`, `CoreRenderParams`),
+  `pkg/` шире — только если код реально предназначен к импорту извне.
+- **Паттерн `render_rules.go`** — каждый адаптер ядра содержит отдельный файл
+  `internal/core/<name>/render_rules.go` с функциями трансляции
+  `types.RouteRule → <core native rule>`. Логика трансляции не смешивается
+  с рендером шаблона (`render.go`). При добавлении нового матчера в
+  `types.RouteRule` — обновите все три `render_rules.go` и добавьте
+  table-driven тест-кейс в `render_routing_test.go` того же пакета.
 - **Errors** — обязательная обёртка `fmt.Errorf("context: %w", err)`.
   Сравнение через `errors.Is`/`errors.As`. Без `panic` в runtime
   (только в `init` и при невозможной ситуации).
@@ -215,6 +231,15 @@ Smoke-test в QEMU `qemu-user-static` ловит часть проблем
   - Интеграционные тесты iptables/ipset — помечать
     `//go:build integration` и таг `integration` в `make test-integration`.
   - Snapshot/fixture файлы — в `testdata/`.
+  - **Мульти-ядерные e2e тесты** — `internal/web/routingui_multicore_test.go`.
+    При изменении Routing Editor или адаптера ядра запускайте эти тесты явно:
+    `go test ./internal/web/ -run TestE2E_FullFlow`.
+  - **Синхронизация ValidCores** — `internal/state/cores_sync_test.go` (таг `core`).
+    Обязателен при добавлении или удалении ядра из registry.
+  - **Per-core CI**: тесты под конкретный бинарь-ядро помечаются тагами
+    `xraycheck`, `mihomocheck`, `singboxcheck` и запускаются в отдельных
+    CI-джобах (см. `.github/workflows/`). Локально:
+    `go test -tags xraycheck ./internal/core/xray/... -run TestRender_Routing`.
 - **Форматирование** — `gofmt` обязателен (CI ловит
   несоответствие). `goimports` приветствуется.
 - **Lint** — `golangci-lint` (см. `.golangci.yml`, если есть; иначе

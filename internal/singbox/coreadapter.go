@@ -81,8 +81,10 @@ func (coreImpl) ParseVersion(line string) (string, error) {
 // Validate — xray-only возможности (XHTTP modes, spider_x, PQ-VLESS) отклоняются
 // с ошибкой до запуска sing-box check, что даёт понятную диагностику.
 //
-// Примечание: routing.json (RoutingConfig) не загружается здесь — для полного
-// пути с routing.json используется ensureConfigFresh в CLI (legacy путь sing-box).
+// Прокидывает все поля CoreRenderParams в singbox.ConfigParams: RoutingConfig
+// (пользовательский routing.json), InboundMode (tun/tproxy), DefaultOutboundTag.
+// При InboundMode="tproxy" автоматически выполняет probeTProxyKernel() для
+// корректного выбора tproxy vs redirect inbound.
 func (coreImpl) RenderConfig(p types.CoreRenderParams) ([]byte, error) {
 	for _, ob := range p.Outbounds {
 		if err := Validate(ob); err != nil {
@@ -92,8 +94,14 @@ func (coreImpl) RenderConfig(p types.CoreRenderParams) ([]byte, error) {
 	params := DefaultConfigParams()
 	params.Mode = p.Mode
 	params.Outbounds = p.Outbounds
-	if len(p.Outbounds) > 0 {
+	params.RoutingConfig = p.RoutingConfig
+	params.InboundMode = p.InboundMode
+	params.DefaultOutboundTag = p.DefaultOutboundTag
+	if params.DefaultOutboundTag == "" && len(p.Outbounds) > 0 {
 		params.DefaultOutboundTag = p.Outbounds[0].Tag
+	}
+	if params.InboundMode == "tproxy" {
+		params.TProxyKernelOK = probeTProxyKernel()
 	}
 	return Render(params)
 }

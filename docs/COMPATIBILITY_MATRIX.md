@@ -2,7 +2,7 @@
 
 Этот документ является единым справочником по поддерживаемым архитектурам, прошивкам, устройствам, kernel-модулям и внешним зависимостям. Он заменяет разрозненные упоминания в README. Актуален для sign-craze v0.3.x+ (TUN-режим, без TPROXY как dependency на ядро).
 
-Последнее обновление: v0.8.3.
+Последнее обновление: v1.0.0.
 
 ---
 
@@ -235,3 +235,57 @@ Sign-craze поддерживает три взаимозаменяемых пр
 | **v0.8.1** | Fallback DNS для `UpdateHostlist` — при недоступности системного resolver используется запасной DNS. |
 | **v0.8.2** | Применение hostlist без `DPITargets` — `--dpi on` не требует заранее заданных хостов.               |
 | **v0.8.3** | Миграция `routing.json`: TUN → TPROXY. При старте на конфиге с TUN-inbound автоматически переводит routing.json в TPROXY-схему. |
+| **v1.0.0** | Unified multi-core routing: Web UI `:9092` и Apply работают с любым активным ядром. routing.json core-agnostic. Presets per-core с автотрансляцией URL. Несовместимости (TUN/xray, .srs/xray, .dat/sing-box) surfaced как warnings в `/api/validate`. `state.ValidCores` — канонический список ядер. |
+
+---
+
+## 9. RuleSet формат × ядро (v1.0.0+)
+
+### Таблица: поддержка форматов rule-set
+
+| Формат | sing-box | xray | mihomo | Путь трансляции в routing.json → ядро |
+|--------|----------|------|--------|---------------------------------------|
+| `.srs` (SRS бинарный) | ✅ native | ❌ warning | ❌ warning | sing-box: прямая передача в `rule_set`; xray/mihomo: warning при validate |
+| `.mrs` (mihomo rule-set) | ❌ warning | ❌ warning | ✅ native | mihomo: `.srs` URL из routing.json конвертируется в `.mrs` через `ruleSetSources`-таблицу |
+| `geoip.dat` / `geosite.dat` | ❌ | ✅ native | ⚠️ legacy v2ray | xray: ищет dat-файлы в рабочей директории или `XRAY_ASSET_LOCATION` |
+| `geoip:<tag>` matcher (inline) | ✅ | ✅ | ✅ | все ядра: inline матчер в правиле без внешнего файла |
+| `geosite:<tag>` matcher (inline) | ✅ | ✅ | ✅ | все ядра: inline матчер в правиле без внешнего файла |
+
+### Трансляция xray (routing.json → xray config.json)
+
+При генерации конфига для xray поле `rule_set` **не записывается** — xray не поддерживает SRS rule-set. Вместо этого:
+
+1. URL из `rule_set_sources` → маппинг через `ruleSetSources` translation table.
+2. `geoip:` и `geosite:` prefix-матчеры записываются в правило напрямую (`ip` / `domain` поля routing rule).
+3. `.dat`-файлы xray ищет сам; sign-craze не управляет их загрузкой — только geo-файлы для sing-box/mihomo обновляются через `--update-geo`.
+
+**Пример трансляции:**
+
+| routing.json rule_set URL | Результат в xray config.json |
+|--------------------------|------------------------------|
+| `https://…/geoip-ru.srs` | `"ip": ["geoip:ru"]` |
+| `https://…/geosite-category-ads.srs` | `"domain": ["geosite:category-ads"]` |
+| `https://…/custom.srs` | warning (нет dat-эквивалента) + правило пропускается |
+
+### TUN / TProxy inbound × ядро
+
+| Inbound в routing.json | sing-box | xray | mihomo |
+|------------------------|----------|------|--------|
+| `type: tproxy` (порт 7895) | ✅ — стандарт | ✅ — dokodemo-door tproxy | ✅ — tproxy listener |
+| `type: tun` | ✅ — `needsTUN()=true` → создаётся TUN-интерфейс | ⚠️ warning при validate; Apply продолжается с tproxy | ✅ — TUN поддерживается нативно |
+
+**xray + TUN**: если `routing.json` содержит TUN inbound, при генерации конфига для xray sign-craze логирует warning и использует `dokodemo-door` (tproxy) вместо TUN. Firewall-правила не меняются — fwmark `0x53` направляет трафик на `127.0.0.1:7895` в любом случае.
+
+### Protocol matcher × ядро
+
+| Matcher-тип в routing.json | sing-box | xray | mihomo |
+|---------------------------|----------|------|--------|
+| `domain` / `domain_suffix` | ✅ | ✅ | ✅ |
+| `domain_regex` | ✅ | ✅ | ⚠️ |
+| `ip_cidr` | ✅ | ✅ | ✅ |
+| `geoip:<tag>` | ✅ | ✅ | ✅ |
+| `geosite:<tag>` | ✅ | ✅ | ✅ |
+| `rule_set` (SRS) | ✅ | ❌ → warning, трансляция через geosite/geoip | ❌ → warning, конвертируется в `.mrs` |
+| `protocol` (http/tls/bittorrent) | ✅ | ✅ | ⚠️ частично |
+| `port` / `port_range` | ✅ | ✅ | ✅ |
+| `network` (tcp/udp) | ✅ | ✅ | ✅ |

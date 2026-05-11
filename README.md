@@ -4,7 +4,7 @@
 
 Go-утилита для управления межсетевым экраном на роутерах Keenetic.
 
-Использует [sing-box](https://github.com/SagerNet/sing-box) как прокси-ядро и опционально [nfqws2.](https://github.com/nfqws/nfqws2-keenetic)
+Поддерживает три прокси-ядра с единым управлением через Web UI: **sing-box**, **xray** и **mihomo** — ядро определяется автоматически по URL outbound при `--install`, переключается командой `--core`. Опционально [nfqws2](https://github.com/nfqws/nfqws2-keenetic) для DPI-обхода.
 
 > [!WARNING]
 > Данный материал подготовлен в научно‑технических целях. Sign-Craze предназначен для управления межсетевым экраном роутера Keenetic, защищающим домашнюю сеть. Разработчик не несёт ответственности за иное использование утилиты. Перед применением убедитесь, что ваши действия соответствуют законодательству вашей страны.
@@ -27,14 +27,21 @@ Go-утилита для управления межсетевым экрано�
 
 ## Возможности
 
-- Управление sing-box: установка, запуск, остановка, обновление, откат
+- **Мульти-ядерность (v1.0.0)**: поддержка sing-box, xray и mihomo с автодетектом ядра по URL outbound при `--install`. Переключение — `--core <name>`, список — `--core-list`, загрузка — `--core-install <name>`.
+- **Унифицированный Routing Editor (v1.0.0)**: Web UI на `:9092` принимает inbound / outbound / rules / rule_sets и presets для любого активного ядра. Apply регенерирует конфиг нужного ядра без перезапуска процесса UI.
+- **Per-core presets**: при применении пресета URL rule_sets подбираются автоматически под ядро — `.srs` для sing-box (SagerNet), `.mrs` для mihomo (MetaCubeX), geosite:/geoip: matcher для xray (встроенный `.dat`).
+- **Протоколы по ядрам**:
+  - Все три ядра: VLESS Reality, VLESS Vision (TCP/TLS), Trojan, Shadowsocks
+  - Mihomo: Hysteria2, TUIC v5, WireGuard
+  - Xray: XHTTP, Vision UDP443, PQ (post-quantum)
+- Управление sing-box / xray / mihomo: установка, запуск, остановка, обновление, откат
 - Два режима маршрутизации: `policy` — выборочная маркировка (default), `full` — весь LAN-трафик через прокси. DPI работает в обоих режимах через nfqws2 + NFQUEUE.
 - Атомарное применение правил iptables/ipset с гарантированным откатом
 - Гео-фильтрация через SRS rule-set (выборочная загрузка по SHA256)
 - Встроенный Web UI (только из LAN): Zashboard `:9090`, admin API `:9091`, Routing Editor `:9092` (vanilla Preact + htm SPA)
 - Selective DPI: desync только для выбранных доменов/SNI через `--dpi-targets`
 - WAN-фильтр в DPI-правилах: NFQUEUE захватывает только ISP-трафик (`-o $WAN_IFACE`), не трогая LAN-bridge и TUN
-- VPN-exclude (`--dpi-exclude-ips`): RETURN перед NFQUEUE для заданных IP — сохраняет TLS-маскировку Reality-handshake sing-box к собственному серверу и downstream-VPN-клиентов на том же эндпоинте
+- VPN-exclude (`--dpi-exclude-ips`): RETURN перед NFQUEUE для заданных IP — сохраняет TLS-маскировку Reality-handshake к собственному серверу и downstream-VPN-клиентов на том же эндпоинте
 - Auto-update hostlist (`--dpi-update-interval 24`): автообновление списка DPI-доменов раз в 24 ч из upstream-источников (zapret, Flowseal discord/youtube); `--dpi-update-now` — принудительный запуск
 - Firewall watchdog: автовосстановление iptables-правил каждые 30 с при работающем `--ui on`
 - Управление портами и исключениями без перезапуска
@@ -105,7 +112,7 @@ cd signcraze-mipsle-bundle && ./install-offline.sh
 
 ## Quick Routing
 
-sign-craze управляет маршрутизацией через файл `/opt/etc/sign-craze/routing.json`. Редактирование — через встроенный Web UI на порту 9092 либо через REST API.
+sign-craze управляет маршрутизацией через файл `/opt/etc/sign-craze/routing.json`. Файл core-agnostic: одни и те же правила работают на sing-box, xray и mihomo — каждое ядро транслирует их в свой натив-формат. Редактирование — через встроенный Web UI на порту 9092 либо через REST API.
 
 ### Порты управления
 
@@ -126,6 +133,8 @@ sign-craze --ui on
 
 В UI на вкладке **Routing → "Пресеты ▾"**: `block-ads`, `ru-direct`, `blocked-vpn`, `discord-vpn`, `torrents-direct`, `block-bogon-udp`, `sign-craze-default`.
 
+URL rule_sets в пресете подбираются автоматически под активное ядро: `.srs` (sing-box), `.mrs` (mihomo), matcher через geosite:/geoip: (xray).
+
 После любых правок — нажать **Apply**, затем `sign-craze --restart`.
 
 ### Документация
@@ -134,6 +143,50 @@ sign-craze --ui on
 - [wiki/Routing-Reference.md](wiki/Routing-Reference.md) — полная инструкция по routing.json и API
 - [wiki/Recipe-RU-Direct.md](wiki/Recipe-RU-Direct.md) — рецепт "РФ direct, остальное VPN"
 - [wiki/Recipes.md](wiki/Recipes.md) — индекс всех рецептов
+
+## Мульти-ядерность (v1.0.0)
+
+sign-craze поддерживает три прокси-ядра. Активное ядро задаётся в `state.json` и определяет, какой бинарь запускается и как генерируется конфиг.
+
+### Переключение ядра
+
+```bash
+# Посмотреть список и текущее активное
+sign-craze --core-list
+
+# Переключить на xray
+sign-craze --core xray
+
+# Установить (скачать) ядро, если ещё не установлено
+sign-craze --core-install mihomo
+
+# Применить переключение
+sign-craze --restart
+```
+
+### Поддерживаемые протоколы
+
+| Протокол | sing-box | xray | mihomo |
+|----------|----------|------|--------|
+| VLESS Reality | + | + | + |
+| VLESS Vision (TCP/TLS) | + | + | + |
+| Trojan | + | + | + |
+| Shadowsocks | + | + | + |
+| Hysteria2 | + | — | + |
+| TUIC v5 | + | — | + |
+| WireGuard | + | — | + |
+| XHTTP | — | + | — |
+| Vision UDP443 | — | + | — |
+
+### Унифицированный Routing Editor
+
+Файл `/opt/etc/sign-craze/routing.json` core-agnostic: один набор правил работает на всех ядрах. Web UI `:9092` принимает изменения и Apply нажимает конфиг активного ядра:
+
+- sing-box → `/opt/etc/sign-craze/config.json`
+- xray → `/opt/etc/sign-craze/xray/config.json`
+- mihomo → `/opt/etc/sign-craze/mihomo/config.yaml`
+
+Несовместимые конструкции (например `.srs` URL при активном mihomo) отображаются как предупреждения в `apiValidate` — не блокируют Apply, но видны в UI.
 
 ## DPI: auto-update hostlist и VPN-исключения (v0.8.0)
 
@@ -202,9 +255,9 @@ sign-craze --update-core        Обновить бинарь sing-box
 sign-craze --dpi-update         Переустановить актуальную версию nfqws2
 sign-craze --reinstall          Переустановить sign-craze поверх существующей (сохраняет state.json)
 
-sign-craze --core-list          Список зарегистрированных ядер (sing-box/xray/mihomo)
-sign-craze --core <name>        Переключить активное ядро (требует --restart)
-sign-craze --core-install <name> Скачать и установить указанное ядро
+sign-craze --core-list          Список зарегистрированных ядер (sing-box/xray/mihomo) и активное
+sign-craze --core <name>        Переключить активное ядро; routing.json сохраняется, конфиг пересобирается (требует --restart)
+sign-craze --core-install <name> Скачать и установить указанное ядро (sing-box/xray/mihomo)
 
 sign-craze --config-backup      Создать архив state.json в /opt/var/lib/sign-craze
 sign-craze --config-restore <путь> Восстановить конфиг из архива
@@ -272,12 +325,17 @@ podman run --rm -v $(pwd):/workspace:z -w /workspace \
 cmd/sign-craze/main.go
         │
 internal/cli  (диспетчер команд)
-   ├── internal/singbox   (загрузка, установка, конфиг sing-box)
+   ├── internal/core      (registry: sing-box / xray / mihomo)
+   │      ├── internal/singbox   (адаптер: конфиг, RenderConfig, CheckConfig)
+   │      ├── internal/core/xray  (адаптер: render_rules, translation geosite:/geoip:)
+   │      └── internal/core/mihomo (адаптер: rule-providers, YAML-рендер)
    ├── internal/dpi       (nfqws2: загрузка, конфиг, NFQUEUE)
    ├── internal/firewall  (iptables/ipset: tproxy / redirect / hybrid)
    ├── internal/service   (init.d shim, lifecycle, PID-файлы)
    ├── internal/geo       (SRS rule-set, ipset-конвертация)
-   └── internal/web       (HTTP: admin API + Routing Editor)
+   ├── internal/state     (state.json: ValidCores, Mode, Inbound, Outbounds)
+   ├── pkg/types          (RoutingConfig, CoreRenderParams — core-agnostic)
+   └── internal/web       (HTTP: admin API + Routing Editor :9092)
 ```
 
 Подробная диаграмма потоков данных — в [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).

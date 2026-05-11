@@ -19,6 +19,11 @@ type ConfigParams struct {
 	Outbounds  []types.Outbound           // legacy: tag/server/port
 	Canonicals map[string]types.Canonical // основной источник; ключ = Outbound.Tag
 	DefaultTag string                     // тег первого proxy (для proxy-group)
+	// RoutingConfig — пользовательский routing (rules/rule_sets).
+	// Если nil — Render использует hardcoded "MATCH,DefaultTag" rule.
+	// Иначе Rules транслируются в mihomo rule strings (TYPE,VALUE,ACTION),
+	// RuleSets с .mrs URL — в rule-providers, прочие форматы пропускаются с warning.
+	RoutingConfig *types.RoutingConfig
 }
 
 // DefaultConfigParams возвращает ConfigParams с разумными значениями по умолчанию.
@@ -54,6 +59,13 @@ type templateData struct {
 	// Шаблон вставляет их через range + yamlInline.
 	Proxies    []map[string]any
 	ProxyNames []string
+	// Rules — mihomo rule-strings (TYPE,VALUE,ACTION), полученные через
+	// TranslateRoutingRules из RoutingConfig. Если пустой — шаблон рендерит
+	// fallback "MATCH,PROXY" (legacy).
+	Rules []string
+	// RuleProviders — entries для секции rule-providers (rule-set источники).
+	// Пустой → секция rule-providers не рендерится.
+	RuleProviders []RuleProvider
 }
 
 // Render генерирует mihomo config.yaml как []byte.
@@ -99,13 +111,23 @@ func Render(p ConfigParams) ([]byte, error) {
 		proxyNames = append(proxyNames, ob.Tag)
 	}
 
+	// Если RoutingConfig задан и содержит rules/final → translate в mihomo
+	// rule-strings + rule-providers. Иначе шаблон использует fallback "MATCH,PROXY".
+	var ruleStrings []string
+	var providers []RuleProvider
+	if p.RoutingConfig != nil && (len(p.RoutingConfig.Rules) > 0 || p.RoutingConfig.Final != "") {
+		ruleStrings, providers, _ = TranslateRoutingRules(p.RoutingConfig, p.DefaultTag)
+	}
+
 	data := templateData{
-		LogLevel:   p.LogLevel,
-		TProxyPort: p.TProxyPort,
-		FWMark:     p.FWMark,
-		DefaultTag: p.DefaultTag,
-		Proxies:    proxies,
-		ProxyNames: proxyNames,
+		LogLevel:      p.LogLevel,
+		TProxyPort:    p.TProxyPort,
+		FWMark:        p.FWMark,
+		DefaultTag:    p.DefaultTag,
+		Proxies:       proxies,
+		ProxyNames:    proxyNames,
+		Rules:         ruleStrings,
+		RuleProviders: providers,
 	}
 
 	var buf bytes.Buffer

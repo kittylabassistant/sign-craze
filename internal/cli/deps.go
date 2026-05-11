@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
 	"github.com/kittylabassistant/sign-craze/internal/core"
 	"github.com/kittylabassistant/sign-craze/internal/dpi"
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
@@ -19,6 +20,7 @@ import (
 	"github.com/kittylabassistant/sign-craze/internal/service"
 	"github.com/kittylabassistant/sign-craze/internal/singbox"
 	"github.com/kittylabassistant/sign-craze/internal/state"
+	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
 // newDPILifecycle возвращает Lifecycle nfqws2 с дефолтными путями.
@@ -191,79 +193,79 @@ func saveState(s *state.State) error {
 	return state.Save(state.DefaultPath, s)
 }
 
-// configPath — путь к /opt/etc/sign-craze/config.json.
+// configPath — путь к /opt/etc/sign-craze/config.json (sing-box).
+// Используется legacy кодом (ConfigRW в cmd_ui для админ REST API).
+// Для активного ядра используйте core.Active(state.Core).ConfigPath().
 func configPath() string {
 	return filepath.Join(singbox.DefaultConfigDir, "config.json")
 }
 
-// configParamsFromState собирает singbox.ConfigParams на основе state.
-// Используется регенерацией и сравнением "ожидаемого" конфига с дисковым.
+// loadAndFilterRouting загружает /opt/etc/sign-craze/routing.json и применяет
+// миграцию legacy TUN inbound при state.Inbound=tproxy.
 //
-// Если /opt/etc/sign-craze/routing.json существует — он подгружается в
-// params.RoutingConfig и имеет приоритет над legacy outbounds/routing
-// (см. internal/singbox/render_rules.go: buildEffectiveModel).
-func configParamsFromState(s *state.State) singbox.ConfigParams {
-	params := singbox.DefaultConfigParams()
-	params.Mode = s.Mode
-	params.Outbounds = s.Outbounds
-	if len(s.Outbounds) > 0 {
-		params.DefaultOutboundTag = s.Outbounds[0].Tag
-	}
-	params.InboundMode = s.Inbound
-	if rc, err := routing.Load(routing.DefaultPath); err != nil {
+// Миграция: если state.Inbound=tproxy, но routing.json содержит legacy TUN
+// inbound (от v0.6.x bootstrap), TUN отфильтровывается из rc.Inbounds. Без
+// миграции Render() считает RoutingConfig.Inbounds "явно заданными" и пропускает
+// TPROXY-генерацию → sing-box стартует с TUN inbound, но iptables направляют
+// через TPROXY → marked-трафик LAN-клиентов попадает в local socket 7895,
+// который не существует → reset, нет интернета. См. v0.8.3 release notes.
+//
+// Возвращает nil без ошибки, если routing.json отсутствует — caller использует
+// fallback на legacy outbound-only путь.
+func loadAndFilterRouting(s *state.State) *types.RoutingConfig {
+	rc, err := routing.Load(routing.DefaultPath)
+	if err != nil {
 		log.L().Warn("routing.json: ошибка загрузки, используется legacy",
 			"path", routing.DefaultPath, "err", err)
-	} else if rc != nil {
-		// Миграция inbound-режима: если state.Inbound=tproxy, но routing.json
-		// содержит legacy TUN inbound (от v0.6.x bootstrap), фильтруем TUN из
-		// rc.Inbounds. Без миграции Render() считает RoutingConfig.Inbounds
-		// "явно заданными" и пропускает TPROXY-генерацию → sing-box стартует
-		// с TUN inbound, но iptables направляют через TPROXY → marked-трафик
-		// LAN-клиентов попадает в local socket 7895, который не существует
-		// (sing-box слушает signbox-tun) → reset, нет интернета.
-		// См. v0.8.3 release notes.
-		if s.Inbound == "tproxy" && len(rc.Inbounds) > 0 {
-			filtered := rc.Inbounds[:0]
-			removed := 0
-			for _, in := range rc.Inbounds {
-				if in.Type == "tun" {
-					removed++
-					continue
-				}
-				filtered = append(filtered, in)
+		return nil
+	}
+	if rc == nil {
+		return nil
+	}
+	if s.Inbound == "tproxy" && len(rc.Inbounds) > 0 {
+		filtered := rc.Inbounds[:0]
+		removed := 0
+		for _, in := range rc.Inbounds {
+			if in.Type == "tun" {
+				removed++
+				continue
 			}
-			if removed > 0 {
-				rc.Inbounds = filtered
-				log.L().Warn("routing.json: legacy TUN inbound удалён из RoutingConfig (state.inbound=tproxy)",
-					"removed_count", removed,
-					"hint", "запустите --restart, и Render автогенерирует TPROXY-inbound из state",
-				)
-				if err := routing.Save(routing.DefaultPath, rc); err != nil {
-					log.L().Warn("routing.json: не удалось сохранить миграцию",
-						"path", routing.DefaultPath, "err", err)
-				}
+			filtered = append(filtered, in)
+		}
+		if removed > 0 {
+			rc.Inbounds = filtered
+			log.L().Warn("routing.json: legacy TUN inbound удалён из RoutingConfig (state.inbound=tproxy)",
+				"removed_count", removed,
+				"hint", "запустите --restart, и Render автогенерирует TPROXY-inbound из state",
+			)
+			if err := routing.Save(routing.DefaultPath, rc); err != nil {
+				log.L().Warn("routing.json: не удалось сохранить миграцию",
+					"path", routing.DefaultPath, "err", err)
 			}
 		}
-		params.RoutingConfig = rc
-		// Если в RoutingConfig есть outbounds — DefaultOutboundTag берётся из первого.
-		if len(rc.Outbounds) > 0 && params.DefaultOutboundTag == "" {
-			params.DefaultOutboundTag = rc.Outbounds[0].Tag
-		}
 	}
+	return rc
+}
 
-	// Probe TPROXY: определяем доступность xt_TPROXY для рендера inbound type.
-	// Это probe (read-only), не actual insmod — insmod делает applier при apply.
-	// Для рендера config достаточно знать: модуль загружен или хотя бы доступен (.ko-файл).
-	if s.Inbound == "tproxy" {
-		tproxyOK := firewall.IsModuleLoaded("xt_TPROXY")
-		if !tproxyOK {
-			// .ko-файл существует → модуль loadable (insmod сделает applier).
-			tproxyOK = firewall.FindKernelModule("xt_TPROXY") != ""
-		}
-		params.TProxyKernelOK = tproxyOK
+// coreRenderParamsFromState собирает types.CoreRenderParams из state с подгрузкой
+// routing.json и миграцией. Используется регенерацией (regenerateConfig) и
+// startup-проверкой (ensureConfigFreshForCore) — единый источник params.
+func coreRenderParamsFromState(s *state.State) types.CoreRenderParams {
+	rc := loadAndFilterRouting(s)
+	defaultTag := ""
+	if len(s.Outbounds) > 0 {
+		defaultTag = s.Outbounds[0].Tag
 	}
-
-	return params
+	if rc != nil && defaultTag == "" && len(rc.Outbounds) > 0 {
+		defaultTag = rc.Outbounds[0].Tag
+	}
+	return types.CoreRenderParams{
+		Mode:               s.Mode,
+		Outbounds:          s.Outbounds,
+		RoutingConfig:      rc,
+		InboundMode:        s.Inbound,
+		DefaultOutboundTag: defaultTag,
+	}
 }
 
 // singboxParamsForInstall собирает singbox.ConfigParams для install/update-core,
@@ -280,41 +282,54 @@ func singboxParamsForInstall(s *state.State) singbox.ConfigParams {
 	return params
 }
 
-// regenerateConfig генерирует config.json sing-box из state и атомарно записывает.
-// Если бинарь sing-box установлен, выполняет валидацию (sing-box check -c) перед записью.
+// regenerateConfig — core-aware регенерация конфига активного ядра.
+// Резолвит ядро по state.Core, рендерит через c.RenderConfig (включая RoutingConfig),
+// атомарно записывает в c.ConfigPath() и вызывает c.CheckConfig для валидации.
+//
+// Fast-path: если рендер байт-в-байт совпадает с текущим содержимым файла —
+// запись и check пропускаются (важно на slow MIPS, где sing-box check / xray test
+// занимают десятки секунд).
 func regenerateConfig(ctx context.Context, s *state.State) error {
 	if s == nil {
 		return fmt.Errorf("regenerateConfig: state is nil")
 	}
-	params := configParamsFromState(s)
-	return singbox.WriteConfig(ctx, exectx.OS, params, singbox.DefaultBinPath, configPath())
+	c, err := core.Active(s.Core)
+	if err != nil {
+		return fmt.Errorf("regenerateConfig: %w", err)
+	}
+	return ensureConfigFreshForCore(ctx, c, s)
 }
 
-// ensureConfigFresh регенерирует config.json только если рендер из текущих
-// дефолтов и state расходится с дисковым содержимым. Это нужно после ручной
-// замены /opt/sbin/sign-craze в обход --update-core: дефолты в коде (например,
-// TUN MTU) могли измениться, а на диске лежит конфиг от старого бинаря.
+// ensureConfigFreshForCore регенерирует конфиг активного ядра и записывает на
+// диск, если рендер отличается от текущего содержимого. На совпадении — no-op.
 //
-// На fast-path (конфиг идентичен) пропускаем `sing-box check -c`, который
-// на slow MIPS softfloat занимает десятки секунд и удлинял бы каждый --start
-// и init.d boot.
-func ensureConfigFresh(ctx context.Context, s *state.State) error {
-	params := configParamsFromState(s)
-	want, err := singbox.Render(params)
+// Один общий путь для всех ядер: sing-box, xray, mihomo. Каждое ядро через свой
+// RenderConfig переводит RoutingConfig в свою натив-форму.
+func ensureConfigFreshForCore(ctx context.Context, c core.Core, s *state.State) error {
+	params := coreRenderParamsFromState(s)
+	want, err := c.RenderConfig(params)
 	if err != nil {
-		return fmt.Errorf("render: %w", err)
+		return fmt.Errorf("render (%s): %w", c.Name(), err)
 	}
-	got, err := os.ReadFile(configPath())
+	configPath := c.ConfigPath()
+	got, readErr := os.ReadFile(configPath)
 	switch {
-	case errors.Is(err, fs.ErrNotExist):
+	case errors.Is(readErr, fs.ErrNotExist):
 		// Файла нет — пишем напрямую.
-	case err != nil:
-		return fmt.Errorf("чтение текущего config.json: %w", err)
+	case readErr != nil:
+		return fmt.Errorf("чтение текущего конфига (%s): %w", c.Name(), readErr)
 	default:
 		if bytes.Equal(bytes.TrimSpace(got), bytes.TrimSpace(want)) {
 			return nil
 		}
-		log.L().Info("config.json устарел, регенерация")
+		log.L().Info("конфиг устарел, регенерация", "core", c.Name(), "path", configPath)
 	}
-	return singbox.WriteConfig(ctx, exectx.OS, params, singbox.DefaultBinPath, configPath())
+	if writeErr := atomicfs.WriteFileAtomic(configPath, want, 0o640); writeErr != nil {
+		return fmt.Errorf("запись конфига (%s): %w", c.Name(), writeErr)
+	}
+	if checkErr := c.CheckConfig(ctx, exectx.OS, configPath); checkErr != nil {
+		return fmt.Errorf("валидация конфига (%s): %w", c.Name(), checkErr)
+	}
+	log.L().Info("конфиг записан", "core", c.Name(), "path", configPath)
+	return nil
 }

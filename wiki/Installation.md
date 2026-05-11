@@ -12,7 +12,7 @@
 3. [Установка Entware на Keenetic](#3-установка-entware-на-keenetic)
 4. [Создание swap 1 GB](#4-создание-swap-1-gb)
 5. [Установка sign-craze](#5-установка-sign-craze)
-6. [Конфигурация sign-craze](#6-конфигурация-sign-craze)
+6. [Конфигурация sign-craze](#6-конфигурация-sign-craze) (включая выбор ядра `--core`)
 7. [Запуск](#7-запуск)
 8. [Web UI (опционально)](#8-web-ui-опционально)
 9. [Гео-фильтрация (опционально)](#9-гео-фильтрация-опционально)
@@ -329,7 +329,34 @@ sing-box: not installed
 
 ## 6. Конфигурация sign-craze
 
-### 6.1. Интерактивная установка
+### 6.1. Выбор прокси-ядра (`--core`)
+
+sign-craze поддерживает три прокси-ядра. По умолчанию используется **sing-box**. Выбрать ядро можно при установке или позже:
+
+```sh
+# Установка с явным указанием ядра
+sign-craze --install --core sing-box   # по умолчанию, TUN-mode
+sign-craze --install --core xray       # PQ-VLESS, Vision, xhttp packet-up
+sign-craze --install --core mihomo     # Hysteria2, TUIC, WireGuard
+
+# Смена ядра в работающей системе
+sign-craze --core xray --restart
+sign-craze --core sing-box --restart
+
+# Список ядер и статус установки
+sign-craze --core-list
+```
+
+Если нужное ядро ещё не скачано — установить без переконфигурации:
+
+```sh
+sign-craze --core-install xray     # скачать xray в /opt/sbin/xray, не переключать
+sign-craze --core-install mihomo   # скачать mihomo в /opt/sbin/mihomo
+```
+
+Ядро скачивается с GitHub Releases через тот же mirror chain, что и sign-craze (Fastly raw.githubusercontent.com как приоритетный канал). SHA256 проверяется автоматически.
+
+### 6.3. Интерактивная установка
 
 ```sh
 sign-craze --install
@@ -351,7 +378,7 @@ sign-craze --reinstall --proxy 'vless://...'
 sign-craze --restart
 ```
 
-Флаг `--proxy` принимает тот же URL-формат, что и при интерактивной установке. При `--reinstall --proxy` завершение подсказывает `--restart` (не `--start`), так как sing-box продолжает работать.
+Флаг `--proxy` принимает тот же URL-формат, что и при интерактивной установке. При `--reinstall --proxy` завершение подсказывает `--restart` (не `--start`), так как ядро продолжает работать.
 
 После завершения:
 
@@ -364,7 +391,7 @@ sign-craze --restart
 
 > **Защита от SSH-lockout и LAN-трафик**: SSH-порты роутера (`22` Entware/dropbear, `222` Keenetic admin) и локальные сети (RFC1918 + loopback + multicast + link-local) автоматически исключены из проксирования через ipset `signcraze_excludes` и RETURN-правила в mangle. Дополнительной настройки не требуется. Для кастомизации (другие порты, bypass публичных IP) править поля `admin_ports` и `admin_ips` в `/opt/etc/sign-craze/state.json` и перезапустить sign-craze.
 
-### 6.2. Без вопросов
+### 6.4. Без вопросов
 
 ```sh
 sign-craze --install-auto
@@ -372,13 +399,13 @@ sign-craze --install-auto
 
 Использует параметры по умолчанию: режим `policy`, outbound — заглушка `direct` (для реального outbound передай `--proxy <URL>` отдельной командой).
 
-### 6.3. Из локального бинаря (offline)
+### 6.5. Из локального бинаря (offline)
 
 ```sh
 sign-craze --install-offline /tmp/sing-box-1.10.0-linux-mipsle.tar.gz
 ```
 
-### 6.4. С DPI-обходом из коробки (`--with-dpi`)
+### 6.6. С DPI-обходом из коробки (`--with-dpi`)
 
 ```sh
 sign-craze --install --with-dpi

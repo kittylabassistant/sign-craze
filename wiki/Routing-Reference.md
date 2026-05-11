@@ -4,20 +4,24 @@
 
 ```plain
 routing.json
-  └─ configParamsFromState()       internal/cli/deps.go:136
+  └─ ensureConfigFreshForCore()    internal/cli/deps.go
        └─ buildEffectiveModel()    internal/singbox/render_rules.go:102
             ├─ BaseRules (hardcoded): resolve + sniff + hijack-dns
-            │                        internal/singbox/render_rules.go:124-135
             └─ UserRules (cfg.Rules[], final = cfg.Final)
-                 └─ tun.json.tmpl ──▶ atomic write ──▶ config.json ──▶ sing-box
+                 └─ c.RenderConfig(CoreRenderParams{RoutingConfig: ...})
+                      ├─ sing-box: tun.json.tmpl → config.json
+                      ├─ xray:     renderXrayRoutingRules → xray/config.json
+                      └─ mihomo:   rules/rule-providers → mihomo/config.yaml
 ```
 
 Файлы на роутере:
 
 | Файл | Путь |
 | --- | --- |
-| Routing config | `/opt/etc/sign-craze/routing.json` (JSON-поле `"version": 1`, Go-константа `SchemaVersion`, `internal/routing/store.go:25`) |
+| Routing config | `/opt/etc/sign-craze/routing.json` (JSON-поле `"version": 1`, Go-константа `SchemaVersion`, `internal/routing/store.go:25`). **Core-agnostic** — единый файл для всех ядер. |
 | Sing-box config | `/opt/etc/sign-craze/config.json` (`internal/singbox/coreadapter.go:25`) |
+| Xray config | `/opt/etc/sign-craze/xray/config.json` (`internal/core/xray/coreadapter.go`) |
+| Mihomo config | `/opt/etc/sign-craze/mihomo/config.yaml` (`internal/core/mihomo/coreadapter.go`) |
 
 Порты:
 
@@ -27,6 +31,44 @@ routing.json
 | :9091 | Admin REST API |
 | :9092 | Routing Editor UI |
 | :9094 | sing-box clash\_api (internal) |
+
+---
+
+## Translation matrix: RouteRule → нативный формат ядра
+
+Один `RouteRule` из `routing.json` транслируется в нативные конструкции каждого ядра:
+
+| Поле `RouteRule` | sing-box | xray | mihomo |
+|---|---|---|---|
+| `domain: ["x.com"]` | `"domain": ["x.com"]` (1:1) | `"domain": ["x.com"]` | `DOMAIN,x.com,<action>` |
+| `domain_suffix: [".x.com"]` | `"domain_suffix": [".x.com"]` | `"domain": ["x.com"]` | `DOMAIN-SUFFIX,x.com,<action>` |
+| `domain_keyword: ["x"]` | `"domain_keyword": ["x"]` | `"domain": ["keyword:x"]` | `DOMAIN-KEYWORD,x,<action>` |
+| `domain_regex: ["^x\\."]` | `"domain_regex": [...]` | `"domain": ["regexp:^x\\."]` | (не поддерживается, warning) |
+| `ip_cidr: ["10.0.0.0/8"]` | `"ip_cidr": [...]` | `"ip": ["10.0.0.0/8"]` | `IP-CIDR,10.0.0.0/8,<action>,no-resolve` |
+| `port: [80, 443]` | `"port": [80, 443]` | `"port": "80,443"` | `DST-PORT,80,<action>` (по одному) |
+| `port_range: ["1000:2000"]` | `"port_range": [...]` | `"port": "1000-2000"` | `DST-PORT,1000-2000,<action>` |
+| `network: "udp"` | `"network": "udp"` | `"network": "udp"` | `NETWORK,udp,<action>` |
+| `protocol: ["bittorrent"]` | `"protocol": ["bittorrent"]` | `"protocol": ["bittorrent"]` | (warning, skip) |
+| `source_ip_cidr: [...]` | `"source_ip_cidr": [...]` | `"source": [...]` | (не поддерживается, warning) |
+| `inbound: ["tproxy-in"]` | `"inbound": [...]` | `"inboundTag": [...]` | (игнорируется) |
+| `rule_set: ["geosite-youtube"]` | `"rule_set": ["geosite-youtube"]` | translation → `"domain": ["geosite:youtube"]` | `RULE-SET,geosite-youtube,<action>` + rule-providers |
+| `rule_set: ["geoip-ru"]` | `"rule_set": ["geoip-ru"]` | translation → `"ip": ["geoip:ru"]` | `RULE-SET,geoip-ru,<action>` + rule-providers |
+| `rule_set: ["refilter-blocked-domains"]` | `"rule_set": [...]` | warning — нет .dat-эквивалента | `RULE-SET,refilter-blocked-domains,<action>` + .mrs rule-provider |
+| `action: "reject"` / outbound `block` | `"action": "reject"` | outbound `blackhole` автодобавляется | `,REJECT` |
+| `action: "route"`, outbound `direct` | `"outbound": "direct"` | `"outboundTag": "direct"` (freedom автодобавляется) | `,DIRECT` |
+| Final rule | `"final": "<tag>"` | последнее правило без матчеров | `MATCH,<tag>` в конце `rules:` |
+
+### Per-core preset URLs
+
+При `POST /api/presets/<name>/apply` URL rule_set резолвится под формат активного ядра:
+
+| Ядро | Формат | Источник |
+|---|---|---|
+| sing-box | `.srs` | SagerNet/sing-geosite, SagerNet/sing-geoip |
+| mihomo | `.mrs` | MetaCubeX/meta-rules-dat |
+| xray | translation в matcher | URL не нужен — geosite:/geoip: данные встроены в xray |
+
+Если переключили ядро и в `routing.json` остались URL старого формата — Validate покажет предупреждение. Чтобы обновить URL: повторно применить пресет (кнопка **Пресеты ▾** в UI или `POST /api/presets/<name>/apply`).
 
 ---
 
@@ -71,7 +113,19 @@ GET    /api/preview                          → rendered config.json
 POST   /api/apply                            → {"needs_restart": true}
 ```
 
-**Apply pipeline:** `POST /api/apply` → `regenerateConfig` → `singbox.WriteConfig` (sing-box check встроен) → atomic write config.json. Ответ `{"needs_restart": true}`. Reload через SIGHUP не поддерживается — нужен `sign-craze --restart`.
+**Apply pipeline:** `POST /api/apply` → `ensureConfigFreshForCore` → `c.RenderConfig` (check встроен) → atomic write конфига активного ядра. Ответ `{"needs_restart": true}`. Reload через SIGHUP не поддерживается — нужен `sign-craze --restart`.
+
+**Validate response** (начиная с v1.0.0):
+
+```json
+{
+  "ok": true,
+  "errors": [],
+  "warnings": ["rule_set geosite-category-ads-all: .srs URL несовместим с mihomo, нужен .mrs — повторно примените пресет"]
+}
+```
+
+`warnings` не блокируют apply. `errors` блокируют.
 
 **Кастомный SRS-источник** (UI "Rule Sets" → Add, или POST `/api/rule_sets`):
 
@@ -139,8 +193,10 @@ sign-craze --restart
 # 1. Предварительная валидация конфига
 curl -X POST http://router:9092/api/validate -d @routing.json
 
-# 2. Preview rendered config.json до apply
-curl http://router:9092/api/preview | jq '.route.rules'
+# 2. Preview rendered конфига (JSON для sing-box/xray, YAML для mihomo)
+curl http://router:9092/api/preview | jq '.route.rules'    # sing-box
+curl http://router:9092/api/preview | jq '.routing.rules'  # xray
+curl http://router:9092/api/preview                        # mihomo (YAML)
 
 # 3. Apply (sing-box check встроен в WriteConfig)
 curl -X POST http://router:9092/api/apply
@@ -153,10 +209,10 @@ sign-craze --restart
 sign-craze --status
 ```
 
-После `--restart` убедиться в sing-box логах, что `rule_set` успешно скачан:
+После `--restart` убедиться в логах ядра, что `rule_set` успешно скачан (для sing-box/mihomo) или translation применена (для xray):
 
 ```bash
-tail -f /opt/var/log/sign-craze/sign-craze.log | grep rule_set
+tail -f /opt/var/log/sign-craze/sign-craze.log | grep -E 'rule_set|geosite|geoip'
 ```
 
 ---

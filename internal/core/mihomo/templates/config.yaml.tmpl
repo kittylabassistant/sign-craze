@@ -23,9 +23,19 @@ proxy-groups:
     proxies:
 {{ range .ProxyNames }}      - {{ . }}
 {{ end }}      - DIRECT
-
+{{ if .RuleProviders }}
+rule-providers:
+{{ range .RuleProviders }}  {{ .Tag }}:
+    type: {{ .Type }}
+    behavior: {{ .Behavior }}
+    format: {{ .Format }}
+    url: {{ .URL }}
+    path: {{ .Path }}
+    interval: {{ .Interval }}
+{{ end }}{{ end }}
 rules:
-  - MATCH,PROXY
-
+{{ if .Rules }}{{ range .Rules }}  - {{ . }}
+{{ end }}{{ else }}  - MATCH,PROXY
+{{ end }}
 external-controller: 127.0.0.1:9094
 secret: ''

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/kittylabassistant/sign-craze/internal/core"
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/netif"
 	"github.com/kittylabassistant/sign-craze/internal/routing"
@@ -147,25 +148,28 @@ func runUIServer(ctx context.Context) error {
 	routingDeps := &web.RoutingUIDeps{
 		RoutingPath: routing.DefaultPath,
 		DefaultOutboundTag: func() string {
+			fresh, _ := state.Load(state.DefaultPath)
+			if fresh != nil && len(fresh.Outbounds) > 0 {
+				return fresh.Outbounds[0].Tag
+			}
 			if st != nil && len(st.Outbounds) > 0 {
 				return st.Outbounds[0].Tag
 			}
 			return "direct"
 		},
 		Renderer: func(ctx context.Context, cfg *types.RoutingConfig) ([]byte, error) {
-			params := singbox.DefaultConfigParams()
-			if st != nil {
-				params.Mode = st.Mode
-				params.Outbounds = st.Outbounds
-				if len(st.Outbounds) > 0 {
-					params.DefaultOutboundTag = st.Outbounds[0].Tag
-				}
-			}
-			params.RoutingConfig = cfg
-			if params.DefaultOutboundTag == "" && len(cfg.Outbounds) > 0 {
-				params.DefaultOutboundTag = cfg.Outbounds[0].Tag
-			}
-			return singbox.Render(params)
+			c := mustActiveCore()
+			fresh := freshStateOr(st)
+			return c.RenderConfig(uiRenderParams(fresh, cfg))
+		},
+		ConfigFormat: func() core.ConfigFormat {
+			return mustActiveCore().ConfigFormat()
+		},
+		ActiveGeoFormat: func() core.GeoFormat {
+			return mustActiveCore().GeoFormat()
+		},
+		Validator: func(ctx context.Context, cfg *types.RoutingConfig) ([]string, error) {
+			return validateRoutingConfig(ctx, runner, cfg, freshStateOr(st))
 		},
 		OnApply: func(ctx context.Context) error {
 			fresh, loadErr := state.Load(state.DefaultPath)

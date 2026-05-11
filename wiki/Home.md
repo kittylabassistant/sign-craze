@@ -22,7 +22,8 @@ Go-утилита для управления межсетевым экрано�
 
 ## Возможности
 
-- Управление sing-box: установка, запуск, остановка, обновление, откат
+- Управление прокси-ядром: установка, запуск, остановка, обновление, откат. Поддерживается три ядра: **sing-box** (умолчание), **xray** (PQ-VLESS/Vision UDP443, xhttp packet-up), **mihomo** (Hysteria2, TUIC, WireGuard)
+- **Мульти-ядерность (v1.0.0+)**: Web UI `:9092` полностью унифицирован — routing, inbound, outbound и пресеты работают одинаково для всех трёх ядер. Несовместимые конструкции (например `.srs` URL на mihomo или TUN inbound на xray) отображаются как предупреждения, не блокируя Apply
 - Два режима маршрутизации: `policy` (Keenetic IP Policy через RCI, default) и `full` (legacy с собственным fwmark/ipset)
 - Атомарное применение правил iptables/ipset с гарантированным откатом
 - DPI bypass через `nfqws2` (opt-in, **off by default**) — включается `sign-craze --dpi on`; selective режим `--dpi-targets` ограничивает desync выбранными доменами (Discord, YouTube) через `nfqws2 --hostlist`
@@ -67,11 +68,15 @@ Go-утилита для управления межсетевым экрано�
 
 ```plain
 /opt/sbin/sign-craze                       — основной бинарь
-/opt/sbin/sing-box                         — прокси-ядро
+/opt/sbin/sing-box                         — прокси-ядро (sing-box, умолчание)
+/opt/sbin/xray                             — прокси-ядро (xray, если установлено через --core xray)
+/opt/sbin/mihomo                           — прокси-ядро (mihomo, если установлено через --core mihomo)
 /opt/sbin/nfqws2                           — DPI desync (если включён)
-/opt/etc/sign-craze/config.json            — конфиг sing-box (TUN, fwmark 0x53)
-/opt/etc/sign-craze/state.json             — состояние sign-craze (mode, outbounds, ports, dpi_targets, ...)
-/opt/etc/sign-craze/routing.json           — пользовательские routing-правила (Web UI)
+/opt/etc/sign-craze/config.json            — конфиг sing-box (TUN/TProxy, fwmark 0x53)
+/opt/etc/sign-craze/xray/config.json       — конфиг xray (TProxy, dokodemo-door)
+/opt/etc/sign-craze/mihomo/config.yaml     — конфиг mihomo (TProxy)
+/opt/etc/sign-craze/state.json             — состояние sign-craze (core, mode, outbounds, ports, dpi_targets, ...)
+/opt/etc/sign-craze/routing.json           — пользовательские routing-правила (Web UI, core-agnostic)
 /opt/etc/sign-craze/nfqws2.conf            — конфиг nfqws2 (если DPI включён)
 /opt/etc/sign-craze/dpi-hostlist.txt       — список доменов для selective DPI desync
 /opt/etc/sign-craze/admin.creds            — bcrypt-хэш (reserved; basic auth не применяется с v0.5.2)

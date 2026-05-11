@@ -3,6 +3,7 @@ package web
 import (
 	"net/http"
 
+	"github.com/kittylabassistant/sign-craze/internal/core"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
@@ -12,65 +13,124 @@ import (
 // в реальном sign-craze деплое (тег формируется из имени VLESS-конфига оператора).
 const presetVPNPlaceholder = "{vpn}"
 
+// ruleSetSource — мульти-форматный источник rule_set. URL выбирается per-core
+// при apiPresetsApply через resolveRuleSetURL(tag, c.GeoFormat()).
+//
+// Источники:
+//   - SRS: SagerNet/sing-{geosite,geoip} (rule-set ветка, daily обновление).
+//   - DAT: пусто — xray использует translation RouteRule.RuleSet → geosite:/geoip:
+//     matchers (см. internal/core/xray/render_rules.go). Префикс geosite-/geoip- в
+//     Tag — единственный требуемый идентификатор; URL не нужен.
+//   - MRS: MetaCubeX/meta-rules-dat (raw release ветка).
+//
+// Refilter-blocked-domains: SRS + MRS из 1andrevich/Re-filter-lists releases.
+// Для xray (DAT) эквивалента нет — rule пропускается с warning через Validator.
+type ruleSetSource struct {
+	Tag      string
+	SRS      string
+	DAT      string // пусто для xray — translation в matcher делает render_rules.go
+	MRS      string
+	Behavior string // "domain" | "ipcidr" | "classical" — для mihomo rule-providers
+}
+
+var ruleSetSources = []ruleSetSource{
+	{
+		Tag:      "geosite-youtube",
+		SRS:      "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-youtube.srs",
+		MRS:      "https://github.com/MetaCubeX/meta-rules-dat/raw/meta/geo/geosite/youtube.mrs",
+		Behavior: "domain",
+	},
+	{
+		Tag:      "geosite-discord",
+		SRS:      "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-discord.srs",
+		MRS:      "https://github.com/MetaCubeX/meta-rules-dat/raw/meta/geo/geosite/discord.mrs",
+		Behavior: "domain",
+	},
+	{
+		Tag:      "geosite-category-ads-all",
+		SRS:      "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ads-all.srs",
+		MRS:      "https://github.com/MetaCubeX/meta-rules-dat/raw/meta/geo/geosite/category-ads-all.mrs",
+		Behavior: "domain",
+	},
+	{
+		Tag:      "geoip-ru",
+		SRS:      "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs",
+		MRS:      "https://github.com/MetaCubeX/meta-rules-dat/raw/meta/geo/geoip/ru.mrs",
+		Behavior: "ipcidr",
+	},
+	{
+		Tag:      "refilter-blocked-domains",
+		SRS:      "https://github.com/1andrevich/Re-filter-lists/releases/latest/download/ruleset-domain-refilter_domains.srs",
+		MRS:      "https://github.com/1andrevich/Re-filter-lists/releases/latest/download/ruleset-domain-refilter_domains.mrs",
+		Behavior: "domain",
+		// DAT пусто — xray не имеет .dat-эквивалента для refilter.
+		// rule пропускается с warning при render.
+	},
+}
+
+// resolveRuleSetURL возвращает URL под активный формат + ok.
+// ok=false означает "нет эквивалента для этого ядра" — caller должен emit warning
+// и skip rule_set entry (rule переводится в matcher отдельно для xray).
+//
+// Для xray (GeoDAT) URL всегда пустой, но ok=true если префикс Tag совпадает с
+// geosite-/geoip-. Это сигнал "rule_set entry skip, но rule с этим tag будет
+// translated render_rules.go в matcher". Refilter (без префикса) → ok=false.
+func resolveRuleSetURL(tag string, format core.GeoFormat) (url string, ok bool) {
+	for _, src := range ruleSetSources {
+		if src.Tag != tag {
+			continue
+		}
+		switch format {
+		case core.GeoSRS:
+			return src.SRS, src.SRS != ""
+		case core.GeoMRS:
+			return src.MRS, src.MRS != ""
+		case core.GeoDAT:
+			// xray: URL не используется, но rule валиден если префикс известен.
+			isGeosite := len(tag) > 8 && tag[:8] == "geosite-"
+			isGeoip := len(tag) > 6 && tag[:6] == "geoip-"
+			return "", isGeosite || isGeoip
+		}
+		return "", false
+	}
+	return "", false
+}
+
 // preset — преднастроенный набор правил, применяемый поверх текущего routing.json.
+//
+// RuleSets хранятся как logical-имена (Tag); URL и Format заполняются при apply
+// через resolveRuleSetURL под активный c.GeoFormat(). Это делает preset
+// core-agnostic — один и тот же preset работает на sing-box (.srs), mihomo (.mrs)
+// и xray (translation в matcher).
 type preset struct {
 	Name        string             `json:"name"`
 	Description string             `json:"description"`
 	Source      string             `json:"source,omitempty"` // ссылка на community-источник
 	Rules       []types.RouteRule  `json:"rules"`
-	RuleSets    []types.RuleSetRef `json:"rule_sets,omitempty"`
+	RuleSetTags []string           `json:"rule_set_tags,omitempty"` // logical tags, URL резолвится при apply
 	// Final — желаемый final outbound. Применяется только если в текущем
 	// конфиге Final пустой (пресет не перезаписывает явный выбор оператора).
 	// Поддерживается placeholder "{vpn}" — резолвится в DefaultOutboundTag.
 	Final string `json:"final,omitempty"`
 }
 
-// builtinPresets — встроенные пресеты с источниками SRS из community-репо.
-// Все источники auto-обновляются (sing-box.update_interval=24h по умолчанию).
-//
-// Источники:
-//   - SagerNet/sing-geosite (rule-set ветка, daily) — geosite категории
-//   - SagerNet/sing-geoip (rule-set ветка, daily) — geoip страны
-//   - 1andrevich/Re-filter-lists (releases, daily) — РФ blocked + Discord
+// builtinPresets — встроенные пресеты. RuleSet URLs резолвятся в apply через
+// translation table выше.
 var builtinPresets = []preset{
 	{
 		Name: "sign-craze-default",
-		Description: "Стандартная маршрутизация sign-craze: блокированные домены → VPN (TUN), " +
+		Description: "Стандартная маршрутизация sign-craze: блокированные домены → VPN (TUN/TProxy), " +
 			"YouTube/Discord → direct (DPI обход через nfqws2 на firewall-уровне), " +
 			"BitTorrent → direct, остальной трафик → direct.",
 		Source: "https://github.com/SagerNet/sing-geosite, https://github.com/1andrevich/Re-filter-lists",
 		Rules: []types.RouteRule{
-			// BitTorrent ловится sniff'ом и идёт мимо VPN.
 			{Protocol: []string{"bittorrent"}, Outbound: "direct"},
-			// YouTube и Discord направляем на direct: трафик не уйдёт в TUN,
-			// а на firewall-уровне керовские пакеты с keenMark попадают в
-			// NFQUEUE → nfqws2 фрагментирует TLS ClientHello для обхода DPI.
 			{RuleSet: []string{"geosite-youtube"}, Outbound: "direct"},
 			{RuleSet: []string{"geosite-discord"}, Outbound: "direct"},
-			// Заблокированные в РФ домены (Re-filter) → VPN-outbound.
 			{RuleSet: []string{"refilter-blocked-domains"}, Outbound: presetVPNPlaceholder},
 		},
-		RuleSets: []types.RuleSetRef{
-			{
-				Tag: "geosite-youtube", Type: "remote", Format: "binary",
-				URL:            "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-youtube.srs",
-				DownloadDetour: "direct",
-				UpdateInterval: "24h0m0s",
-			},
-			{
-				Tag: "geosite-discord", Type: "remote", Format: "binary",
-				URL:            "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-discord.srs",
-				DownloadDetour: "direct",
-				UpdateInterval: "24h0m0s",
-			},
-			{
-				Tag: "refilter-blocked-domains", Type: "remote", Format: "binary",
-				URL:            "https://github.com/1andrevich/Re-filter-lists/releases/latest/download/ruleset-domain-refilter_domains.srs",
-				DownloadDetour: "direct",
-				UpdateInterval: "24h0m0s",
-			},
-		},
-		Final: "direct",
+		RuleSetTags: []string{"geosite-youtube", "geosite-discord", "refilter-blocked-domains"},
+		Final:       "direct",
 	},
 	{
 		Name:        "block-ads",
@@ -79,14 +139,7 @@ var builtinPresets = []preset{
 		Rules: []types.RouteRule{
 			{RuleSet: []string{"geosite-category-ads-all"}, Action: "reject"},
 		},
-		RuleSets: []types.RuleSetRef{
-			{
-				Tag: "geosite-category-ads-all", Type: "remote", Format: "binary",
-				URL:            "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ads-all.srs",
-				DownloadDetour: "direct",
-				UpdateInterval: "24h0m0s",
-			},
-		},
+		RuleSetTags: []string{"geosite-category-ads-all"},
 	},
 	{
 		Name:        "ru-direct",
@@ -95,14 +148,7 @@ var builtinPresets = []preset{
 		Rules: []types.RouteRule{
 			{RuleSet: []string{"geoip-ru"}, Outbound: "direct"},
 		},
-		RuleSets: []types.RuleSetRef{
-			{
-				Tag: "geoip-ru", Type: "remote", Format: "binary",
-				URL:            "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs",
-				DownloadDetour: "direct",
-				UpdateInterval: "24h0m0s",
-			},
-		},
+		RuleSetTags: []string{"geoip-ru"},
 	},
 	{
 		Name:        "blocked-vpn",
@@ -111,14 +157,7 @@ var builtinPresets = []preset{
 		Rules: []types.RouteRule{
 			{RuleSet: []string{"refilter-blocked-domains"}, Outbound: presetVPNPlaceholder},
 		},
-		RuleSets: []types.RuleSetRef{
-			{
-				Tag: "refilter-blocked-domains", Type: "remote", Format: "binary",
-				URL:            "https://github.com/1andrevich/Re-filter-lists/releases/latest/download/ruleset-domain-refilter_domains.srs",
-				DownloadDetour: "direct",
-				UpdateInterval: "24h0m0s",
-			},
-		},
+		RuleSetTags: []string{"refilter-blocked-domains"},
 	},
 	{
 		Name:        "discord-vpn",
@@ -127,14 +166,7 @@ var builtinPresets = []preset{
 		Rules: []types.RouteRule{
 			{RuleSet: []string{"geosite-discord"}, Outbound: presetVPNPlaceholder},
 		},
-		RuleSets: []types.RuleSetRef{
-			{
-				Tag: "geosite-discord", Type: "remote", Format: "binary",
-				URL:            "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-discord.srs",
-				DownloadDetour: "direct",
-				UpdateInterval: "24h0m0s",
-			},
-		},
+		RuleSetTags: []string{"geosite-discord"},
 	},
 	{
 		Name:        "torrents-direct",
@@ -152,6 +184,14 @@ var builtinPresets = []preset{
 	},
 }
 
+// presetApplyResponse возвращается из POST /api/presets/{name}/apply.
+// Warnings — incompatibility-сигналы (refilter rule_set для xray и т.д.),
+// не блокируют apply.
+type presetApplyResponse struct {
+	Config   *types.RoutingConfig `json:"config"`
+	Warnings []string             `json:"warnings,omitempty"`
+}
+
 func (s *Server) apiPresetsList(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, builtinPresets)
 }
@@ -166,9 +206,23 @@ func (s *Server) resolveVPNTag() string {
 	return s.cfg.RoutingUI.DefaultOutboundTag()
 }
 
+// activeGeoFormat возвращает GeoFormat активного ядра через RoutingUIDeps.
+// Fallback на GeoSRS (sing-box) если deps не настроены — обеспечивает
+// backward compat в тестах, которые не предоставляют ActiveGeoFormat.
+func (s *Server) activeGeoFormat() core.GeoFormat {
+	if s.cfg.RoutingUI != nil && s.cfg.RoutingUI.ActiveGeoFormat != nil {
+		return s.cfg.RoutingUI.ActiveGeoFormat()
+	}
+	return core.GeoSRS
+}
+
 // apiPresetsApply — POST /api/presets/{name}/apply
 // Дополняет текущую RoutingConfig правилами и rule_sets из пресета.
 // Дубликаты правил игнорируются по полю action+outbound+rule_set; rule_sets — по tag.
+//
+// Per-core URL: rule_set URLs резолвятся через ruleSetSources под активный
+// c.GeoFormat() — sing-box (.srs), mihomo (.mrs), xray (translation в matcher,
+// URL пустой). Несовместимости surfacedвыше через warnings в response body.
 //
 // Преобразования:
 //   - Outbound == "{vpn}" заменяется на DefaultOutboundTag (тег первого outbound state).
@@ -203,15 +257,41 @@ func (s *Server) apiPresetsApply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	format := s.activeGeoFormat()
+	var warnings []string
+
 	existingTags := map[string]bool{}
 	for _, rs := range cfg.RuleSets {
 		existingTags[rs.Tag] = true
 	}
-	for _, rs := range p.RuleSets {
-		if !existingTags[rs.Tag] {
-			cfg.RuleSets = append(cfg.RuleSets, rs)
-			existingTags[rs.Tag] = true
+
+	for _, tag := range p.RuleSetTags {
+		if existingTags[tag] {
+			continue
 		}
+		url, ok := resolveRuleSetURL(tag, format)
+		if !ok {
+			warnings = append(warnings,
+				"rule_set \""+tag+"\": нет совместимого URL для активного ядра, rule_set entry пропущен")
+			continue
+		}
+		// Для xray (GeoDAT) URL пустой — translation работает напрямую через
+		// RouteRule.RuleSet → geosite:/geoip: matcher в xray.Render. Не добавляем
+		// rule_set entry в routing.json (RuleSetRef.Validate отклонит пустой URL
+		// при Type=remote, и xray всё равно не использует rule_set механизм).
+		if url == "" {
+			existingTags[tag] = true
+			continue
+		}
+		cfg.RuleSets = append(cfg.RuleSets, types.RuleSetRef{
+			Tag:            tag,
+			Type:           "remote",
+			Format:         "binary",
+			URL:            url,
+			DownloadDetour: "direct",
+			UpdateInterval: "24h0m0s",
+		})
+		existingTags[tag] = true
 	}
 
 	for _, rule := range p.Rules {
@@ -233,7 +313,7 @@ func (s *Server) apiPresetsApply(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, cfg)
+	writeJSON(w, presetApplyResponse{Config: cfg, Warnings: warnings})
 }
 
 // presetUsesVPN сообщает, опирается ли пресет на VPN-outbound (placeholder).

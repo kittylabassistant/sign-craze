@@ -99,12 +99,30 @@ done
 sign-craze --restart
 ```
 
+## Xray при жёстком DPI
+
+Если sing-box не пробивается через DPI (VLESS/VMess детектируются провайдером), xray предлагает дополнительные транспортные опции:
+
+- **XHTTP packet-up режимы** (`xhttpMode: packet-up`) — маскировка под обычный HTTP-загрузчик, менее детектируем чем grpc/ws
+- **PQ-VLESS** (постквантовое шифрование) — дополнительный уровень обфускации
+- **Vision UDP443** — проксирование UDP через TLS 443 с минимальными отличиями от HTTPS
+
+Установка с xray:
+
+```sh
+sign-craze --install --core xray --proxy 'vless://UUID@host:443?type=xhttp&security=reality&pbk=PBK&fp=chrome&sni=SNI&sid=SID&mode=packet-up#tag'
+sign-craze --start
+```
+
+Xray использует TProxy inbound (не TUN), поэтому требует `xt_TPROXY` модуль в ядре. На Keenetic с прошивкой 4.9+ модули `xt_TPROXY.ko` и `xt_socket.ko` присутствуют в `/lib/modules/` и загружаются автоматически через `insmod`. На более старых прошивках может понадобиться `--core sing-box` как fallback.
+
 ## VLESS URL: spx и выбор ядра
 
 | Параметр | sing-box | xray | mihomo |
 |---|---|---|---|
 | `spx=` (spider-X, default `/`) | **НЕ** поддерживает | ✓ | ✗ |
 | `type=grpc` | ✓ | deprecated в v25 (warning) | ✓ |
+| `type=xhttp` | нет | ✓ | нет |
 | `security=reality` | ✓ | ✓ | ✓ |
 
 **Рекомендация:** убирай `spx=%2F` из URL — это default REALITY `/`, серверу всё равно. Тогда sign-craze автоматически выберет sing-box (TUN-mode firewall — стабильнее xray TPROXY на стоковом ядре Keenetic, у которого нет `xt_TPROXY`).

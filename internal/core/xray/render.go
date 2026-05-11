@@ -19,8 +19,14 @@ type ConfigParams struct {
 	Outbounds []types.Outbound
 	// Canonicals — canonical-описания, ключ = Outbound.Tag.
 	Canonicals map[string]types.Canonical
-	// DefaultTag — тег первого proxy outbound для routing rule.
+	// DefaultTag — тег первого proxy outbound для catch-all routing rule.
 	DefaultTag string
+	// RoutingConfig — пользовательский routing (rules/rule_sets/inbounds).
+	// Если nil — Render использует hardcoded {inboundTag:tproxy-in → DefaultTag}.
+	// Иначе Rules транслируются в xray-rules через render_rules.go,
+	// RuleSets с префиксом geosite-/geoip- переводятся в matchers,
+	// без префикса — игнорируются с warning.
+	RoutingConfig *types.RoutingConfig
 }
 
 // DefaultConfigParams возвращает параметры по умолчанию.
@@ -49,9 +55,15 @@ func Render(p ConfigParams) ([]byte, error) {
 		logLevel = "warning"
 	}
 
-	// Строим outbound-список
+	// Строим outbound-список. Служебные direct/block пропускаются — они
+	// добавляются автоматически в конце через freedom/blackhole. Это позволяет
+	// RoutingConfig.Outbounds содержать direct/block (например от preset)
+	// без error на отсутствие canonical.
 	outbounds := make([]map[string]any, 0, len(p.Outbounds)+2)
 	for _, ob := range p.Outbounds {
+		if ob.Type == "direct" || ob.Type == "block" {
+			continue
+		}
 		c, ok := p.Canonicals[ob.Tag]
 		if !ok {
 			return nil, fmt.Errorf("xray render: outbound %q: canonical отсутствует, требуется парсер D.1", ob.Tag)
@@ -86,7 +98,10 @@ func Render(p ConfigParams) ([]byte, error) {
 		})
 	}
 
-	// Строим inbound: tproxy через dokodemo-door
+	// Строим inbound: tproxy через dokodemo-door.
+	// Кастомные inbounds из RoutingConfig.Inbounds игнорируются — xray не
+	// поддерживает TUN, всегда TProxy через dokodemo-door. Warning surfaced
+	// через Validator в web layer.
 	inbounds := []map[string]any{
 		buildTProxyInbound(p.TProxyPort, p.FWMark),
 	}
@@ -97,15 +112,32 @@ func Render(p ConfigParams) ([]byte, error) {
 		defaultTag = p.Outbounds[0].Tag
 	}
 
+	// Если RoutingConfig задан и содержит rules/final — используем translation.
+	// Иначе fallback: одно правило {tproxy-in → defaultTag}.
+	//
+	// Если Final пустой — добавляем fallback catch-all (xray без catch-all
+	// просто дропает не совпавший трафик; для tproxy режима это означает
+	// потерю трафика, поэтому всегда обеспечиваем default route).
+	var routingRules []any
+	finalSet := false
+	if p.RoutingConfig != nil && (len(p.RoutingConfig.Rules) > 0 || p.RoutingConfig.Final != "") {
+		translated, _ := renderXrayRoutingRules(p.RoutingConfig)
+		for _, r := range translated {
+			routingRules = append(routingRules, r)
+		}
+		finalSet = p.RoutingConfig.Final != ""
+	}
+	if !finalSet && defaultTag != "" {
+		routingRules = append(routingRules, map[string]any{
+			"type":        "field",
+			"inboundTag":  []string{"tproxy-in"},
+			"outboundTag": defaultTag,
+		})
+	}
+
 	routing := map[string]any{
 		"domainStrategy": "AsIs",
-		"rules": []any{
-			map[string]any{
-				"type":        "field",
-				"inboundTag":  []string{"tproxy-in"},
-				"outboundTag": defaultTag,
-			},
-		},
+		"rules":          routingRules,
 	}
 
 	cfg := xrayConfig{

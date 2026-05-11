@@ -38,8 +38,8 @@ singbox         dpi             firewall
 | ----- | ---- |
 | `internal/singbox` | загрузка, установка, генерация конфига, версия sing-box |
 | `internal/core` | registry + абстрактный интерфейс `Core`; регистрирует ядра: sing-box, xray, mihomo |
-| `internal/core/xray` | адаптер ядра xray |
-| `internal/core/mihomo` | адаптер ядра mihomo |
+| `internal/core/xray` | адаптер ядра xray; translation `RouteRule → xray rules[]`; `RuleSet` с префиксом `geosite-`/`geoip-` → matcher |
+| `internal/core/mihomo` | адаптер ядра mihomo; translation `RouteRule → TYPE,VALUE,ACTION`; `RuleSets` с `.mrs` URL → `rule-providers:` |
 | `internal/service` | генерация init.d shim; интерфейс `Lifecycle`, связывающий singbox и nfqws2 |
 | `internal/geo` | загрузка SRS из sign-craze-dats; конвертация IP-листа → ipset |
 | `internal/web` | встроенный HTTP-сервер (Zashboard :9090 + admin REST API :9091 + Routing Editor :9092 + DPI targets API) |
@@ -48,7 +48,7 @@ singbox         dpi             firewall
 | `internal/atomicfs` | атомарная запись: write → fsync → rename |
 | `internal/version` | встроенная `VERSION`, build info через `runtime/debug` |
 | `internal/errors` | sentinel-ошибки (`ErrNotInstalled`, `ErrLockHeld`, …) |
-| `pkg/types` | общие типы (`Mode`, `Arch`, `Port`, …) |
+| `pkg/types` | общие типы (`Mode`, `Arch`, `Port`, `RoutingConfig`, `CoreRenderParams`, …) |
 
 ## Поток данных: `--install`
 
@@ -66,12 +66,99 @@ cli/install.Run
 ## Поток данных: `--start`
 
 ```plain
-cli/service.Run
-  → locks.Acquire
-  → service.compositeLifecycle.Start
-      → singbox.lifecycle.Start    (exec detach, запись PID, опрос /proc)
-      → nfqws2.lifecycle.Start     (только если режим dpi включён)
-  → locks.Release
+cli/doStart
+  → mustActiveCore()               (из registry по state.Core)
+  → ensureConfigFreshForCore(ctx, c, st)
+      → routing.Load(routing.json)          (RoutingConfig или nil если не создан)
+      → c.RenderConfig(CoreRenderParams{    (единый путь для всех трёх ядер)
+            Mode, Outbounds, RoutingConfig,
+            InboundMode, DefaultOutboundTag
+          })
+      → bytes.Equal → fast-path skip        (на slow MIPS CheckConfig дорого)
+      → atomicfs.WriteFileAtomic(c.ConfigPath())
+      → c.CheckConfig(ctx, runner, path)    (sing-box check / xray test / mihomo -t)
+  → needsTUN(c, st)                (true только для sing-box + Inbound!="tproxy")
+      если true  → firewall.ForceDeleteTUNDevice  (cleanup stale signbox-tun)
+  → c.NewLifecycle().Start(ctx)
+  → если needsTUN: applier.AttachTUN(ctx, "signbox-tun")
+  → если DPIEnabled: nfqws2.lifecycle.Start
+```
+
+Ключевой инвариант: `ensureConfigFreshForCore` пишет в `c.ConfigPath()` (не в
+захардкоженный `/opt/etc/sign-craze/config.json`), поэтому Apply через UI
+корректно обновляет конфиг активного ядра — xray, mihomo или sing-box.
+
+## Unified routing (v1.0.0)
+
+Единый `pkg/types.RoutingConfig` потребляется всеми тремя ядрами. `routing.json`
+на диске core-agnostic: при переключении `--core` файл не мигрирует, несовместимые
+конструкции surfaced через `apiValidate` warnings.
+
+### CoreRenderParams
+
+```go
+type CoreRenderParams struct {
+    Mode               Mode
+    Outbounds          []Outbound
+    RoutingConfig      *RoutingConfig // nil → legacy-путь (только state.Outbounds)
+    InboundMode        string         // "tun" | "tproxy"
+    DefaultOutboundTag string         // fallback final outbound
+}
+```
+
+### Translation: RoutingConfig → native-формат ядра
+
+| Поле `RouteRule` | sing-box | xray | mihomo |
+|---|---|---|---|
+| `Domain/DomainSuffix/DomainKeyword` | `domain_suffix:`, `domain:` | `domain: ["full:...","domain:...","keyword:..."]` | `DOMAIN,…` / `DOMAIN-SUFFIX,…` / `DOMAIN-KEYWORD,…` |
+| `IPCIDR` | `ip_cidr:` | `ip: ["..."]` | `IP-CIDR,…,no-resolve` |
+| `Port` (uint16 slice) | `port:` | `port: "80,443"` | `DST-PORT,…` |
+| `PortRange` ("1000:2000") | `port_range:` | `port: "1000-2000"` | — |
+| `Network` | `network:` | `network:` | `NETWORK,…` |
+| `RuleSet: ["geosite-youtube"]` | rule_set entry + `.srs` URL | `domain: ["geosite:youtube"]` (translation) | `RULE-SET,geosite-youtube,…` + rule-providers entry |
+| `RuleSet: ["geoip-ru"]` | rule_set entry + `.srs` URL | `ip: ["geoip:ru"]` (translation) | `RULE-SET,geoip-ru,…` + rule-providers entry |
+| `Action: "reject"` | outbound `block` | outbound `block` (blackhole) | `REJECT` |
+| Final | `route.final` | последнее rule без matchers | `MATCH,<tag>` |
+
+**xray translation**: `geosite-<name>` → `geosite:<name>`, `geoip-<cc>` → `geoip:<cc>`.
+xray не имеет rule_set механизма — используются встроенные geosite.dat/geoip.dat.
+RuleSet без префикса `geosite-`/`geoip-` (например refilter) → warning, пропускается.
+
+**mihomo rule-providers**: URL резолвится через `resolveRuleSetURL(tag, core.GeoMRS)` из
+`routingui_presets.go`. `.srs` URL на mihomo → warning (нужен `.mrs`). Исправляется
+повторным apply preset.
+
+### needsTUN(c, st)
+
+```go
+func needsTUN(c core.Core, st *state.State) bool {
+    return c.Name() == "sing-box" && st.Inbound != "tproxy"
+}
+```
+
+Инкапсулирует три прежних `if c.Name() == "sing-box"` в `cmd_lifecycle.go`.
+xray/mihomo всегда TProxy (dokodemo-door / tproxy-port), TUN не создают.
+sing-box в режиме tproxy (state.Inbound="tproxy") тоже не создаёт TUN.
+
+### Per-core preset URLs (`routingui_presets.go`)
+
+`ruleSetSources` — translation table: каждая запись хранит SRS/MRS URL и Behavior.
+При `apiPresetsApply` URL выбирается через `resolveRuleSetURL(tag, c.GeoFormat())`:
+- sing-box (`GeoSRS`) → SagerNet/sing-{geosite,geoip} `.srs` URL
+- mihomo (`GeoMRS`) → MetaCubeX/meta-rules-dat `.mrs` URL
+- xray (`GeoDAT`) → URL пустой, ok=true если `geosite-`/`geoip-` префикс; render-слой переводит в matcher
+
+### Renderer/Validator/ConfigFormat closures (`routingui_deps.go`)
+
+`RoutingUIDeps` передаётся в web-handlers при boot'е. Каждый callback re-resolve'ит
+активное ядро на каждом вызове через `mustActiveCore()` — переключение `--core`
+без перезапуска UI работает:
+
+```
+Renderer       → c.RenderConfig(uiRenderParams(st, cfg))  → bytes ядра
+Validator      → validateRoutingConfig: render + tmp + c.CheckConfig + collectCompatWarnings
+ConfigFormat   → c.ConfigFormat()  (JSON | YAML) для apiPreview Content-Type
+ActiveGeoFormat → c.GeoFormat()    (SRS | DAT | MRS) для preset URL резолва
 ```
 
 ## Порты Web UI

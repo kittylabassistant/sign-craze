@@ -130,6 +130,42 @@ sign-craze --diag            # 2. PASS/WARN/FAIL по 12 проверкам
 | NFQUEUE счётчик UDP/443 = 0 (в выводе `iptables -t mangle -nvL`) | В v0.8.0 jump имеет `-o $WAN_IFACE`: QUIC-трафик устройств в policy уходит через TPROXY до POSTROUTING, минуя цепочку на `eth3` | `iptables -t mangle -nvL \| grep NFQUEUE` | Нормальное поведение v0.8.0. Если QUIC-клиентов нет в policy и счётчик всё равно 0 — проверить `sign-craze --diag` |
 | После `--dpi-update-now` файл `dpi-hostlist.txt` создан, но nfqws2 десинкает ВЕСЬ трафик, а не только хосты из листа | До v0.8.2 nfqws2 получал `--hostlist=<path>` только если `state.dpi_targets` непуст. Auto-update создавал файл на диске, но не дописывал `DPITargets` — selective-режим не активировался | `ps -ef \| grep nfqws2` — аргументы без `--hostlist=` | Обновиться до v0.8.2+ (auto-detect файла на диске). Временный fix: `sign-craze --dpi-targets youtube.com,googlevideo.com --restart` |
 
+### Переключение ядра (multi-core, v1.0.0+)
+
+| Симптом | Вероятная причина | Команда проверки | Fix |
+| --------- | ------------------- | ----------------- | ----- |
+| После `--core xray --restart` прокси не работает; `/api/validate` возвращает warning «TUN inbound не поддерживается xray» | routing.json содержит `type: tun` inbound (например от прежнего sing-box preset). xray не имеет TUN, Apply делает fallback на tproxy, но конфиг может быть частично некорректным | `curl -s http://localhost:9092/api/validate \| jq '.warnings'` — видно предупреждение про TUN | Переапплите preset в Web UI `:9092` (кнопка Apply) — конфиг пересоздастся без TUN inbound под xray. Или вручную: `jq 'del(.inbounds[] \| select(.type=="tun"))' /opt/etc/sign-craze/routing.json > /tmp/r && mv /tmp/r /opt/etc/sign-craze/routing.json && sign-craze --restart` |
+| После `--core mihomo --restart` preset Apply не меняет правила; `.srs` URL в routing.json | mihomo использует `.mrs` формат, не `.srs`. Если URL пресета указывает на `.srs` напрямую — warning при validate, конфиг генерируется без этого rule-provider | `curl -s http://localhost:9092/api/validate \| jq '.warnings'` | Переапплите preset через Web UI `:9092` при активном ядре mihomo — `GeoFormat()` вернёт `.mrs` URL автоматически |
+| После `--core xray --restart` geo-правила не работают (весь трафик идёт через прокси или напрямую) | При ядре xray `rule_set` entries не пишутся в config.json; нужны `geoip:`/`geosite:` матчеры. Если `routing.json` содержит rule_set с нестандартным `.srs` URL без dat-эквивалента — правило пропускается с warning | `curl -s http://localhost:9092/api/validate \| jq '.warnings'` — «нет dat-эквивалента для custom.srs»; `jq '.routing.rules' /opt/etc/sign-craze/config.json` — правило для этого source отсутствует | Использовать только стандартные geo-теги (`geoip:ru`, `geosite:category-ads` и т.д.) при работе с xray. Кастомные `.srs` списки для xray не поддерживаются — используйте `--core sing-box` или `--core mihomo` |
+| `--status` показывает `active core: sing-box`, хотя `--core xray` был выполнен | `--restart` не был запущен после смены ядра | `sign-craze --status` — строка `active core:` | `sign-craze --restart` — обязательно после `--core <name>` |
+| Web UI `:9092` показывает предупреждение, Apply всё равно выполняется | Штатное поведение v1.0.0 — warnings не блокируют Apply | `curl -s http://localhost:9092/api/validate \| jq '.warnings'` | Прочитайте предупреждение; если критично — исправить routing.json или сменить ядро. Apply можно делать с warnings |
+
+**Диагностика при проблемах со сменой ядра:**
+
+```sh
+# Проверить активное ядро и статус
+sign-craze --status
+
+# Проверить routing.json на несовместимости с текущим ядром
+curl -s http://localhost:9092/api/validate | jq '.'
+
+# Посмотреть сгенерированный конфиг активного ядра
+cat /opt/etc/sign-craze/config.json | jq '.inbounds[].type'   # sing-box/xray
+# или
+cat /opt/etc/sign-craze/config.yaml | grep 'type:'            # mihomo
+
+# Проверить rule_set vs matchers для xray
+cat /opt/etc/sign-craze/config.json | jq '.routing.rules[] | select(.ip or .domain)' 2>/dev/null
+
+# Для mihomo — проверить rule-providers
+cat /opt/etc/sign-craze/config.yaml | grep -A3 'rule-providers:'
+
+# Логи генерации конфига
+grep -E "core|config|warn" /opt/var/log/sign-craze/sign-craze.log | tail -20
+```
+
+---
+
 ### Миграция и upgrade
 
 | Симптом | Вероятная причина | Команда проверки | Fix |
