@@ -190,10 +190,10 @@ func TestApplier_Remove_CleansLegacyPolicyDPIChain(t *testing.T) {
 	r2 := &seedRunner{
 		autoRunner: r,
 		existing: map[string]bool{
-			"iptables -t mangle -C POSTROUTING -j signcraze_policy_dpi":           true,
-			"iptables -t mangle -C POSTROUTING -o eth3 -j signcraze_policy_dpi":   true,
-			"iptables -t mangle -S POSTROUTING":                                   true,
-			"iptables -t mangle -L POSTROUTING --line-numbers -n":                 true,
+			"iptables -t mangle -C POSTROUTING -j signcraze_policy_dpi":         true,
+			"iptables -t mangle -C POSTROUTING -o eth3 -j signcraze_policy_dpi": true,
+			"iptables -t mangle -S POSTROUTING":                                 true,
+			"iptables -t mangle -L POSTROUTING --line-numbers -n":               true,
 		},
 	}
 	a := NewApplier(r2, DefaultConfig())
