@@ -148,8 +148,8 @@ func runUIServer(ctx context.Context) error {
 	routingDeps := &web.RoutingUIDeps{
 		RoutingPath: routing.DefaultPath,
 		DefaultOutboundTag: func() string {
-			fresh, err := state.Load(state.DefaultPath)
-			if err == nil && fresh != nil && len(fresh.Outbounds) > 0 {
+			fresh, freshErr := state.Load(state.DefaultPath)
+			if freshErr == nil && fresh != nil && len(fresh.Outbounds) > 0 {
 				return fresh.Outbounds[0].Tag
 			}
 			if st != nil && len(st.Outbounds) > 0 {
