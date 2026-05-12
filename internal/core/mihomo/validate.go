@@ -9,17 +9,12 @@ import (
 
 // Validate проверяет совместимость canonical-описания outbound с mihomo.
 // Возвращает ошибку если конфигурация требует возможностей, которые mihomo
-// не поддерживает (PQ-VLESS, Vision UDP443, Reality SpiderX и т.п.).
+// не поддерживает (PQ-VLESS, Vision UDP443).
+//
+// Reality spider_x (spx=...) — xray-специфичная маскировка запроса; Clash.Meta
+// его не реализует, render mihomo это поле молча пропускает, REALITY-handshake
+// работает без него. Поэтому валидацию по spider_x не блокируем.
 func Validate(c types.Canonical) error {
-	// Reality.SpiderX — xray-специфичная маскировка запроса (spx=...).
-	// Mihomo принимает Reality, но без spider_x — поле не реализовано
-	// в Clash.Meta как параметр настройки.
-	if c.TLS != nil && c.TLS.Reality != nil && c.TLS.Reality.SpiderX != "" {
-		return fmt.Errorf(
-			"mihomo не поддерживает Reality spider_x (spx=%q): используйте --core xray",
-			c.TLS.Reality.SpiderX,
-		)
-	}
 	if c.Proto == nil {
 		return nil
 	}

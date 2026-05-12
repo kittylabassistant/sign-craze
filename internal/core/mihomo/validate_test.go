@@ -32,6 +32,24 @@ func TestValidate_VLESS(t *testing.T) {
 			wantErr: "",
 		},
 		{
+			name: "Reality spider_x — mihomo молча игнорирует (xray-only поле, валидация проходит)",
+			c: types.Canonical{
+				Protocol: types.ProtocolVLESS,
+				TLS: &types.TLSConfig{
+					Enabled: true,
+					Reality: &types.RealityConfig{
+						Enabled: true,
+						SpiderX: "/",
+					},
+				},
+				Proto: &types.ProtoOpts{
+					UUID:       "00000000-0000-0000-0000-000000000000",
+					Encryption: "none",
+				},
+			},
+			wantErr: "",
+		},
+		{
 			name: "Vision UDP443 — только xray",
 			c: types.Canonical{
 				Protocol: types.ProtocolVLESS,

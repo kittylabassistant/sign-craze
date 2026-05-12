@@ -81,7 +81,7 @@ func TestValidate(t *testing.T) {
 			wantErr: "",
 		},
 		{
-			name: "Reality spider_x — только xray",
+			name: "Reality spider_x — sing-box молча игнорирует (xray-only поле, валидация проходит)",
 			ob: types.Outbound{
 				Tag:      "proxy",
 				Type:     "vless",
@@ -94,7 +94,7 @@ func TestValidate(t *testing.T) {
 					},
 				},
 			},
-			wantErr: "spider_x",
+			wantErr: "",
 		},
 		{
 			name: "PQ-VLESS mlkem768x25519plus — только xray",

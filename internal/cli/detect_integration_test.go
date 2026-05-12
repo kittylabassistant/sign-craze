@@ -71,11 +71,14 @@ func TestDetect_RealCores(t *testing.T) {
 			notInAll:  []string{"xray"},
 		},
 		{
-			name:      "reality_spiderx_xray_only",
+			// Reality spider_x (spx=...) — xray-only фича маскировки.
+			// sing-box и mihomo render молча игнорируют поле (см.
+			// singbox/render.go, core/mihomo/render.go), валидация
+			// не блокирует URL — все три ядра совместимы.
+			name:      "reality_spiderx_all_compat",
 			url:       "vless://11111111-1111-1111-1111-111111111111@example.com:443?encryption=none&type=tcp&security=reality&pbk=AAA&sid=BB&spx=%2F#spx",
-			wantRec:   "xray",
-			wantInAll: []string{"xray"},
-			notInAll:  []string{"sing-box", "mihomo"},
+			wantRec:   "sing-box",
+			wantInAll: []string{"mihomo", "sing-box", "xray"},
 		},
 		{
 			name:      "ss_plain_all_compat",

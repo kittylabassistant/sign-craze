@@ -78,8 +78,10 @@ func (coreImpl) ParseVersion(line string) (string, error) {
 // RenderConfig генерирует config.json sing-box из types.CoreRenderParams.
 //
 // Перед рендером проверяет каждый outbound на совместимость с sing-box через
-// Validate — xray-only возможности (XHTTP modes, spider_x, PQ-VLESS) отклоняются
-// с ошибкой до запуска sing-box check, что даёт понятную диагностику.
+// Validate — xray-only возможности (XHTTP modes, PQ-VLESS) отклоняются с
+// ошибкой до запуска sing-box check, что даёт понятную диагностику.
+// Reality spider_x (spx=...) поддерживается только в xray, sing-box render
+// его молча игнорирует (см. render.go).
 //
 // Прокидывает все поля CoreRenderParams в singbox.ConfigParams: RoutingConfig
 // (пользовательский routing.json), InboundMode (tun/tproxy), DefaultOutboundTag.
