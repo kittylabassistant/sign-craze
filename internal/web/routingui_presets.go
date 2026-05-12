@@ -1,6 +1,7 @@
 package web
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/kittylabassistant/sign-craze/internal/core"
@@ -151,6 +152,17 @@ var builtinPresets = []preset{
 		RuleSetTags: []string{"geoip-ru"},
 	},
 	{
+		Name: "ru-direct-rest-vpn",
+		Description: "Российские IP (geoip-ru) → direct, остальной трафик → VPN (final). " +
+			"Требует VPN-outbound в state. Final применяется только если ещё не задан.",
+		Source: "https://github.com/SagerNet/sing-geoip",
+		Rules: []types.RouteRule{
+			{RuleSet: []string{"geoip-ru"}, Outbound: "direct"},
+		},
+		RuleSetTags: []string{"geoip-ru"},
+		Final:       presetVPNPlaceholder,
+	},
+	{
 		Name:        "blocked-vpn",
 		Description: "Заблокированные в РФ домены (Re-filter) → через VPN.",
 		Source:      "https://github.com/1andrevich/Re-filter-lists",
@@ -184,12 +196,116 @@ var builtinPresets = []preset{
 	},
 }
 
-// presetApplyResponse возвращается из POST /api/presets/{name}/apply.
+// presetApplyResponse возвращается из POST /api/presets/{name}/apply
+// и POST /api/presets/{name}/preview.
 // Warnings — incompatibility-сигналы (refilter rule_set для xray и т.д.),
 // не блокируют apply.
 type presetApplyResponse struct {
 	Config   *types.RoutingConfig `json:"config"`
 	Warnings []string             `json:"warnings,omitempty"`
+}
+
+// Режимы применения пресета.
+const (
+	presetModeAdd     = "add"     // AS-IS: аддитивно добавить к существующему cfg.
+	presetModeReplace = "replace" // TO-BE: очистить Rules, force-set Final.
+)
+
+// applyPresetToConfig применяет пресет p к cfg in-place под указанный mode.
+// vpnTag используется для подстановки на место presetVPNPlaceholder.
+// format определяет источник rule_set URL.
+//
+// mode="add" (AS-IS): Rules append, RuleSets — недостающие добавляются (dedupe по tag),
+// Final ставится только если cfg.Final == "".
+//
+// mode="replace" (TO-BE): Rules = nil → append preset Rules, RuleSets — недостающие
+// добавляются (custom RuleSets не очищаются — по решению пользователя),
+// Final = resolved preset Final (force overwrite).
+//
+// Возвращает warnings — несовместимости rule_set с активным ядром (refilter+xray и т.п.).
+func applyPresetToConfig(cfg *types.RoutingConfig, p *preset, vpnTag string,
+	format core.GeoFormat, mode string,
+) []string {
+	var warnings []string
+
+	if mode == presetModeReplace {
+		cfg.Rules = nil
+	}
+
+	existingTags := map[string]bool{}
+	for _, rs := range cfg.RuleSets {
+		existingTags[rs.Tag] = true
+	}
+
+	for _, tag := range p.RuleSetTags {
+		if existingTags[tag] {
+			continue
+		}
+		url, ok := resolveRuleSetURL(tag, format)
+		if !ok {
+			warnings = append(warnings,
+				"rule_set \""+tag+"\": нет совместимого URL для активного ядра, rule_set entry пропущен")
+			continue
+		}
+		// Для xray (GeoDAT) URL пустой — translation работает напрямую через
+		// RouteRule.RuleSet → geosite:/geoip: matcher в xray.Render.
+		if url == "" {
+			existingTags[tag] = true
+			continue
+		}
+		cfg.RuleSets = append(cfg.RuleSets, types.RuleSetRef{
+			Tag:            tag,
+			Type:           "remote",
+			Format:         "binary",
+			URL:            url,
+			DownloadDetour: "direct",
+			UpdateInterval: "24h0m0s",
+		})
+		existingTags[tag] = true
+	}
+
+	for _, rule := range p.Rules {
+		if rule.Outbound == presetVPNPlaceholder {
+			rule.Outbound = vpnTag
+		}
+		cfg.Rules = append(cfg.Rules, rule)
+	}
+
+	if p.Final != "" {
+		resolvedFinal := p.Final
+		if resolvedFinal == presetVPNPlaceholder {
+			resolvedFinal = vpnTag
+		}
+		if mode == presetModeReplace || cfg.Final == "" {
+			cfg.Final = resolvedFinal
+		}
+	}
+
+	return warnings
+}
+
+// findPreset возвращает указатель на встроенный пресет по имени или nil.
+func findPreset(name string) *preset {
+	for i := range builtinPresets {
+		if builtinPresets[i].Name == name {
+			return &builtinPresets[i]
+		}
+	}
+	return nil
+}
+
+// deepCopyRoutingConfig — JSON round-trip копия. Используется в preview,
+// чтобы applyPresetToConfig не мутировал реальный cfg.
+func deepCopyRoutingConfig(cfg *types.RoutingConfig) (*types.RoutingConfig, error) {
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		return nil, err
+	}
+	var out types.RoutingConfig
+	if err := json.Unmarshal(data, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 func (s *Server) apiPresetsList(w http.ResponseWriter, r *http.Request) {
@@ -217,8 +333,9 @@ func (s *Server) activeGeoFormat() core.GeoFormat {
 }
 
 // apiPresetsApply — POST /api/presets/{name}/apply
-// Дополняет текущую RoutingConfig правилами и rule_sets из пресета.
-// Дубликаты правил игнорируются по полю action+outbound+rule_set; rule_sets — по tag.
+// Legacy endpoint: применяет пресет в режиме add (AS-IS) и сразу пишет в
+// routing.json. UI больше не вызывает этот endpoint — он использует
+// /preview + PUT /api/routing. Оставлен для backward compatibility.
 //
 // Per-core URL: rule_set URLs резолвятся через ruleSetSources под активный
 // c.GeoFormat() — sing-box (.srs), mihomo (.mrs), xray (translation в matcher,
@@ -229,91 +346,75 @@ func (s *Server) activeGeoFormat() core.GeoFormat {
 //     При отсутствии VPN-outbound возвращается 412 Precondition Failed.
 //   - Final пресета применяется только если в текущем конфиге Final пустой.
 func (s *Server) apiPresetsApply(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	var p *preset
-	for i := range builtinPresets {
-		if builtinPresets[i].Name == name {
-			p = &builtinPresets[i]
-			break
-		}
-	}
-	if p == nil {
-		http.Error(w, "preset не найден", http.StatusNotFound)
+	cfg, p, vpnTag, ok := s.preparePresetApply(w, r)
+	if !ok {
 		return
 	}
-
-	// Резолв placeholder VPN до загрузки конфига — fail fast.
-	vpnTag := s.resolveVPNTag()
-	if presetUsesVPN(p) && vpnTag == "" {
-		http.Error(w,
-			"preset требует VPN-outbound: добавьте VLESS/Trojan/Shadowsocks через --install или /api/outbounds, затем повторите apply",
-			http.StatusPreconditionFailed)
-		return
-	}
-
-	cfg, err := s.loadRoutingConfig()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	format := s.activeGeoFormat()
-	var warnings []string
-
-	existingTags := map[string]bool{}
-	for _, rs := range cfg.RuleSets {
-		existingTags[rs.Tag] = true
-	}
-
-	for _, tag := range p.RuleSetTags {
-		if existingTags[tag] {
-			continue
-		}
-		url, ok := resolveRuleSetURL(tag, format)
-		if !ok {
-			warnings = append(warnings,
-				"rule_set \""+tag+"\": нет совместимого URL для активного ядра, rule_set entry пропущен")
-			continue
-		}
-		// Для xray (GeoDAT) URL пустой — translation работает напрямую через
-		// RouteRule.RuleSet → geosite:/geoip: matcher в xray.Render. Не добавляем
-		// rule_set entry в routing.json (RuleSetRef.Validate отклонит пустой URL
-		// при Type=remote, и xray всё равно не использует rule_set механизм).
-		if url == "" {
-			existingTags[tag] = true
-			continue
-		}
-		cfg.RuleSets = append(cfg.RuleSets, types.RuleSetRef{
-			Tag:            tag,
-			Type:           "remote",
-			Format:         "binary",
-			URL:            url,
-			DownloadDetour: "direct",
-			UpdateInterval: "24h0m0s",
-		})
-		existingTags[tag] = true
-	}
-
-	for _, rule := range p.Rules {
-		if rule.Outbound == presetVPNPlaceholder {
-			rule.Outbound = vpnTag
-		}
-		cfg.Rules = append(cfg.Rules, rule)
-	}
-
-	if cfg.Final == "" && p.Final != "" {
-		final := p.Final
-		if final == presetVPNPlaceholder {
-			final = vpnTag
-		}
-		cfg.Final = final
-	}
-
+	warnings := applyPresetToConfig(cfg, p, vpnTag, s.activeGeoFormat(), presetModeAdd)
 	if err := s.saveRoutingConfig(cfg); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	writeJSON(w, presetApplyResponse{Config: cfg, Warnings: warnings})
+}
+
+// preparePresetApply выполняет общие проверки для apply/preview:
+// resolve preset, fail-fast 412 для {vpn} без outbound, load cfg.
+func (s *Server) preparePresetApply(w http.ResponseWriter, r *http.Request) (*types.RoutingConfig, *preset, string, bool) {
+	name := r.PathValue("name")
+	p := findPreset(name)
+	if p == nil {
+		http.Error(w, "preset не найден", http.StatusNotFound)
+		return nil, nil, "", false
+	}
+	vpnTag := s.resolveVPNTag()
+	if presetUsesVPN(p) && vpnTag == "" {
+		http.Error(w,
+			"preset требует VPN-outbound: добавьте VLESS/Trojan/Shadowsocks через --install или /api/outbounds, затем повторите apply",
+			http.StatusPreconditionFailed)
+		return nil, nil, "", false
+	}
+	cfg, err := s.loadRoutingConfig()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return nil, nil, "", false
+	}
+	return cfg, p, vpnTag, true
+}
+
+// apiPresetsPreview — POST /api/presets/{name}/preview
+// Тело: {"mode": "add" | "replace"} (default: "add").
+// Применяет пресет к КОПИИ конфига и возвращает результат БЕЗ записи на диск.
+// Используется UI для черновика — после preview клиент видит draft, может
+// нажать Сохранить (PUT /api/routing) или Отмена.
+func (s *Server) apiPresetsPreview(w http.ResponseWriter, r *http.Request) {
+	cfg, p, vpnTag, ok := s.preparePresetApply(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Mode string `json:"mode"`
+	}
+	if r.ContentLength > 0 {
+		if !decodeJSON(w, r, &body) {
+			return
+		}
+	}
+	mode := body.Mode
+	if mode == "" {
+		mode = presetModeAdd
+	}
+	if mode != presetModeAdd && mode != presetModeReplace {
+		http.Error(w, "mode должен быть \"add\" или \"replace\"", http.StatusBadRequest)
+		return
+	}
+	preview, err := deepCopyRoutingConfig(cfg)
+	if err != nil {
+		http.Error(w, "preview copy: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	warnings := applyPresetToConfig(preview, p, vpnTag, s.activeGeoFormat(), mode)
+	writeJSON(w, presetApplyResponse{Config: preview, Warnings: warnings})
 }
 
 // presetUsesVPN сообщает, опирается ли пресет на VPN-outbound (placeholder).

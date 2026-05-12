@@ -185,7 +185,7 @@ func TestPresets_List(t *testing.T) {
 		t.Fatalf("GET /api/presets: %d", rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"sign-craze-default", "block-ads", "ru-direct", "blocked-vpn", "discord-vpn", "torrents-direct", "block-bogon-udp"} {
+	for _, want := range []string{"sign-craze-default", "block-ads", "ru-direct", "ru-direct-rest-vpn", "blocked-vpn", "discord-vpn", "torrents-direct", "block-bogon-udp"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("preset %q отсутствует в response", want)
 		}
@@ -256,6 +256,89 @@ func TestPresets_Apply_VPNRequired_NoOutbound_412(t *testing.T) {
 	rec := do(s, authReq("POST", "/api/presets/blocked-vpn/apply", pw, nil))
 	if rec.Code != http.StatusPreconditionFailed {
 		t.Errorf("ожидался 412 без VPN-outbound, получен %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestPresets_Apply_RuDirectRestVPN проверяет: geoip-ru → direct (правило),
+// final → vpn-тег (резолв {vpn}), 1 rule_set добавлен.
+func TestPresets_Apply_RuDirectRestVPN(t *testing.T) {
+	s, pw, _ := makeTestServerWithRouting(t)
+
+	// В реальном flow BootstrapFromState переносит state.Outbounds в
+	// routing.json.Outbounds. В тестах симулируем это вручную, иначе
+	// RoutingConfig.Validate отклонит Final="vless-test" — outbound с таким
+	// тегом отсутствует в cfg.Outbounds.
+	rec := do(s, authReq("POST", "/api/outbounds", pw, types.Outbound{
+		Tag: "vless-test", Type: "vless", Server: "1.1.1.1", Port: 443,
+		Settings: map[string]any{"uuid": "00000000-0000-0000-0000-000000000000"},
+	}))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("setup outbound: %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(s, authReq("POST", "/api/presets/ru-direct-rest-vpn/apply", pw, nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("apply ru-direct-rest-vpn: %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	if got := fetchFinal(t, s, pw); got != "vless-test" {
+		t.Errorf("ожидался final=vless-test (резолв {vpn}), получили %q", got)
+	}
+
+	rec = do(s, authReq("GET", "/api/rules", pw, nil))
+	var rules []types.RouteRule
+	_ = json.Unmarshal(rec.Body.Bytes(), &rules)
+	if len(rules) != 1 || rules[0].Outbound != "direct" || len(rules[0].RuleSet) != 1 || rules[0].RuleSet[0] != "geoip-ru" {
+		t.Errorf("ожидалось 1 правило geoip-ru→direct, получено %+v", rules)
+	}
+
+	rec = do(s, authReq("GET", "/api/rule_sets", pw, nil))
+	var rss []types.RuleSetRef
+	_ = json.Unmarshal(rec.Body.Bytes(), &rss)
+	if len(rss) != 1 || rss[0].Tag != "geoip-ru" {
+		t.Errorf("ожидался 1 rule_set geoip-ru, получено %+v", rss)
+	}
+}
+
+// TestPresets_Apply_RuDirectRestVPN_NoOutbound_412 — без VPN-outbound
+// пресет возвращает 412 (Final={vpn} требует резолва).
+func TestPresets_Apply_RuDirectRestVPN_NoOutbound_412(t *testing.T) {
+	s, pw, _ := makeTestServerWithRouting(t)
+	s.cfg.RoutingUI.DefaultOutboundTag = func() string { return "" }
+
+	rec := do(s, authReq("POST", "/api/presets/ru-direct-rest-vpn/apply", pw, nil))
+	if rec.Code != http.StatusPreconditionFailed {
+		t.Errorf("ожидался 412, получен %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestPresets_Apply_RuDirectRestVPN_FinalDoesNotOverwrite — если оператор уже
+// явно задал Final, пресет не должен его перезаписывать.
+func TestPresets_Apply_RuDirectRestVPN_FinalDoesNotOverwrite(t *testing.T) {
+	s, pw, _ := makeTestServerWithRouting(t)
+
+	// outbound для резолва {vpn} (см. комментарий в TestPresets_Apply_RuDirectRestVPN).
+	rec := do(s, authReq("POST", "/api/outbounds", pw, types.Outbound{
+		Tag: "vless-test", Type: "vless", Server: "1.1.1.1", Port: 443,
+		Settings: map[string]any{"uuid": "00000000-0000-0000-0000-000000000000"},
+	}))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("setup outbound: %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	// оператор явно ставит final=direct
+	rec = do(s, authReq("PUT", "/api/final", pw, map[string]string{"final": "direct"}))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT final direct setup: %d", rec.Code)
+	}
+
+	rec = do(s, authReq("POST", "/api/presets/ru-direct-rest-vpn/apply", pw, nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("apply: %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	if got := fetchFinal(t, s, pw); got != "direct" {
+		t.Errorf("явный final=direct должен сохраниться, получили %q", got)
 	}
 }
 
@@ -411,5 +494,402 @@ func TestApply_NeedsRestart(t *testing.T) {
 	// файл должен быть создан
 	if _, err := os.Stat(routingPath); err != nil {
 		t.Errorf("routing.json не создан: %v", err)
+	}
+}
+
+// ===== Final outbound =====
+
+// fetchFinal — GET /api/state и вернуть config.final.
+func fetchFinal(t *testing.T, s *Server, pw string) string {
+	t.Helper()
+	rec := do(s, authReq("GET", "/api/state", pw, nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /api/state: %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Config types.RoutingConfig `json:"config"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode state: %v", err)
+	}
+	return resp.Config.Final
+}
+
+func TestFinal_SetBuiltinDirect(t *testing.T) {
+	s, pw, _ := makeTestServerWithRouting(t)
+
+	rec := do(s, authReq("PUT", "/api/final", pw, map[string]string{"final": "direct"}))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT /api/final direct: %d body=%s", rec.Code, rec.Body.String())
+	}
+	if got := fetchFinal(t, s, pw); got != "direct" {
+		t.Errorf("ожидался final=direct, получили %q", got)
+	}
+}
+
+func TestFinal_SetBuiltinBlock(t *testing.T) {
+	s, pw, _ := makeTestServerWithRouting(t)
+
+	rec := do(s, authReq("PUT", "/api/final", pw, map[string]string{"final": "block"}))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT /api/final block: %d body=%s", rec.Code, rec.Body.String())
+	}
+	if got := fetchFinal(t, s, pw); got != "block" {
+		t.Errorf("ожидался final=block, получили %q", got)
+	}
+}
+
+func TestFinal_SetUserOutbound(t *testing.T) {
+	s, pw, _ := makeTestServerWithRouting(t)
+
+	// заранее добавляем outbound, на который укажет Final
+	rec := do(s, authReq("POST", "/api/outbounds", pw, types.Outbound{
+		Tag: "proxy-x", Type: "vless", Server: "1.1.1.1", Port: 443,
+		Settings: map[string]any{"uuid": "00000000-0000-0000-0000-000000000000"},
+	}))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("setup outbound: %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(s, authReq("PUT", "/api/final", pw, map[string]string{"final": "proxy-x"}))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT /api/final proxy-x: %d body=%s", rec.Code, rec.Body.String())
+	}
+	if got := fetchFinal(t, s, pw); got != "proxy-x" {
+		t.Errorf("ожидался final=proxy-x, получили %q", got)
+	}
+}
+
+func TestFinal_SetInvalidTag(t *testing.T) {
+	s, pw, _ := makeTestServerWithRouting(t)
+
+	rec := do(s, authReq("PUT", "/api/final", pw, map[string]string{"final": "ghost"}))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("ожидался 400 на несуществующий tag, получен %d body=%s", rec.Code, rec.Body.String())
+	}
+	if got := fetchFinal(t, s, pw); got != "" {
+		t.Errorf("после ошибочного PUT final должен остаться пустым, получили %q", got)
+	}
+}
+
+func TestFinal_SetEmptyClears(t *testing.T) {
+	s, pw, _ := makeTestServerWithRouting(t)
+
+	// сначала ставим direct
+	rec := do(s, authReq("PUT", "/api/final", pw, map[string]string{"final": "direct"}))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("setup PUT direct: %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	// затем очищаем
+	rec = do(s, authReq("PUT", "/api/final", pw, map[string]string{"final": ""}))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT empty: %d body=%s", rec.Code, rec.Body.String())
+	}
+	if got := fetchFinal(t, s, pw); got != "" {
+		t.Errorf("ожидался пустой final после очистки, получили %q", got)
+	}
+}
+
+// ===== Presets Preview (AS-IS / TO-BE без записи на диск) =====
+
+// decodePresetResp декодирует ответ preview/apply в presetApplyResponse-like форму.
+func decodePresetResp(t *testing.T, body []byte) (*types.RoutingConfig, []string) {
+	t.Helper()
+	var resp struct {
+		Config   *types.RoutingConfig `json:"config"`
+		Warnings []string             `json:"warnings,omitempty"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		t.Fatalf("decode preview resp: %v body=%s", err, body)
+	}
+	return resp.Config, resp.Warnings
+}
+
+// TestPresetsPreview_AddMode_DoesNotWriteDisk — preview не создаёт routing.json.
+func TestPresetsPreview_AddMode_DoesNotWriteDisk(t *testing.T) {
+	s, pw, routingPath := makeTestServerWithRouting(t)
+
+	rec := do(s, authReq("POST", "/api/presets/torrents-direct/preview", pw, map[string]string{"mode": "add"}))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("preview: %d body=%s", rec.Code, rec.Body.String())
+	}
+	if _, err := os.Stat(routingPath); !os.IsNotExist(err) {
+		t.Errorf("routing.json не должен быть создан preview-вызовом (err=%v)", err)
+	}
+}
+
+// TestPresetsPreview_AddMode_ReturnsAppendedConfig — add-режим: правила добавляются к существующим.
+func TestPresetsPreview_AddMode_ReturnsAppendedConfig(t *testing.T) {
+	s, pw, _ := makeTestServerWithRouting(t)
+
+	// Подготовим существующее правило в routing.json.
+	cfg := types.RoutingConfig{
+		Version: 1,
+		Rules: []types.RouteRule{
+			{Network: "tcp", Port: []uint16{22}, Action: "block"},
+		},
+	}
+	if err := s.saveRoutingConfig(&cfg); err != nil {
+		t.Fatalf("saveRoutingConfig: %v", err)
+	}
+
+	rec := do(s, authReq("POST", "/api/presets/torrents-direct/preview", pw, map[string]string{"mode": "add"}))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("preview: %d body=%s", rec.Code, rec.Body.String())
+	}
+	gotCfg, _ := decodePresetResp(t, rec.Body.Bytes())
+	if gotCfg == nil || len(gotCfg.Rules) != 2 {
+		t.Fatalf("ожидалось 2 правила (existing+preset), получено %+v", gotCfg)
+	}
+	if gotCfg.Rules[0].Port[0] != 22 {
+		t.Errorf("первое правило должно остаться существующим (port=22), %+v", gotCfg.Rules[0])
+	}
+	if len(gotCfg.Rules[1].Protocol) == 0 || gotCfg.Rules[1].Protocol[0] != "bittorrent" {
+		t.Errorf("второе правило — preset (bittorrent), %+v", gotCfg.Rules[1])
+	}
+}
+
+// TestPresetsPreview_ReplaceMode_ClearsRulesOnly — replace очищает Rules, RuleSets остаются.
+func TestPresetsPreview_ReplaceMode_ClearsRulesOnly(t *testing.T) {
+	s, pw, _ := makeTestServerWithRouting(t)
+
+	// Подготовим routing.json с custom правилом и custom rule_set.
+	cfg := types.RoutingConfig{
+		Version: 1,
+		Rules: []types.RouteRule{
+			{Network: "tcp", Port: []uint16{22}, Action: "block"},
+		},
+		RuleSets: []types.RuleSetRef{
+			{Tag: "my-custom-list", Type: "remote", Format: "binary",
+				URL: "https://example.com/list.srs", DownloadDetour: "direct"},
+		},
+	}
+	if err := s.saveRoutingConfig(&cfg); err != nil {
+		t.Fatalf("saveRoutingConfig: %v", err)
+	}
+
+	rec := do(s, authReq("POST", "/api/presets/torrents-direct/preview", pw, map[string]string{"mode": "replace"}))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("preview replace: %d body=%s", rec.Code, rec.Body.String())
+	}
+	gotCfg, _ := decodePresetResp(t, rec.Body.Bytes())
+
+	// Rules: только из пресета (torrents-direct → 1 правило).
+	if len(gotCfg.Rules) != 1 {
+		t.Fatalf("Rules: ожидалось 1 (только preset), получено %d (%+v)", len(gotCfg.Rules), gotCfg.Rules)
+	}
+	if len(gotCfg.Rules[0].Protocol) == 0 || gotCfg.Rules[0].Protocol[0] != "bittorrent" {
+		t.Errorf("правило не из preset: %+v", gotCfg.Rules[0])
+	}
+
+	// RuleSets: custom сохранён (replace их не трогает).
+	found := false
+	for _, rs := range gotCfg.RuleSets {
+		if rs.Tag == "my-custom-list" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("custom rule_set должен остаться при replace, RuleSets=%+v", gotCfg.RuleSets)
+	}
+}
+
+// TestPresetsPreview_ReplaceMode_ForceSetsFinal — replace перезаписывает Final даже если уже задан.
+func TestPresetsPreview_ReplaceMode_ForceSetsFinal(t *testing.T) {
+	s, pw, _ := makeTestServerWithRouting(t)
+
+	// outbound для резолва Final.
+	rec := do(s, authReq("POST", "/api/outbounds", pw, types.Outbound{
+		Tag: "vless-test", Type: "vless", Server: "1.1.1.1", Port: 443,
+		Settings: map[string]any{"uuid": "00000000-0000-0000-0000-000000000000"},
+	}))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("setup outbound: %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	// Установим Final=direct вручную.
+	rec = do(s, authReq("PUT", "/api/final", pw, map[string]string{"final": "direct"}))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT final=direct: %d", rec.Code)
+	}
+
+	// replace через ru-direct-rest-vpn (Final={vpn} → vless-test).
+	rec = do(s, authReq("POST", "/api/presets/ru-direct-rest-vpn/preview", pw,
+		map[string]string{"mode": "replace"}))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("preview replace: %d body=%s", rec.Code, rec.Body.String())
+	}
+	gotCfg, _ := decodePresetResp(t, rec.Body.Bytes())
+	if gotCfg.Final != "vless-test" {
+		t.Errorf("replace должен force-set Final=vless-test, получили %q", gotCfg.Final)
+	}
+}
+
+// TestPresetsPreview_ReplaceMode_AddsMissingRuleSets — replace добавляет недостающие rule_sets из пресета.
+func TestPresetsPreview_ReplaceMode_AddsMissingRuleSets(t *testing.T) {
+	s, pw, _ := makeTestServerWithRouting(t)
+
+	rec := do(s, authReq("POST", "/api/presets/ru-direct/preview", pw,
+		map[string]string{"mode": "replace"}))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("preview: %d body=%s", rec.Code, rec.Body.String())
+	}
+	gotCfg, _ := decodePresetResp(t, rec.Body.Bytes())
+	found := false
+	for _, rs := range gotCfg.RuleSets {
+		if rs.Tag == "geoip-ru" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("ожидался добавленный rule_set geoip-ru, RuleSets=%+v", gotCfg.RuleSets)
+	}
+}
+
+// TestPresetsPreview_VPNRequired_412 — пресет с {vpn} без outbound → 412.
+func TestPresetsPreview_VPNRequired_412(t *testing.T) {
+	s, pw, _ := makeTestServerWithRouting(t)
+	s.cfg.RoutingUI.DefaultOutboundTag = func() string { return "" }
+
+	rec := do(s, authReq("POST", "/api/presets/blocked-vpn/preview", pw,
+		map[string]string{"mode": "add"}))
+	if rec.Code != http.StatusPreconditionFailed {
+		t.Errorf("ожидался 412, получен %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestPresetsPreview_NotFound_404.
+func TestPresetsPreview_NotFound_404(t *testing.T) {
+	s, pw, _ := makeTestServerWithRouting(t)
+	rec := do(s, authReq("POST", "/api/presets/nonexistent/preview", pw, nil))
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("ожидался 404, получен %d", rec.Code)
+	}
+}
+
+// TestPresetsPreview_DefaultModeIsAdd — пустое тело или пустой mode = "add".
+func TestPresetsPreview_DefaultModeIsAdd(t *testing.T) {
+	s, pw, _ := makeTestServerWithRouting(t)
+
+	rec := do(s, authReq("POST", "/api/presets/torrents-direct/preview", pw, nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("preview: %d body=%s", rec.Code, rec.Body.String())
+	}
+	gotCfg, _ := decodePresetResp(t, rec.Body.Bytes())
+	if len(gotCfg.Rules) != 1 {
+		t.Errorf("ожидалось 1 правило (add к пустому), %+v", gotCfg.Rules)
+	}
+}
+
+// ===== Routing Commit (PUT /api/routing) =====
+
+// TestRoutingCommit_Valid_WritesToDisk — PUT /api/routing записывает на диск.
+func TestRoutingCommit_Valid_WritesToDisk(t *testing.T) {
+	s, pw, routingPath := makeTestServerWithRouting(t)
+
+	body := map[string]any{
+		"rules": []types.RouteRule{
+			{Network: "tcp", Port: []uint16{443}, Action: "block"},
+		},
+		"rule_sets": []types.RuleSetRef{},
+		"final":     "direct",
+	}
+	rec := do(s, authReq("PUT", "/api/routing", pw, body))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT /api/routing: %d body=%s", rec.Code, rec.Body.String())
+	}
+	if _, err := os.Stat(routingPath); err != nil {
+		t.Errorf("routing.json не создан: %v", err)
+	}
+
+	// проверим что на диске наши правила.
+	rec = do(s, authReq("GET", "/api/state", pw, nil))
+	var st struct {
+		Config types.RoutingConfig `json:"config"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &st)
+	if len(st.Config.Rules) != 1 || st.Config.Rules[0].Port[0] != 443 {
+		t.Errorf("commit не сохранил правила: %+v", st.Config.Rules)
+	}
+	if st.Config.Final != "direct" {
+		t.Errorf("Final не сохранён: %q", st.Config.Final)
+	}
+}
+
+// TestRoutingCommit_PreservesInboundsOutbounds — commit не трогает Inbounds/Outbounds.
+func TestRoutingCommit_PreservesInboundsOutbounds(t *testing.T) {
+	s, pw, _ := makeTestServerWithRouting(t)
+
+	// Подготовим outbound и inbound.
+	rec := do(s, authReq("POST", "/api/outbounds", pw, types.Outbound{
+		Tag: "keep-me", Type: "vless", Server: "1.1.1.1", Port: 443,
+		Settings: map[string]any{"uuid": "00000000-0000-0000-0000-000000000000"},
+	}))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("setup outbound: %d body=%s", rec.Code, rec.Body.String())
+	}
+	rec = do(s, authReq("POST", "/api/inbounds", pw, types.Inbound{
+		Tag: "tproxy-keep", Type: "tproxy",
+		Settings: map[string]any{"listen": "::", "listen_port": 7895},
+	}))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("setup inbound: %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	// Commit с пустыми Rules.
+	body := map[string]any{
+		"rules":     []types.RouteRule{},
+		"rule_sets": []types.RuleSetRef{},
+		"final":     "",
+	}
+	rec = do(s, authReq("PUT", "/api/routing", pw, body))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT /api/routing: %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	// Inbounds/Outbounds должны остаться.
+	rec = do(s, authReq("GET", "/api/state", pw, nil))
+	var st struct {
+		Config types.RoutingConfig `json:"config"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &st)
+	if len(st.Config.Outbounds) != 1 || st.Config.Outbounds[0].Tag != "keep-me" {
+		t.Errorf("Outbounds потеряны: %+v", st.Config.Outbounds)
+	}
+	if len(st.Config.Inbounds) != 1 || st.Config.Inbounds[0].Tag != "tproxy-keep" {
+		t.Errorf("Inbounds потеряны: %+v", st.Config.Inbounds)
+	}
+}
+
+// TestRoutingCommit_ValidationError_FinalTag — Final с несуществующим тегом → 400.
+func TestRoutingCommit_ValidationError_FinalTag(t *testing.T) {
+	s, pw, _ := makeTestServerWithRouting(t)
+
+	body := map[string]any{
+		"rules":     []types.RouteRule{},
+		"rule_sets": []types.RuleSetRef{},
+		"final":     "ghost-tag",
+	}
+	rec := do(s, authReq("PUT", "/api/routing", pw, body))
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("ожидался 400 для несуществующего final tag, получен %d body=%s",
+			rec.Code, rec.Body.String())
+	}
+}
+
+// TestRoutingCommit_EmptyRulesIsValid — пустые правила — допустимое состояние.
+func TestRoutingCommit_EmptyRulesIsValid(t *testing.T) {
+	s, pw, _ := makeTestServerWithRouting(t)
+
+	body := map[string]any{
+		"rules":     []types.RouteRule{},
+		"rule_sets": []types.RuleSetRef{},
+		"final":     "",
+	}
+	rec := do(s, authReq("PUT", "/api/routing", pw, body))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT /api/routing с пустыми правилами: %d body=%s",
+			rec.Code, rec.Body.String())
 	}
 }

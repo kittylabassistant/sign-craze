@@ -20,6 +20,12 @@ func registerRoutingUIRoutes(mux *http.ServeMux, s *Server) {
 	// state
 	mux.HandleFunc("GET /api/state", s.apiRoutingState)
 
+	// routing commit (атомарная замена Rules+RuleSets+Final, клиентский буфер)
+	mux.HandleFunc("PUT /api/routing", s.apiRoutingCommit)
+
+	// final outbound (default action для непокрытых правил)
+	mux.HandleFunc("PUT /api/final", s.apiFinalSet)
+
 	// inbounds CRUD
 	mux.HandleFunc("GET /api/inbounds", s.apiInboundsList)
 	mux.HandleFunc("POST /api/inbounds", s.apiInboundsAdd)
@@ -47,6 +53,7 @@ func registerRoutingUIRoutes(mux *http.ServeMux, s *Server) {
 	// presets
 	mux.HandleFunc("GET /api/presets", s.apiPresetsList)
 	mux.HandleFunc("POST /api/presets/{name}/apply", s.apiPresetsApply)
+	mux.HandleFunc("POST /api/presets/{name}/preview", s.apiPresetsPreview)
 
 	// validate / preview / apply
 	mux.HandleFunc("POST /api/validate", s.apiValidate)

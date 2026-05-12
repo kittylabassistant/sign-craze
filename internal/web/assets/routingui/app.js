@@ -2,10 +2,23 @@
 // Preact 10 + htm (ESM, без npm build)
 
 import { h, render, Fragment } from './vendor/preact.module.js';
-import { useState, useEffect, useCallback, useRef } from './vendor/preact-hooks.module.js';
+import { useState, useEffect, useCallback, useRef, useMemo } from './vendor/preact-hooks.module.js';
 import htm from './vendor/htm.module.js';
 
 const html = htm.bind(h);
+
+// ---------------------------------------------------------------------------
+// routingEqual — глубокое сравнение routing-секции (rules + rule_sets + final).
+// Используется для isDirty: localCfg против serverCfg.
+// ---------------------------------------------------------------------------
+function routingEqual(a, b) {
+  const norm = (c) => JSON.stringify({
+    r: c?.rules || [],
+    s: c?.rule_sets || [],
+    f: c?.final || '',
+  });
+  return norm(a) === norm(b);
+}
 
 // ---------------------------------------------------------------------------
 // API helper — все запросы идут с credentials:'include' (Basic Auth из браузера)
@@ -394,6 +407,23 @@ function OutboundsTab({ outbounds, onReload, showToast }) {
 }
 
 // ---------------------------------------------------------------------------
+// RoutingActionBar — кнопки «Сохранить» / «Отмена» для routing-черновика.
+// Виден только при isDirty. Используется на вкладках Routing и Rule Sets.
+// ---------------------------------------------------------------------------
+function RoutingActionBar({ isDirty, onSave, onCancel }) {
+  if (!isDirty) return null;
+  return html`
+    <div class="routing-action-bar">
+      <span class="routing-dirty-hint">Есть несохранённые изменения routing</span>
+      <div class="routing-action-bar-buttons">
+        <button class="secondary" onClick=${onCancel}>Отмена</button>
+        <button onClick=${onSave}>Сохранить</button>
+      </div>
+    </div>
+  `;
+}
+
+// ---------------------------------------------------------------------------
 // RulesTab — список правил маршрутизации с drag-and-drop reorder
 // ---------------------------------------------------------------------------
 const RULE_ACTIONS = ['route', 'block', 'sniff', 'resolve', 'hijack-dns'];
@@ -440,7 +470,10 @@ function RuleModal({ item, index, outbounds, onSave, onClose }) {
     onSave(data);
   };
 
-  const proxyTags = outbounds.filter(o => o.type !== 'direct' && o.type !== 'block').map(o => o.tag);
+  // direct/block — built-in outbounds sing-box/xray/mihomo; всегда доступны
+  // независимо от cfg.outbounds, который содержит только user-defined записи.
+  const userTags = outbounds.filter(o => o.type !== 'direct' && o.type !== 'block').map(o => o.tag);
+  const proxyTags = ['direct', 'block', ...userTags];
 
   return html`
     <${Modal} title=${isNew ? 'Добавить правило' : `Редактировать правило #${index}`} onClose=${onClose}>
@@ -512,36 +545,30 @@ function RuleModal({ item, index, outbounds, onSave, onClose }) {
   `;
 }
 
-function RulesTab({ rules, outbounds, onReload, showToast }) {
+function RulesTab({ rules, ruleSets, outbounds, final, isDirty, onRoutingChange, onSave, onCancel, showToast }) {
   const [modal, setModal] = useState(null); // null | 'add' | {item, index}
   const [dragging, setDragging] = useState(null);
   const [dragOver, setDragOver] = useState(null);
 
-  const handleSave = async (data) => {
-    try {
-      if (modal === 'add') {
-        await api.post('/api/rules', data);
-        showToast('Правило добавлено', 'success');
-      } else {
-        await api.put(`/api/rules/${modal.index}`, data);
-        showToast('Правило обновлено', 'success');
-      }
-      setModal(null);
-      onReload();
-    } catch (e) {
-      showToast(`Ошибка: ${e.message}`, 'error');
-    }
+  const userTags = outbounds.filter(o => o.type !== 'direct' && o.type !== 'block').map(o => o.tag);
+
+  const handleFinalChange = (e) => {
+    onRoutingChange({ final: e.target.value });
   };
 
-  const handleDelete = async (idx) => {
-    if (!confirm(`Удалить правило #${idx}?`)) return;
-    try {
-      await api.del(`/api/rules/${idx}`);
-      showToast('Правило удалено', 'success');
-      onReload();
-    } catch (e) {
-      showToast(`Ошибка: ${e.message}`, 'error');
+  const handleSaveRule = (data) => {
+    if (modal === 'add') {
+      onRoutingChange({ rules: [...rules, data] });
+    } else {
+      const arr = rules.map((r, i) => i === modal.index ? data : r);
+      onRoutingChange({ rules: arr });
     }
+    setModal(null);
+  };
+
+  const handleDelete = (idx) => {
+    if (!confirm(`Удалить правило #${idx}?`)) return;
+    onRoutingChange({ rules: rules.filter((_, i) => i !== idx) });
   };
 
   // Drag-and-drop через HTML5 DnD API
@@ -556,16 +583,14 @@ function RulesTab({ rules, outbounds, onReload, showToast }) {
     setDragOver(idx);
   };
 
-  const handleDrop = async (e, idx) => {
+  const handleDrop = (e, idx) => {
     e.preventDefault();
     setDragOver(null);
     if (dragging === null || dragging === idx) { setDragging(null); return; }
-    try {
-      await api.post('/api/rules/reorder', { from: dragging, to: idx });
-      onReload();
-    } catch (e) {
-      showToast(`Ошибка перестановки: ${e.message}`, 'error');
-    }
+    const arr = [...rules];
+    const [item] = arr.splice(dragging, 1);
+    arr.splice(idx > dragging ? idx - 1 : idx, 0, item);
+    onRoutingChange({ rules: arr });
     setDragging(null);
   };
 
@@ -585,6 +610,20 @@ function RulesTab({ rules, outbounds, onReload, showToast }) {
 
   return html`
     <div>
+      <article style="margin-bottom:1rem">
+        <header style="margin-bottom:0.5rem">
+          <strong>Default action (final)</strong>
+          <small style="display:block;color:var(--pico-muted-color)">
+            Куда идёт трафик, не сматчившийся ни одним правилом. Пусто → дефолтный прокси (текущее ядро).
+          </small>
+        </header>
+        <select value=${final || ''} onChange=${handleFinalChange}>
+          <option value="">— не задан (proxy по умолчанию) —</option>
+          <option value="direct">direct (прямой выход через WAN)</option>
+          <option value="block">block (блокировка)</option>
+          ${userTags.map(t => html`<option key=${t} value=${t}>${t}</option>`)}
+        </select>
+      </article>
       <div style="display:flex;justify-content:flex-end;margin-bottom:0.75rem">
         <button onClick=${() => setModal('add')}>+ Добавить</button>
       </div>
@@ -622,12 +661,13 @@ function RulesTab({ rules, outbounds, onReload, showToast }) {
             </tbody>
           </table>
         `}
+      <${RoutingActionBar} isDirty=${isDirty} onSave=${onSave} onCancel=${onCancel} />
       ${modal && html`
         <${RuleModal}
           item=${modal === 'add' ? null : modal.item}
           index=${modal === 'add' ? null : modal.index}
           outbounds=${outbounds}
-          onSave=${handleSave}
+          onSave=${handleSaveRule}
           onClose=${() => setModal(null)}
         />
       `}
@@ -683,29 +723,21 @@ function RuleSetModal({ onSave, onClose }) {
   `;
 }
 
-function RuleSetsTab({ ruleSets, onReload, showToast }) {
+function RuleSetsTab({ ruleSets, isDirty, onRoutingChange, onSave, onCancel, showToast }) {
   const [showAdd, setShowAdd] = useState(false);
 
-  const handleSave = async (data) => {
-    try {
-      await api.post('/api/rule_sets', data);
-      showToast('Rule Set добавлен', 'success');
-      setShowAdd(false);
-      onReload();
-    } catch (e) {
-      showToast(`Ошибка: ${e.message}`, 'error');
+  const handleAdd = (data) => {
+    if (ruleSets.some(rs => rs.tag === data.tag)) {
+      showToast(`Rule set с tag «${data.tag}» уже есть в черновике`, 'error');
+      return;
     }
+    onRoutingChange({ rule_sets: [...ruleSets, data] });
+    setShowAdd(false);
   };
 
-  const handleDelete = async (tag) => {
+  const handleDelete = (tag) => {
     if (!confirm(`Удалить rule_set "${tag}"?`)) return;
-    try {
-      await api.del(`/api/rule_sets/${tag}`);
-      showToast('Rule Set удалён', 'success');
-      onReload();
-    } catch (e) {
-      showToast(`Ошибка: ${e.message}`, 'error');
-    }
+    onRoutingChange({ rule_sets: ruleSets.filter(rs => rs.tag !== tag) });
   };
 
   return html`
@@ -734,19 +766,23 @@ function RuleSetsTab({ ruleSets, onReload, showToast }) {
             </tbody>
           </table>
         `}
+      <${RoutingActionBar} isDirty=${isDirty} onSave=${onSave} onCancel=${onCancel} />
       ${showAdd && html`
-        <${RuleSetModal} onSave=${handleSave} onClose=${() => setShowAdd(false)} />
+        <${RuleSetModal} onSave=${handleAdd} onClose=${() => setShowAdd(false)} />
       `}
     </div>
   `;
 }
 
 // ---------------------------------------------------------------------------
-// PresetsDropdown — выбор и применение пресетов
+// PresetsDropdown — выбор и применение пресетов в режиме AS-IS / TO-BE.
+// AS-IS («Добавить»): аддитивно к черновику.
+// TO-BE («Заменить»): очистить Rules черновика, force-set Final.
+// Применение идёт через POST /api/presets/{name}/preview — на сервер не пишет.
+// Изменения копятся в localCfg, видна action-bar «Сохранить/Отмена».
 // ---------------------------------------------------------------------------
-function PresetsDropdown({ onReload, showToast }) {
+function PresetsDropdown({ onApplyPreset, showToast }) {
   const [presets, setPresets] = useState([]);
-  // visible управляет видимостью выпадающего списка
   const [visible, setVisible] = useState(false);
   const containerRef = useRef(null);
 
@@ -754,7 +790,6 @@ function PresetsDropdown({ onReload, showToast }) {
     api.get('/api/presets').then(setPresets).catch(() => {});
   }, []);
 
-  // Закрытие по клику вне компонента
   useEffect(() => {
     if (!visible) return;
     const handler = (e) => {
@@ -766,48 +801,42 @@ function PresetsDropdown({ onReload, showToast }) {
     return () => document.removeEventListener('mousedown', handler);
   }, [visible]);
 
-  // apply делается fire-and-forget: сначала запускаем запрос, потом скрываем
-  // dropdown. Если скрыть сначала, preact unmount'ит preset-item между
-  // mousedown и обработчиком и клик теряется (родитель уже re-render'ится).
-  const apply = (name) => {
-    api.post(`/api/presets/${name}/apply`, {})
-      .then(() => {
-        showToast(`Пресет "${name}" применён`, 'success');
-        onReload();
-      })
-      .catch(e => showToast(`Ошибка применения пресета: ${e.message}`, 'error'))
-      .finally(() => setVisible(false));
+  const handleApply = (name, mode) => {
+    if (mode === 'replace') {
+      if (!confirm(
+        `Заменить: пресет «${name}» удалит все текущие правила и установит Default action из пресета. ` +
+        `Изменения попадут в черновик — сохранить или отменить можно ниже. Продолжить?`
+      )) return;
+    }
+    setVisible(false);
+    onApplyPreset(name, mode);
   };
 
   if (presets.length === 0) return null;
 
   return html`
-    <div
-      ref=${containerRef}
-      style="position:relative"
-    >
-      <button
-        class="secondary"
-        onClick=${() => setVisible(v => !v)}
-      >Пресеты ▾</button>
+    <div ref=${containerRef} style="position:relative">
+      <button class="secondary" onClick=${() => setVisible(v => !v)}>Пресеты ▾</button>
       ${visible && html`
-        <div style="
-          position:absolute;top:100%;right:0;
-          background:var(--pico-background-color);
-          border:1px solid var(--pico-muted-border-color);
-          border-radius:0.25rem;
-          min-width:200px;z-index:200;
-          box-shadow:0 4px 12px rgba(0,0,0,0.15)
-        ">
+        <div class="presets-menu">
           ${presets.map(p => html`
-            <div
-              key=${p.name}
-              class="preset-item"
-              onClick=${() => apply(p.name)}
-              title=${p.description || ''}
-            >
-              <strong>${p.name}</strong>
-              ${p.description && html`<br/><small style="color:var(--pico-muted-color)">${p.description}</small>`}
+            <div key=${p.name} class="preset-item" title=${p.description || ''}>
+              <div class="preset-item-header">
+                <strong>${p.name}</strong>
+                <div class="preset-item-actions">
+                  <button
+                    class="secondary"
+                    title="Добавить правила пресета к существующим (AS-IS)"
+                    onClick=${(e) => { e.stopPropagation(); handleApply(p.name, 'add'); }}
+                  >+ Добавить</button>
+                  <button
+                    class="contrast"
+                    title="Заменить все правила правилами пресета (TO-BE)"
+                    onClick=${(e) => { e.stopPropagation(); handleApply(p.name, 'replace'); }}
+                  >⟳ Заменить</button>
+                </div>
+              </div>
+              ${p.description && html`<small style="color:var(--pico-muted-color)">${p.description}</small>`}
             </div>
           `)}
         </div>
@@ -819,7 +848,7 @@ function PresetsDropdown({ onReload, showToast }) {
 // ---------------------------------------------------------------------------
 // Toolbar — Validate / Preview / Apply (всегда виден)
 // ---------------------------------------------------------------------------
-function Toolbar({ onReload, showToast }) {
+function Toolbar({ onReload, showToast, isDirty, onApplyPreset }) {
   const [previewModal, setPreviewModal] = useState(false);
   const [previewText, setPreviewText] = useState('');
   const [restartModal, setRestartModal] = useState(false);
@@ -849,6 +878,10 @@ function Toolbar({ onReload, showToast }) {
   };
 
   const handleApply = async () => {
+    if (isDirty && !confirm(
+      'Есть несохранённые изменения routing. К ядру будет применён routing.json без этих изменений. ' +
+      'Сначала нажмите Сохранить на вкладке Routing. Продолжить применение текущего routing.json?'
+    )) return;
     try {
       const res = await api.post('/api/apply', {});
       if (res.needs_restart) {
@@ -865,10 +898,12 @@ function Toolbar({ onReload, showToast }) {
   return html`
     <div class="toolbar">
       <h1>sign-craze · Routing Editor</h1>
-      <${PresetsDropdown} onReload=${onReload} showToast=${showToast} />
+      <${PresetsDropdown} onApplyPreset=${onApplyPreset} showToast=${showToast} />
       <button class="secondary" onClick=${handleValidate}>Validate</button>
       <button class="secondary" onClick=${handlePreview}>Preview</button>
-      <button onClick=${handleApply}>Apply</button>
+      <button onClick=${handleApply} class=${isDirty ? 'apply-dirty' : ''} title=${isDirty ? 'Есть несохранённые изменения routing' : ''}>
+        Apply${isDirty ? html`<span class="dirty-dot" aria-hidden="true">●</span>` : ''}
+      </button>
     </div>
 
     ${previewModal && html`
@@ -916,10 +951,14 @@ const TABS = [
 
 function App() {
   const [tab, setTab] = useState('inbounds');
-  const [state, setState] = useState(null);
+  // serverCfg — последний загруженный с сервера (или сохранённый туда) snapshot.
+  // localCfg — рабочий черновик: пользователь редактирует только его.
+  // isDirty = !routingEqual(localCfg, serverCfg).
+  const [serverCfg, setServerCfg] = useState(null);
+  const [localCfg, setLocalCfg] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [toast, setToast] = useState(null); // {message, kind}
+  const [toast, setToast] = useState(null);
 
   const showToast = useCallback((message, kind = 'success') => {
     setToast({ message, kind });
@@ -930,7 +969,20 @@ function App() {
     setError('');
     try {
       const data = await api.get('/api/state');
-      setState(data);
+      setServerCfg(data.config);
+      setLocalCfg(prev => {
+        if (!prev) return data.config;
+        // Если буфер чистый (или ещё не был грязным), полная синхронизация.
+        // Если грязный — сохраняем пользовательскую routing-секцию,
+        // обновляем только non-routing (inbounds/outbounds).
+        if (routingEqual(prev, data.config)) return data.config;
+        return {
+          ...data.config,
+          rules: prev.rules,
+          rule_sets: prev.rule_sets,
+          final: prev.final,
+        };
+      });
     } catch (e) {
       setError(`Ошибка загрузки конфигурации: ${e.message}`);
     } finally {
@@ -940,7 +992,73 @@ function App() {
 
   useEffect(() => { loadState(); }, [loadState]);
 
-  const cfg = state?.config || {};
+  const isDirty = useMemo(
+    () => !!localCfg && !!serverCfg && !routingEqual(localCfg, serverCfg),
+    [localCfg, serverCfg],
+  );
+
+  // handleRoutingChange — патч routing-секции localCfg.
+  // patch: {rules?, rule_sets?, final?}
+  const handleRoutingChange = useCallback((patch) => {
+    setLocalCfg(prev => ({ ...prev, ...patch }));
+  }, []);
+
+  // handleSave — PUT /api/routing с текущим localCfg.routing.
+  const handleSave = useCallback(async () => {
+    if (!localCfg) return;
+    const body = {
+      rules: localCfg.rules || [],
+      rule_sets: localCfg.rule_sets || [],
+      final: localCfg.final || '',
+    };
+    try {
+      await api.put('/api/routing', body);
+      setServerCfg(prev => ({ ...prev, ...body }));
+      showToast('Routing сохранён', 'success');
+    } catch (e) {
+      showToast(`Ошибка сохранения: ${e.message}`, 'error');
+    }
+  }, [localCfg, showToast]);
+
+  // handleCancel — откат localCfg.routing к serverCfg.routing.
+  const handleCancel = useCallback(() => {
+    if (!serverCfg) return;
+    setLocalCfg(prev => ({
+      ...prev,
+      rules: serverCfg.rules || [],
+      rule_sets: serverCfg.rule_sets || [],
+      final: serverCfg.final || '',
+    }));
+  }, [serverCfg]);
+
+  // handleApplyPreset — POST /api/presets/{name}/preview, результат → localCfg.routing.
+  const handleApplyPreset = useCallback(async (name, mode) => {
+    try {
+      const resp = await api.post(`/api/presets/${name}/preview`, { mode });
+      if (resp.warnings?.length) {
+        showToast(`Предупреждения: ${resp.warnings.join(', ')}`, 'warn');
+      }
+      setLocalCfg(prev => ({
+        ...prev,
+        rules: resp.config.rules || [],
+        rule_sets: resp.config.rule_sets || [],
+        final: resp.config.final || '',
+      }));
+      showToast(`Пресет «${name}» применён (черновик)`, 'success');
+    } catch (e) {
+      showToast(`Ошибка применения пресета: ${e.message}`, 'error');
+    }
+  }, [showToast]);
+
+  // beforeunload — предупреждать про несохранённые изменения.
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
+
+  const cfg = localCfg || {};
   const inbounds  = cfg.inbounds  || [];
   const outbounds = cfg.outbounds || [];
   const rules     = cfg.rules     || [];
@@ -948,7 +1066,12 @@ function App() {
 
   return html`
     <${Fragment}>
-      <${Toolbar} onReload=${loadState} showToast=${showToast} />
+      <${Toolbar}
+        onReload=${loadState}
+        showToast=${showToast}
+        isDirty=${isDirty}
+        onApplyPreset=${handleApplyPreset}
+      />
 
       ${loading && html`<p aria-busy="true">Загрузка…</p>`}
 
@@ -981,10 +1104,29 @@ function App() {
           <${OutboundsTab} outbounds=${outbounds} onReload=${loadState} showToast=${showToast} />
         `}
         ${tab === 'routing' && html`
-          <${RulesTab} rules=${rules} outbounds=${outbounds} onReload=${loadState} showToast=${showToast} />
+          <${RulesTab}
+            rules=${rules}
+            ruleSets=${ruleSets}
+            outbounds=${outbounds}
+            final=${cfg.final}
+            isDirty=${isDirty}
+            onRoutingChange=${handleRoutingChange}
+            onSave=${handleSave}
+            onCancel=${handleCancel}
+            showToast=${showToast}
+          />
         `}
         ${tab === 'rulesets' && html`
-          <${RuleSetsTab} ruleSets=${ruleSets} onReload=${loadState} showToast=${showToast} />
+          <${RuleSetsTab}
+            rules=${rules}
+            ruleSets=${ruleSets}
+            final=${cfg.final}
+            isDirty=${isDirty}
+            onRoutingChange=${handleRoutingChange}
+            onSave=${handleSave}
+            onCancel=${handleCancel}
+            showToast=${showToast}
+          />
         `}
       `}
 
