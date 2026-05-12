@@ -103,11 +103,11 @@ func resolveRuleSetURL(tag string, format core.GeoFormat) (url string, ok bool) 
 // core-agnostic — один и тот же preset работает на sing-box (.srs), mihomo (.mrs)
 // и xray (translation в matcher).
 type preset struct {
-	Name        string             `json:"name"`
-	Description string             `json:"description"`
-	Source      string             `json:"source,omitempty"` // ссылка на community-источник
-	Rules       []types.RouteRule  `json:"rules"`
-	RuleSetTags []string           `json:"rule_set_tags,omitempty"` // logical tags, URL резолвится при apply
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	Source      string            `json:"source,omitempty"` // ссылка на community-источник
+	Rules       []types.RouteRule `json:"rules"`
+	RuleSetTags []string          `json:"rule_set_tags,omitempty"` // logical tags, URL резолвится при apply
 	// Final — желаемый final outbound. Применяется только если в текущем
 	// конфиге Final пустой (пресет не перезаписывает явный выбор оператора).
 	// Поддерживается placeholder "{vpn}" — резолвится в DefaultOutboundTag.
