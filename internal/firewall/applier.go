@@ -63,7 +63,7 @@ type Config struct {
 
 	// VPNExcludeIPs — IP-адреса VPN-эндпоинтов, исключаемые из NFQUEUE-десинка.
 	// Резолвится из state.Outbounds[].Server при build firewall config.
-	// В PolicyDPIRules вставляется как RETURN-правила перед NFQUEUE-портами,
+	// В DPIForwardRules вставляется как RETURN-правила перед NFQUEUE-портами,
 	// чтобы не ломать Reality-маскировку sing-box к собственному VPN-серверу.
 	VPNExcludeIPs []string
 
@@ -200,7 +200,7 @@ func (a *applierImpl) Apply(ctx context.Context, mode types.Mode) error {
 }
 
 func (a *applierImpl) applyInternal(ctx context.Context, mode types.Mode) error {
-	// WAN автодетект — нужен ДО applyPolicyMode для PolicyDPIRules `-o $WAN`-фильтра,
+	// WAN автодетект — нужен ДО applyPolicyMode для DPIForwardRules `-o $WAN`-фильтра,
 	// чтобы NFQUEUE не ловил трафик-к-TUN/loopback. ensureWANUIDrop ниже использует
 	// уже заполненный a.cfg.WANIface.
 	if a.cfg.WANIface == "" {
@@ -295,20 +295,20 @@ func (a *applierImpl) applyPolicyMode(ctx context.Context) error {
 		return err
 	}
 
-	// 2. DPI-цепочка signcraze_policy_dpi всегда в mangle (NFQUEUE для nfqws2).
+	// 2. DPI-цепочка signcraze_dpi_fwd в mangle FORWARD (NFQUEUE для nfqws2).
+	// Применяется ко всем LAN-устройствам, идущим через WAN-интерфейс напрямую
+	// (не через TPROXY/sing-box). Self-traffic sing-box отсекается фильтром
+	// `! --mark $loopMark` на jump-правиле.
 	if a.cfg.DPIEnabled {
-		if err := a.ipt.EnsureChain(ctx, "mangle", modes.PolicyDPIChainName); err != nil {
+		if err := a.ipt.EnsureChain(ctx, "mangle", modes.DPIForwardChainName); err != nil {
 			return err
 		}
 	}
 
-	// 3. DPI-правила (если включено) — добавляются ПЕРЕД policy-правилами,
-	// чтобы NFQUEUE сработал до перемаркировки и подъёма в TUN-таблицу.
-	// WAN-фильтр (`-o $WAN`) исключает трафик-в-TUN/loopback от NFQUEUE.
-	// VPNExcludeIPs защищает Reality-маскировку sing-box к собственному
-	// VPN-серверу: десинк на этих IP не применяется (RETURN перед NFQUEUE).
+	// 3. DPI-правила (если включено). VPNExcludeIPs защищает Reality-маскировку
+	// sing-box к VPS, если LAN-клиент сам открывает соединение к этому IP.
 	if a.cfg.DPIEnabled {
-		dpiRules := modes.PolicyDPIRules(a.cfg.PolicyMark, a.cfg.NFQueueNum, a.cfg.WANIface, a.cfg.VPNExcludeIPs)
+		dpiRules := modes.DPIForwardRules(a.cfg.FWMark, a.cfg.NFQueueNum, a.cfg.WANIface, a.cfg.VPNExcludeIPs)
 		for _, spec := range dpiRules {
 			if err := a.ipt.EnsureRule(ctx, spec.Table, spec.Chain, spec.Args...); err != nil {
 				return err
@@ -528,17 +528,25 @@ func (a *applierImpl) Remove(ctx context.Context) error {
 		log.L().Warn("firewall: ошибка удаления nat PREROUTING jump", "target", modes.PolicyChainName, "err", err)
 	}
 
-	// signcraze_policy_dpi висит в POSTROUTING (см. PolicyDPIRules комментарий).
+	// signcraze_dpi_fwd висит в FORWARD (см. DPIForwardRules комментарий).
 	// Cleanup отдельно — иначе DeleteChain ниже падает на «chain referenced».
-	if err := a.ipt.DeleteJumpAll(ctx, "mangle", "POSTROUTING", modes.PolicyDPIChainName); err != nil {
-		log.L().Warn("firewall: ошибка удаления POSTROUTING jump", "target", modes.PolicyDPIChainName, "err", err)
+	if err := a.ipt.DeleteJumpAll(ctx, "mangle", "FORWARD", modes.DPIForwardChainName); err != nil {
+		log.L().Warn("firewall: ошибка удаления FORWARD jump", "target", modes.DPIForwardChainName, "err", err)
+	}
+
+	// LEGACY: signcraze_policy_dpi висел в POSTROUTING до refactor 2026-05-12.
+	// Cleanup сохранён для апгрейд-инсталляций — иначе после смены бинаря
+	// останется висеть мёртвая цепочка с правилами POSTROUTING NFQUEUE.
+	if err := a.ipt.DeleteJumpAll(ctx, "mangle", "POSTROUTING", modes.LegacyPolicyDPIChainName); err != nil {
+		log.L().Warn("firewall: ошибка удаления legacy POSTROUTING jump", "target", modes.LegacyPolicyDPIChainName, "err", err)
 	}
 
 	// 2. Удалить наши user-chains (flush очищает их содержимое — все наши
 	// правила, поскольку в системные цепочки мы кроме jumps ничего не
 	// клали).
 	allChains := []string{
-		modes.PolicyDPIChainName,
+		modes.DPIForwardChainName,
+		modes.LegacyPolicyDPIChainName,
 		modes.PolicyChainName,
 		"signcraze_dpi",
 		"signcraze_ports",

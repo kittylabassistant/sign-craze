@@ -255,9 +255,9 @@ sign-craze --dpi-targets clear
 ### `--dpi-exclude-ips <IP-список через запятую | clear>`
 
 Список IP-адресов, для которых nfqws2-десинхронизация **не применяется**:
-RETURN-правила вставляются в начало `signcraze_policy_dpi` перед NFQUEUE-портами.
-Назначение — сохранение TLS-маскировки исходящих VPN-handshakes (sing-box к
-собственному Reality-серверу, downstream-VPN-клиенты роутера).
+RETURN-правила вставляются в начало `signcraze_dpi_fwd` перед NFQUEUE-портами.
+Назначение — сохранение TLS-маскировки VPN-handshakes к Reality-серверу
+(downstream-VPN-клиенты роутера, открывающие соединение к нашему VPS).
 
 Каждый IP валидируется через `netip.ParseAddr` (IPv4/IPv6). `clear` очищает
 список.
@@ -481,8 +481,8 @@ ip route:   table <T>: default via <gw> dev <WAN>, ...
 Chain PREROUTING
   -j signcraze              # переход в основную цепочку маркировки
 
-Chain POSTROUTING
-  -o $WAN_IFACE -j signcraze_policy_dpi   # только если DPIEnabled=true
+Chain FORWARD
+  -o $WAN_IFACE -m mark ! --mark 0x53 -j signcraze_dpi_fwd   # только если DPIEnabled=true
 
 Chain signcraze
   ! -s 127.0.0.0/8 ! -s 169.254.0.0/16 ! -i lo \
@@ -492,7 +492,7 @@ Chain signcraze
     -m mark --mark 0xffffaaXX -p udp -j MARK --set-mark 0x53
     -m comment --comment "signcraze:mark-policy-udp"
 
-Chain signcraze_policy_dpi  # только если DPIEnabled=true; в POSTROUTING
+Chain signcraze_dpi_fwd  # только если DPIEnabled=true; jump из FORWARD
   # RETURN для каждого IP из state.DPIExcludeIPs (Reality-маскировка VPN)
   -d <vpn_endpoint_ip> -j RETURN
   ...
@@ -508,35 +508,49 @@ Chain signcraze_policy_dpi  # только если DPIEnabled=true; в POSTROUT
 **`-o $WAN_IFACE`** на jump-правиле: NFQUEUE срабатывает только для трафика,
 реально уходящего через WAN-интерфейс ISP. Без фильтра NFQUEUE захватывал бы
 loopback, br0 (LAN bridge) и трафик-к-TUN — это лишняя CPU-нагрузка на slow
-MIPS и потенциально ломает Reality-маскировку sing-box-исходящих handshakes
-к VPN-серверу. Имя WAN определяется автодетектом через `ip route show default`
-до запуска DPI-rules.
+MIPS. Имя WAN определяется автодетектом через `ip route show default` до
+запуска DPI-rules.
+
+**`-m mark ! --mark 0x53`** на jump-правиле: loop-prevention — исключает
+self-traffic sing-box. Sing-box ставит SO_MARK=0x53 на свои исходящие
+соединения; такие пакеты обходят DPI-обработку, что гарантирует:
+1. Reality-маскировка VPN-handshake к собственному VPS не ломается
+   nfqws2-десинхронизацией.
+2. Производительность sing-box не страдает от лишних копирований
+   через netlink.
 
 **RETURN для VPN-эндпоинтов**: для каждого IP из `state.dpi_exclude_ips` (плюс
 best-effort резолв первого `outbounds[].server`) вставляется правило
-`-d <ip> -j RETURN` ПЕРЕД NFQUEUE-портами. Это исключает TLS-десинхронизацию
-для:
-1. Исходящего sing-box → Reality-сервера (десинк ломает маскировку под
-   `ads.x5.ru` или другой `server_name`).
-2. Downstream-устройств (Beelink, RPi4) с собственным VPN-клиентом к тому же
-   VPN-эндпоинту.
+`-d <ip> -j RETURN` ПЕРЕД NFQUEUE-портами. Это защищает соединения
+downstream-устройств (Beelink, RPi4) с собственным VPN-клиентом к тому же
+VPN-эндпоинту — их трафик не имеет mark 0x53, поэтому без RETURN-правила
+прошёл бы через nfqws2.
 
 xt_multiport не загружен в стоковом ядре Keenetic 4.9, поэтому `--dport` —
 одно правило на порт/диапазон.
 
-**Почему `signcraze_policy_dpi` в POSTROUTING, а не PREROUTING:** в режиме
-`policy` весь LAN-трафик с keenetic-mark переотмечается в `0x53` → ip rule
-→ table 83 → signbox-tun. Sing-box получает соединение и **сам формирует
-исходящий ClientHello к ISP**. Если NFQUEUE стоит в PREROUTING,
-nfqws2-десинхронизация применяется к пакету от LAN-клиента, который
-sing-box не пробрасывает — он создаёт свой собственный поток. Десинхрон
-теряется, ISP видит чистый ClientHello и блокирует SNI=youtube.com.
-NFQUEUE в POSTROUTING ловит ClientHello ПОСЛЕ sing-box, на пути к ISP.
+**Почему `signcraze_dpi_fwd` в FORWARD, а не PREROUTING / POSTROUTING**
+(refactor 2026-05-12, исправляет архитектурный bug commit `bc6361e`):
+
+- **PREROUTING** (изначальный план): ловит пакет ДО routing-decision. Но
+  LAN policy-устройства тут же перехватываются TPROXY-правилами на
+  `mangle PREROUTING` и уходят в local socket — десинхронизация на их
+  ClientHello теряется, потому что sing-box потом формирует свой
+  собственный исходящий поток к ISP.
+- **POSTROUTING** (legacy commit `bc6361e`): ловит ПОСЛЕ routing-decision,
+  только исходящий трафик sing-box к VPS. На нём DPI бесполезен (Reality
+  обходит) и не покрывает LAN не-policy устройств вообще — они идут
+  стандартным маршрутом FORWARD → eth3, минуя нашу POSTROUTING-chain.
+- **FORWARD** (текущая архитектура): ловит трафик ПОСЛЕ routing-decision
+  для пакетов, идущих через роутер транзитом. LAN policy-устройства уже
+  ушли через TPROXY в sing-box (в FORWARD не доходят). LAN не-policy идут
+  напрямую через ISP — попадают в `signcraze_dpi_fwd` → nfqws2 десинкает.
+  Self-traffic sing-box отсекается `! --mark 0x53`.
 
 **Фильтр `--dport 443`** ограничивает обработку только TLS+QUIC — основной
-канал DPI-блокировок. HTTP (port 80) обычно не блокируется и не нуждается
-в desync. Без фильтра NFQUEUE захватывал бы весь POSTROUTING-трафик,
-включая loopback и TUN-интерфейсы (где DPI не нужен).
+канал DPI-блокировок. HTTP (port 80) включён для случаев когда ISP блокирует
+по Host-header. Discord voice-порты включены для разблокировки голосовых
+каналов.
 
 `--queue-bypass`: если nfqws2 не запущен, пакеты проходят без обработки.
 

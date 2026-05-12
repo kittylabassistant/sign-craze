@@ -155,6 +155,76 @@ func TestApplier_Apply_Policy_РазрешаетForwardНаTUN(t *testing.T) {
 	}
 }
 
+// TestApplier_Apply_Policy_DPI_ChainInForward — refactor 2026-05-12: DPI-цепочка
+// signcraze_dpi_fwd создаётся в mangle FORWARD (не POSTROUTING). Применяется ко
+// всем LAN-устройствам, идущим через WAN напрямую (не через TPROXY).
+func TestApplier_Apply_Policy_DPI_ChainInForward(t *testing.T) {
+	r := &autoRunner{}
+	cfg := DefaultConfig()
+	cfg.PolicyMark = 0xffffaab
+	cfg.DPIEnabled = true
+	cfg.WANIface = "eth3"
+	a := NewApplier(r, cfg)
+	if err := a.Apply(context.Background(), types.ModePolicy); err != nil {
+		t.Fatalf("Apply(policy, DPI=on) вернул ошибку: %v", err)
+	}
+	// Новая цепочка создана.
+	if !r.hasCall("iptables -t mangle -N signcraze_dpi_fwd") {
+		t.Error("цепочка signcraze_dpi_fwd не создана (новая FORWARD-архитектура)")
+	}
+	// Jump в FORWARD с фильтром по mark.
+	if !r.hasCall("iptables -t mangle -A FORWARD -o eth3 -m mark ! --mark 0x53 -j signcraze_dpi_fwd") {
+		t.Error("FORWARD jump на signcraze_dpi_fwd с filter `! --mark 0x53` не добавлен")
+	}
+	// Старая цепочка signcraze_policy_dpi в POSTROUTING НЕ создаётся.
+	if r.hasCall("iptables -t mangle -N signcraze_policy_dpi") {
+		t.Error("legacy signcraze_policy_dpi не должна создаваться в новой архитектуре")
+	}
+}
+
+// TestApplier_Remove_CleansLegacyPolicyDPIChain — refactor 2026-05-12: Remove
+// должен очистить legacy цепочку signcraze_policy_dpi в POSTROUTING для
+// апгрейд-инсталляций (старый бинарь оставил правила, новый бинарь делает Remove).
+func TestApplier_Remove_CleansLegacyPolicyDPIChain(t *testing.T) {
+	r := &autoRunner{}
+	r2 := &seedRunner{
+		autoRunner: r,
+		existing: map[string]bool{
+			"iptables -t mangle -C POSTROUTING -j signcraze_policy_dpi":           true,
+			"iptables -t mangle -C POSTROUTING -o eth3 -j signcraze_policy_dpi":   true,
+			"iptables -t mangle -S POSTROUTING":                                   true,
+			"iptables -t mangle -L POSTROUTING --line-numbers -n":                 true,
+		},
+	}
+	a := NewApplier(r2, DefaultConfig())
+	if err := a.Remove(context.Background()); err != nil {
+		t.Fatalf("Remove вернул ошибку: %v", err)
+	}
+	// Проверяем что попытка удалить jump на legacy chain была сделана
+	// (фактическое удаление зависит от DeleteJumpAll внутренностей).
+	foundLegacyJumpAttempt := false
+	for _, c := range r.calls {
+		if strings.Contains(c, "POSTROUTING") && strings.Contains(c, "signcraze_policy_dpi") {
+			foundLegacyJumpAttempt = true
+			break
+		}
+	}
+	if !foundLegacyJumpAttempt {
+		t.Error("Remove не пытался удалить legacy POSTROUTING jump для signcraze_policy_dpi")
+	}
+	// Проверяем что FlushAndDeleteChain вызывается для legacy цепочки.
+	foundLegacyFlush := false
+	for _, c := range r.calls {
+		if strings.Contains(c, "signcraze_policy_dpi") && (strings.Contains(c, "-F") || strings.Contains(c, "-X")) {
+			foundLegacyFlush = true
+			break
+		}
+	}
+	if !foundLegacyFlush {
+		t.Error("Remove не пытался flush/delete legacy цепочку signcraze_policy_dpi")
+	}
+}
+
 // TestApplier_Remove_УдаляетForwardНаTUN — Remove должен снять filter/FORWARD
 // ACCEPT правила, иначе они остаются после --uninstall.
 func TestApplier_Remove_УдаляетForwardНаTUN(t *testing.T) {

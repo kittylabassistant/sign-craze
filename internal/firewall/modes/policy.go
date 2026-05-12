@@ -7,9 +7,18 @@ import "fmt"
 // в TUN-интерфейс sing-box.
 const PolicyChainName = "signcraze_policy"
 
-// PolicyDPIChainName — имя цепочки mangle для NFQUEUE-хука в режиме policy.
-// Отдельная цепочка от signcraze_dpi (используется в режиме full).
-const PolicyDPIChainName = "signcraze_policy_dpi"
+// DPIForwardChainName — имя цепочки mangle для NFQUEUE-хука DPI в режиме policy.
+// Висит в mangle FORWARD `-o $WAN`, перехватывает трафик не-policy LAN-устройств,
+// идущий напрямую через ISP. Отдельная от signcraze_dpi (full-mode PREROUTING)
+// и от LegacyPolicyDPIChainName (legacy POSTROUTING до refactor 2026-05-12).
+const DPIForwardChainName = "signcraze_dpi_fwd"
+
+// LegacyPolicyDPIChainName — устаревшее имя цепочки из commit bc6361e (2026-05-07),
+// висевшей в mangle POSTROUTING `-o $WAN`. Архитектурно неверная: ловила только
+// исходящий трафик sing-box к ISP (бесполезный десинк через Reality VPN) и
+// игнорировала не-policy LAN-устройства, которые как раз нуждаются в DPI-обходе.
+// Константа сохранена для cleanup в applier.Remove на инсталляциях с легаси-цепочкой.
+const LegacyPolicyDPIChainName = "signcraze_policy_dpi"
 
 // PolicyRules возвращает правила для режима ModePolicy (TUN-mode).
 //
@@ -189,61 +198,65 @@ var PolicyDPITCPPorts = []string{"80", "443", "2053:2096", "8443"}
 //   - 50000:50100   — Discord voice P2P / WebRTC ICE
 var PolicyDPIUDPPorts = []string{"443", "19200:19400", "50000:50100"}
 
-// PolicyDPIRules возвращает правила NFQUEUE для режима policy.
-// Применяются только когда DPIEnabled=true.
+// DPIForwardRules возвращает правила NFQUEUE для DPI-обхода LAN-устройств.
+// Применяются в режиме ModePolicy когда DPIEnabled=true. Цель — обходить
+// провайдерский DPI для YouTube/Discord на устройствах, которые НЕ привязаны
+// к sign-craze policy в Keenetic (т.е. идут напрямую через ISP без VPN).
 //
-// **Архитектурно важно:** правила висят в POSTROUTING, НЕ в PREROUTING.
-// Причина — в режиме `policy` весь LAN-трафик с keenetic-mark переотмечается
-// в наш fwmark 0x53 → ip rule lookup → table 83 → signbox-tun. Sing-box
-// получает соединение и сам открывает исходящий ClientHello к ISP.
-// PREROUTING NFQUEUE десинхронизирует пакет от LAN-клиента, но sing-box
-// потом этот пакет НЕ пробрасывает — он формирует свой собственный поток
-// к ISP. nfqws2-десинхронизация теряется, ISP видит чистый ClientHello и
-// блокирует SNI=youtube.com / discord.com.
+// **Архитектура (refactor 2026-05-12):** правила висят в `mangle FORWARD`
+// с фильтром `-o $WAN` и `-m mark ! --mark $loopMark` (loop-prevention).
 //
-// Правильное место — POSTROUTING на исходящем интерфейсе, где пакет
-// уже после sing-box и реально уходит на провайдера. NFQUEUE здесь
-// перехватит ClientHello sing-box → nfqws2 desync → выпуск на ISP.
+// Почему FORWARD, а не POSTROUTING:
+//   - В POSTROUTING пакеты не-policy LAN-устройств вообще не попадают по тому
+//     же пути что и sing-box self-traffic. Старая POSTROUTING-схема ловила
+//     только исходящий трафик sing-box к VPS — на котором десинк бесполезен
+//     (Reality маскирует) и опасен (ломает маскировку).
+//   - LAN policy-устройства перехватываются TPROXY в `mangle PREROUTING` ДО
+//     FORWARD → в FORWARD они не появляются → DPI на них не применяется (что
+//     правильно: они уже идут через VPS).
+//   - LAN не-policy устройства идут стандартным routing → FORWARD → попадают
+//     в DPIForward chain → nfqws2 десинхронизирует ClientHello по hostlist.
+//   - Self-traffic sing-box (SO_MARK=$loopMark) отсекается filter `! --mark`.
 //
 // Списки портов (PolicyDPITCPPorts/UDPPorts) покрывают основные каналы
 // DPI-блокировок (TLS+QUIC) и Discord voice. На каждый элемент — отдельное
 // правило `--dport` (xt_multiport не загружен в Keenetic 4.9 ядре).
 //
-// wanIface — Linux-имя WAN (eth3, ppp0). Если задан, jump-правило в
-// POSTROUTING ограничивается `-o <wanIface>` — это исключает loopback,
-// внутренние интерфейсы и трафик-на-TUN от попадания в NFQUEUE (важно
-// для производительности на slow MIPS: без фильтра nfqws2 десинхронизирует
-// и пакеты к VPN-серверу, что бесполезно). Пустая строка → fallback на
-// безусловный jump (back-compat).
+// wanIface — Linux-имя WAN (eth3, ppp0). Если задан, jump в FORWARD
+// ограничивается `-o <wanIface>` — это исключает loopback, внутренние
+// интерфейсы и трафик-на-TUN. Пустая строка → fallback на безусловный jump
+// (back-compat, но не рекомендуется — лишний overhead nfqws2 на slow MIPS).
 //
 // vpnExcludeIPs — список IP-адресов VPN-эндпоинтов, которые не должны
-// проходить DPI-десинхронизацию. Reality VPN маскируется под TLS реального
-// хоста, и nfqws2-desync на ClientHello к VPN-серверу либо сломает
-// маскировку, либо бесполезен. Каждый IP вставляется как RETURN-правило
-// в начало signcraze_policy_dpi.
+// проходить DPI-десинхронизацию. Reality маскируется под TLS реального хоста,
+// и nfqws2-desync на ClientHello к VPN-серверу либо сломает маскировку, либо
+// бесполезен. Каждый IP вставляется как RETURN-правило в начало
+// signcraze_dpi_fwd. С новой FORWARD-архитектурой self-traffic sing-box
+// отсекается mark-фильтром раньше, но vpnExcludeIPs оставлен для случаев,
+// когда LAN-клиент сам открывает соединение к нашему VPS-IP (редкий, но
+// возможный сценарий downstream-VPN-чейна).
 //
-// keenMark передаётся для совместимости с прежним signature, но в
-// POSTROUTING-схеме не используется (sing-box свои пакеты помечает 0x53,
-// LAN-mark теряется при TPROXY-перехвате до POSTROUTING).
-func PolicyDPIRules(keenMark uint32, nfqueueNum int, wanIface string, vpnExcludeIPs []string) []RuleSpec {
+// loopMark — собственный fwmark sign-craze (обычно 0x53). Используется в
+// `! --mark` фильтре на jump-правиле в FORWARD.
+func DPIForwardRules(loopMark uint32, nfqueueNum int, wanIface string, vpnExcludeIPs []string) []RuleSpec {
 	queue := fmt.Sprintf("%d", nfqueueNum)
-	_ = keenMark // зарезервирован для будущего фильтра по mark
+	mark := fmt.Sprintf("0x%x", loopMark)
 
 	rules := make([]RuleSpec, 0, len(vpnExcludeIPs)+len(PolicyDPITCPPorts)+len(PolicyDPIUDPPorts)+1)
-	// Exclude VPN-эндпоинты: трафик sing-box к Reality-серверу должен идти
+	// Exclude VPN-эндпоинты: соединения к Reality-серверу должны идти
 	// без модификаций (десинхронизация ClientHello ломает маскировку).
 	for _, ip := range vpnExcludeIPs {
 		if ip == "" {
 			continue
 		}
 		rules = append(rules, RuleSpec{
-			Table: "mangle", Chain: PolicyDPIChainName,
+			Table: "mangle", Chain: DPIForwardChainName,
 			Args: []string{"-d", ip, "-j", "RETURN"},
 		})
 	}
 	for _, port := range PolicyDPITCPPorts {
 		rules = append(rules, RuleSpec{
-			Table: "mangle", Chain: PolicyDPIChainName,
+			Table: "mangle", Chain: DPIForwardChainName,
 			Args: []string{
 				"-p", "tcp", "--dport", port,
 				"-j", "NFQUEUE", "--queue-num", queue, "--queue-bypass",
@@ -252,20 +265,21 @@ func PolicyDPIRules(keenMark uint32, nfqueueNum int, wanIface string, vpnExclude
 	}
 	for _, port := range PolicyDPIUDPPorts {
 		rules = append(rules, RuleSpec{
-			Table: "mangle", Chain: PolicyDPIChainName,
+			Table: "mangle", Chain: DPIForwardChainName,
 			Args: []string{
 				"-p", "udp", "--dport", port,
 				"-j", "NFQUEUE", "--queue-num", queue, "--queue-bypass",
 			},
 		})
 	}
-	// Переход POSTROUTING → signcraze_policy_dpi (один раз, в конце).
-	jumpArgs := []string{"-j", PolicyDPIChainName}
+	// Переход FORWARD → signcraze_dpi_fwd. Filter `! --mark $loopMark`
+	// исключает self-traffic sing-box (loop-prevention).
+	jumpArgs := []string{"-m", "mark", "!", "--mark", mark, "-j", DPIForwardChainName}
 	if wanIface != "" {
 		jumpArgs = append([]string{"-o", wanIface}, jumpArgs...)
 	}
 	rules = append(rules, RuleSpec{
-		Table: "mangle", Chain: "POSTROUTING",
+		Table: "mangle", Chain: "FORWARD",
 		Args: jumpArgs,
 	})
 	return rules
