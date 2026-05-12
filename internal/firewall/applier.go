@@ -95,6 +95,22 @@ type Config struct {
 	// false — fallback на REDIRECT (TCP-only).
 	// Читается из config render для выбора inbound type sing-box.
 	TProxyKernelOK bool
+
+	// TUNDeviceName — переопределение имени TUN-интерфейса. Пусто → default
+	// (TUNDeviceName const, "signbox-tun"). Заполняется когда активное ядро
+	// требует отличное имя TUN: xray/mihomo сейчас работают через TProxy и
+	// TUN не создают; поле зарезервировано на случай будущей поддержки
+	// xray-TUN/mihomo-TUN с собственным именем интерфейса.
+	TUNDeviceNameOverride string
+}
+
+// TUNDevice возвращает имя TUN-интерфейса для текущей конфигурации.
+// Fallback на TUNDeviceName const, если override не задан.
+func (c Config) TUNDevice() string {
+	if c.TUNDeviceNameOverride != "" {
+		return c.TUNDeviceNameOverride
+	}
+	return TUNDeviceName
 }
 
 // IPSetExcludes — имя ipset для bypass-исключений.
@@ -480,8 +496,8 @@ func (a *applierImpl) Remove(ctx context.Context) error {
 	// 1. Удалить filter/FORWARD ACCEPT правила (policy mode). DeleteRule
 	// идемпотентна (-C → -D), безопасна на чистом состоянии.
 	for _, args := range [][]string{
-		{"-o", TUNDeviceName, "-j", "ACCEPT"},
-		{"-i", TUNDeviceName, "-j", "ACCEPT"},
+		{"-o", a.cfg.TUNDevice(), "-j", "ACCEPT"},
+		{"-i", a.cfg.TUNDevice(), "-j", "ACCEPT"},
 	} {
 		if err := a.ipt.DeleteRule(ctx, "filter", "FORWARD", args...); err != nil {
 			log.L().Warn("firewall: ошибка удаления filter/FORWARD ACCEPT", "args", args, "err", err)
@@ -545,7 +561,7 @@ func (a *applierImpl) Remove(ctx context.Context) error {
 			log.L().Warn("firewall: ошибка удаления local route", "err", err)
 		}
 	} else {
-		if err := DeleteTUNRoute(ctx, a.runner, TUNDeviceName, a.cfg.Table); err != nil {
+		if err := DeleteTUNRoute(ctx, a.runner, a.cfg.TUNDevice(), a.cfg.Table); err != nil {
 			log.L().Warn("firewall: ошибка удаления TUN route", "err", err)
 		}
 	}

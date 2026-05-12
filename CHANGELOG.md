@@ -5,6 +5,28 @@
 
 ---
 
+## [1.0.2] — 2026-05-12
+
+### Added
+- **`firewall.Config.TUNDeviceNameOverride` + `Config.TUNDevice()` метод**: переопределение имени TUN-интерфейса с fallback на default const `TUNDeviceName` ("signbox-tun"). Поле зарезервировано на случай будущей поддержки xray-TUN/mihomo-TUN с собственным именем интерфейса. Использовано в `applier.Remove` (FORWARD ACCEPT cleanup, DeleteTUNRoute).
+
+### Changed
+- **`internal/web/clash.go`**: константа `singboxClashAPIAddr` → `coreClashAPIAddr`. Reverse-proxy теперь корректно описан как универсальный (sing-box experimental.clash_api и mihomo external-controller оба слушают 127.0.0.1:9094). Комментарии и `ErrorHandler` сообщение уточнены: xray не имеет Clash-API, UI деградирует gracefully на 502.
+
+### Verified (live тестирование 2026-05-12 на KN-1810 mipsle)
+- **Phase 8 (CLI commands)**: `--version`, `--diag` 11 PASS + 1 WARN (geo-files без `.srs`), `--status`, `--backup` (`/opt/var/lib/sign-craze/backups/backup-2026-05-12T*.tar.gz`), `--core-list` (sing-box active + xray installed), `--port-list`, `--exclude-list`, init.d `S99signcraze` после `S51dropbear`, ndm netfilter hook `/opt/etc/ndm/netfilter.d/50-sign-craze`.
+- **Phase 9.8 (policy mode)**: RCI `/rci/show/ip/policy` показывает `sign-craze` policy (mark=0xffffaab, table4=4098). state.policy_mark=268434091 (=0xffffaab) совпадает с RCI. `iptables -t mangle -L signcraze_policy` ремаркирует Keenetic-mark 0xffffaab → loopMark 0x53 + TPROXY redirect 127.0.0.1:7895. RPi4 (172.16.0.97, MAC dc:a6:32:35:4d:10, bound к policy через Keenetic Web UI «Приоритеты подключений») `curl ifconfig.me` = `167.17.177.54` (= IP homelabcloud.ru VPS) ≠ Keenetic WAN. Sign-box log: `outbound/vless[vless-grpc-craze]: outbound connection to <ip>:443`.
+- **Phase 10 (DPI selective)**: `--dpi on` + `--dpi-targets discord.com,youtube.com,googlevideo.com` + `--restart` → `/opt/etc/sign-craze/dpi-hostlist.txt` содержит 3 домена. nfqws2 cmdline содержит `--hostlist=/opt/etc/sign-craze/dpi-hostlist.txt`. iptables `signcraze_policy_dpi`: NFQUEUE TCP 443=456K packets / TCP 80=15K / UDP 443 QUIC=48 packets. VPN exclude: RETURN на 167.17.177.54 (= homelabcloud.ru) 66623 packets — Reality-маскировка sing-box не десинкается. Возврат: `--dpi off` + `--dpi-targets clear` + `--restart` → nfqws2 stopped.
+- **Phase D.1 (VLESS+Reality+spx render)**: URL `vless://...?security=reality&pbk=...&sid=...&spx=%2F` → `ParseCanonical` → `state.outbounds[0].tls.reality.spider_x: "/"`. `sing-box check -c /opt/etc/sign-craze/config.json` exit 0. Render корректно опускает spider_x из `tls.reality` (sing-box игнорирует, xray-only фича). Live трафик: 35131 TCP + 1131 UDP packets через `signcraze_policy` chain за тестовую сессию.
+- **Phase reboot (autostart)**: `reboot` → ~2min cold boot → ssh 222 доступен сразу после S51dropbear → `sign-craze --status` показывает sing-box pid 749 (low pid = ранний автостарт через S99signcraze) → `signcraze_policy` принимает 65 TCP + 9 UDP packets за 2 минуты uptime → RPi4 ifconfig.me = VPS IP. S99 ПОСЛЕ S51dropbear подтверждён: SSH 222 поднимается независимо от sign-craze (lesson 2026-05-07 регрессии нет).
+
+### Known issues (обнаружены в live test, fix отложен)
+- **`internal/singbox/config.go::buildRuleSets` устанавливает `format: "binary"`**: репо `sign-craze-dat` workflow генерит JSON source под `.srs` расширением → sing-box FATAL `invalid sing-box rule-set file`. Unused rule_sets (объявлены, но не использованы в `rules[]`) всё равно качаются на старте. Workaround: вручную удалить unused блоки из `routing.json`. Полный fix: либо `format: "source"` для sign-craze-dat URL'ов в render, либо `update_interval: "never"` для unused, либо compiled `.srs` через `sing-box rule-set compile` в workflow `sign-craze-dat`.
+- **`internal/core/xray/render.go` ссылается на `geosite:category-ads-all`**: xray FATAL `failed to load geosite: CATEGORY-ADS-ALL > open /opt/sbin/geosite.dat: no such file or directory`. `internal/cli/cmd_core.go::handleCoreInstall` не качает `geosite.dat`/`geoip.dat` для xray (хотя `internal/geo/dat.go` реализован в B.5). Workaround: использовать sing-box. Полный fix: integrate dat-download в `--core-install xray`/`--core xray --restart` или guard geosite-rule без `.dat` в xray render.
+- **`internal/cli/cmd_lifecycle.go::doStop`**: при core-switch не убивает процессы предыдущего ядра — наблюдался orphan sing-box pid после `--core xray --restart` fail. Fix: stop все зарегистрированные ядра (не только active state.Core) в doStop.
+
+---
+
 ## [1.0.0] — 2026-05-12
 
 ### Added

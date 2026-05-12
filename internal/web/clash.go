@@ -10,13 +10,17 @@ import (
 	"github.com/kittylabassistant/sign-craze/internal/version"
 )
 
-// singboxClashAPIAddr — адрес experimental.clash_api в sing-box (см. шаблон
-// tun.json.tmpl). Запросы Zashboard к /proxies, /connections, /traffic, /logs
-// и т.д. проксируются на этот адрес — sing-box сам отдаёт реальные данные.
-const singboxClashAPIAddr = "http://127.0.0.1:9094"
+// coreClashAPIAddr — адрес Clash-API активного ядра. sing-box и mihomo оба
+// слушают 127.0.0.1:9094 (sing-box experimental.clash_api / mihomo
+// external-controller — конфиги генерируются с этим адресом для всех ядер,
+// см. singbox/templates/tun.json.tmpl и mihomo/templates/config.yaml.tmpl).
+// xray не имеет Clash-API: при активном xray reverse-proxy возвращает 502
+// "Bad Gateway" через ErrorHandler — UI деградирует gracefully.
+const coreClashAPIAddr = "http://127.0.0.1:9094"
 
 // registerClashRoutes регистрирует роуты на порту 9090: SPA (Zashboard) +
-// reverse-proxy всех Clash-API запросов в sing-box experimental.clash_api.
+// reverse-proxy всех Clash-API запросов в Clash-API активного ядра (sing-box
+// experimental.clash_api или mihomo external-controller).
 func registerClashRoutes(mux *http.ServeMux, s *Server) {
 	spa := newSPAHandler()
 	clashProxy := newClashAPIProxy()
@@ -58,11 +62,12 @@ func registerClashRoutes(mux *http.ServeMux, s *Server) {
 	mux.Handle("/", spa)
 }
 
-// newClashAPIProxy создаёт ReverseProxy на sing-box clash_api.
+// newClashAPIProxy создаёт ReverseProxy на Clash-API активного ядра (port 9094).
 // Поддерживает HTTP и WebSocket (httputil.ReverseProxy с Go 1.20+ работает
-// прозрачно для Upgrade: websocket).
+// прозрачно для Upgrade: websocket). Используется и для sing-box, и для mihomo —
+// оба слушают на 127.0.0.1:9094.
 func newClashAPIProxy() http.Handler {
-	target, err := url.Parse(singboxClashAPIAddr)
+	target, err := url.Parse(coreClashAPIAddr)
 	if err != nil {
 		panic(err)
 	}
@@ -72,13 +77,13 @@ func newClashAPIProxy() http.Handler {
 	// без этого httputil буферизует ответ целиком до закрытия соединения,
 	// и браузер не получает данные в реальном времени.
 	rp.FlushInterval = -1
-	// Sing-box clash_api может отвечать 502/503 если sing-box ещё не запущен —
-	// возвращаем понятный JSON, чтобы SPA показал "backend offline" а не
-	// «Network Error».
+	// Clash-API может отвечать 502/503 если ядро ещё не запущено или xray
+	// активно (xray не имеет Clash-API). Возвращаем понятный JSON, чтобы SPA
+	// показал "backend offline" а не «Network Error».
 	rp.ErrorHandler = func(w http.ResponseWriter, _ *http.Request, _ error) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadGateway)
-		_, _ = w.Write([]byte(`{"message":"sing-box clash_api недоступен (port 9094)"}`)) //nolint:errcheck
+		_, _ = w.Write([]byte(`{"message":"Clash-API ядра недоступен (port 9094); для xray Clash-API не поддерживается"}`)) //nolint:errcheck
 	}
 	return rp
 }
