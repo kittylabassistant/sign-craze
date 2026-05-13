@@ -24,53 +24,50 @@ func handleStatus(ctx context.Context, _ []string) error {
 
 	sb, sbErr := c.NewLifecycle().Status(ctx)
 	if sbErr != nil {
-		fmt.Fprintf(os.Stderr, "warn: статус %s: %v\n", c.Name(), sbErr)
+		fmt.Fprintf(os.Stderr, "%s статус %s: %v\n", Warn("warn:"), c.Name(), sbErr)
 	}
 	dpiSt, dpiErr := newDPILifecycle().Status(ctx)
 	if dpiErr != nil {
-		fmt.Fprintf(os.Stderr, "warn: статус nfqws2: %v\n", dpiErr)
+		fmt.Fprintf(os.Stderr, "%s статус nfqws2: %v\n", Warn("warn:"), dpiErr)
 	}
 
 	coreVer := ""
 	if _, errStat := os.Stat(c.BinaryPath()); errStat == nil {
 		v, vErr := c.BinaryVersion(ctx, exectx.OS)
 		if vErr != nil {
-			fmt.Fprintf(os.Stderr, "warn: версия %s: %v\n", c.Name(), vErr)
+			fmt.Fprintf(os.Stderr, "%s версия %s: %v\n", Warn("warn:"), c.Name(), vErr)
 		}
 		coreVer = v
 	}
 
-	fmt.Printf("%s:  %s\n", c.Name(), formatService(sb.Running, sb.PID))
-	fmt.Printf("nfqws2:    %s\n", formatService(dpiSt.Running, dpiSt.PID))
-	fmt.Printf("режим:     %s\n", string(st.Mode))
+	fmt.Printf("%s  %s\n", Key(c.Name()+":"), formatService(sb.Running, sb.PID))
+	fmt.Printf("%s    %s\n", Key("nfqws2:"), formatService(dpiSt.Running, dpiSt.PID))
+	fmt.Printf("%s     %s\n", Key("режим:"), string(st.Mode))
 	if coreVer != "" {
-		fmt.Printf("версия:    sign-craze %s / %s v%s\n", version.Short(), c.Name(), coreVer)
+		fmt.Printf("%s    sign-craze %s / %s v%s\n", Key("версия:"), version.Short(), c.Name(), coreVer)
 	} else {
-		fmt.Printf("версия:    sign-craze %s / %s не установлен\n", version.Short(), c.Name())
+		fmt.Printf("%s    sign-craze %s / %s %s\n", Key("версия:"), version.Short(), c.Name(), Err("не установлен"))
 	}
 	return nil
 }
 
 func formatService(running bool, pid int) string {
-	if running {
-		return fmt.Sprintf("запущен  (pid %d)", pid)
-	}
-	return "остановлен"
+	return ServiceStatus(running, pid)
 }
 
 func handleVersion(ctx context.Context, _ []string) error {
-	fmt.Printf("sign-craze %s\n", version.String())
+	fmt.Printf("%s %s\n", Header("sign-craze"), version.String())
 
 	c := mustActiveCore()
 	if _, err := os.Stat(c.BinaryPath()); err == nil {
 		ver, vErr := c.BinaryVersion(ctx, exectx.OS)
 		if vErr == nil {
-			fmt.Printf("%s   v%s  (установлен в %s)\n", c.Name(), ver, c.BinaryPath())
+			fmt.Printf("%s   v%s  (установлен в %s)\n", Key(c.Name()), ver, Hint(c.BinaryPath()))
 		} else {
-			fmt.Printf("%s   ошибка чтения версии: %v\n", c.Name(), vErr)
+			fmt.Printf("%s   %s %v\n", Key(c.Name()), Err("ошибка чтения версии:"), vErr)
 		}
 	} else {
-		fmt.Printf("%s   не установлен\n", c.Name())
+		fmt.Printf("%s   %s\n", Key(c.Name()), Err("не установлен"))
 	}
 	return nil
 }

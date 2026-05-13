@@ -19,10 +19,26 @@ func handleDiag(ctx context.Context, _ []string) error {
 	results := diag.Run(ctx, diag.DefaultChecks(deps))
 
 	for _, r := range results {
-		fmt.Printf("%-20s [%s] %s\n", r.Name, r.Status, r.Detail)
+		fmt.Printf("%-20s [%s] %s\n", r.Name, coloredDiagStatus(r.Status), r.Detail)
 	}
 	if diag.AnyFail(results) {
 		return errors.New("диагностика не пройдена")
 	}
 	return nil
+}
+
+// coloredDiagStatus раскрашивает [PASS]/[WARN]/[FAIL] для интерактивного
+// вывода диагностики. Палитра консистентна с --status (зелёный = OK,
+// жёлтый = предупреждение, красный = ошибка).
+func coloredDiagStatus(s diag.Status) string {
+	switch s {
+	case diag.PASS:
+		return OK(string(s))
+	case diag.WARN:
+		return Warn(string(s))
+	case diag.FAIL:
+		return Err(string(s))
+	default:
+		return string(s)
+	}
 }

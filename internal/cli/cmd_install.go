@@ -173,11 +173,12 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string, force b
 		if recommended, allCompat, ok := detectCoreFromProxyURL(proxyURL); ok {
 			if len(allCompat) > 1 {
 				fmt.Printf(
-					"URL совместим с: %s. Выбран %s (default). Для другого ядра: --core <name>\n",
-					strings.Join(allCompat, ", "), recommended,
+					"%s %s. %s %s %s\n",
+					Info("URL совместим с:"), strings.Join(allCompat, ", "),
+					Hint("Выбран"), Bold(recommended), Hint("(default). Для другого ядра: --core <name>"),
 				)
 			} else {
-				fmt.Printf("URL требует ядро %s — будет установлено.\n", recommended)
+				fmt.Printf("%s %s — будет установлено.\n", Info("URL требует ядро"), Bold(recommended))
 			}
 			coreName = recommended
 		}
@@ -266,12 +267,12 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string, force b
 		if err != nil {
 			return fmt.Errorf("--install: %w", err)
 		}
-		fmt.Printf("Загрузка %s (arch=%s)...\n", coreName, arch)
+		fmt.Printf("%s %s (arch=%s)...\n", Info("Загрузка"), coreName, arch)
 		res, err := activeC.Download(ctx, arch, activeC.CacheDir())
 		if err != nil {
 			return fmt.Errorf("--install: %w", err)
 		}
-		fmt.Printf("Скачан %s (%s)\n", res.Path, res.Version)
+		fmt.Printf("%s %s (%s)\n", OK("Скачан"), Hint(res.Path), res.Version)
 		tarPath = res.Path
 	}
 
@@ -395,18 +396,18 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string, force b
 	}
 
 	fmt.Println()
-	fmt.Println("Установка завершена.")
+	fmt.Println(OK("Установка завершена."))
 	if outbounds[0].Type == "direct" {
-		fmt.Println("ВНИМАНИЕ: outbound настроен как 'direct' — проксирования нет.")
-		fmt.Println("Передайте URL через --proxy <URL> или зайдите в admin UI на :9091.")
+		fmt.Println(Warn("ВНИМАНИЕ:") + " outbound настроен как 'direct' — проксирования нет.")
+		fmt.Println(Hint("Передайте URL через --proxy <URL> или зайдите в admin UI на :9091."))
 	}
 	if withDPI {
-		fmt.Println("DPI включён: nfqws2 + preset discord-youtube. После --start заработает обход YT/Discord.")
+		fmt.Println(Info("DPI включён:") + " nfqws2 + preset discord-youtube. После --start заработает обход YT/Discord.")
 	}
 	if force {
-		fmt.Println("Перезапуск сервиса: sign-craze --restart")
+		fmt.Println(Hint("Перезапуск сервиса: sign-craze --restart"))
 	} else {
-		fmt.Println("Запуск сервиса: sign-craze --start")
+		fmt.Println(Hint("Запуск сервиса: sign-craze --start"))
 	}
 	return nil
 }
@@ -513,10 +514,10 @@ func runProxyWizard(in io.Reader, out io.Writer) ([]types.Outbound, error) {
 	r := bufio.NewReader(in)
 
 	fmt.Fprintln(out)
-	fmt.Fprintln(out, "Настройка outbound прокси:")
-	fmt.Fprintln(out, "  1) Полный URL (socks5://, http://, vless://, vmess://, ss://, trojan://)")
-	fmt.Fprintln(out, "  2) Пропустить (создаст stub direct — sing-box без проксирования)")
-	fmt.Fprint(out, "Выбор [1/2]: ")
+	fmt.Fprintln(out, Header("Настройка outbound прокси:"))
+	fmt.Fprintln(out, "  "+Cyan("1)")+" Полный URL (socks5://, http://, vless://, vmess://, ss://, trojan://)")
+	fmt.Fprintln(out, "  "+Cyan("2)")+" Пропустить (создаст stub direct — sing-box без проксирования)")
+	fmt.Fprint(out, Key("Выбор [1/2]: "))
 	choice, err := readLineE(r)
 	if err != nil {
 		return nil, fmt.Errorf("чтение выбора: %w", err)
@@ -528,13 +529,13 @@ func runProxyWizard(in io.Reader, out io.Writer) ([]types.Outbound, error) {
 	case "2", "":
 		return nil, nil
 	default:
-		fmt.Fprintln(out, "Неизвестный выбор, пропускаем.")
+		fmt.Fprintln(out, Warn("Неизвестный выбор, пропускаем."))
 		return nil, nil
 	}
 }
 
 func wizardURL(r *bufio.Reader, out io.Writer) ([]types.Outbound, error) {
-	fmt.Fprint(out, "URL: ")
+	fmt.Fprint(out, Key("URL: "))
 	url, err := readLineE(r)
 	if err != nil {
 		return nil, fmt.Errorf("чтение URL: %w", err)
@@ -565,7 +566,7 @@ func wizardURL(r *bufio.Reader, out io.Writer) ([]types.Outbound, error) {
 	if err := o.Validate(); err != nil {
 		return nil, fmt.Errorf("валидация: %w", err)
 	}
-	fmt.Fprintf(out, "Outbound: type=%s server=%s port=%d\n", o.Type, o.Server, o.Port)
+	fmt.Fprintf(out, "%s type=%s server=%s port=%d\n", OK("Outbound:"), o.Type, o.Server, o.Port)
 	return []types.Outbound{o}, nil
 }
 

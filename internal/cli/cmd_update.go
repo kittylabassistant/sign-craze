@@ -35,7 +35,7 @@ func handleUpdate(ctx context.Context, _ []string) error {
 		if err != nil {
 			return fmt.Errorf("--update: %w", err)
 		}
-		fmt.Printf("sign-craze обновлён до %s\n", ver)
+		fmt.Printf("%s до %s\n", OK("sign-craze обновлён"), ver)
 		return nil
 	})
 }
@@ -54,7 +54,7 @@ func handleUpdateGeo(ctx context.Context, _ []string) error {
 		if err != nil {
 			return fmt.Errorf("--update-geo: %w", err)
 		}
-		fmt.Printf("Скачано %d/%d geo-файлов\n", count, len(needed))
+		fmt.Printf("%s %d/%d geo-файлов\n", OK("Скачано"), count, len(needed))
 
 		// Заполнить kernel ipset из .srs и сохранить дамп для restore при ребуте
 		// (safety-fixes #17). Если sing-box ещё не установлен или decompile падает —
@@ -131,13 +131,13 @@ func handleUpdateCore(ctx context.Context, _ []string) error {
 		if mkErr := os.MkdirAll(c.CacheDir(), 0o755); mkErr != nil {
 			return fmt.Errorf("--update-core: mkdir cache: %w", mkErr)
 		}
-		fmt.Printf("Загрузка %s (arch=%s)...\n", c.Name(), arch)
+		fmt.Printf("%s %s (arch=%s)...\n", Info("Загрузка"), c.Name(), arch)
 		res, err := c.Download(ctx, arch, c.CacheDir())
 		if err != nil {
 			return fmt.Errorf("--update-core: %w", err)
 		}
 		if !res.Downloaded {
-			fmt.Printf("%s уже актуален.\n", c.Name())
+			fmt.Printf("%s %s\n", OK(c.Name()), Hint("уже актуален."))
 			return nil
 		}
 
@@ -177,7 +177,7 @@ func handleUpdateCore(ctx context.Context, _ []string) error {
 			}
 		}
 
-		fmt.Printf("%s обновлён до %s. Перезапустите сервис: sign-craze --restart\n", c.Name(), res.Version)
+		fmt.Printf("%s до %s. %s\n", OK(c.Name()+" обновлён"), res.Version, Hint("Перезапустите сервис: sign-craze --restart"))
 		return nil
 	})
 }

@@ -18,9 +18,11 @@ func main() {
 }
 
 func run() error {
-	log.Init(os.Getenv("SIGNCRAZE_LOG_LEVEL"))
+	args, noColor := cli.PreParseNoColor(os.Args[1:])
+	cli.InitColor(noColor)
+	log.Init(os.Getenv("SIGNCRAZE_LOG_LEVEL"), cli.StderrColorEnabled())
 	ctx, stop := signal.NotifyContext(context.Background(),
 		syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	return cli.Dispatch(ctx, os.Args[1:])
+	return cli.Dispatch(ctx, args)
 }

@@ -38,9 +38,9 @@ func init() {
 func handleCore(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		c := mustActiveCore()
-		fmt.Printf("Активное ядро: %s\n", c.Name())
-		fmt.Printf("Бинарь:        %s\n", c.BinaryPath())
-		fmt.Printf("Конфиг:        %s\n", c.ConfigPath())
+		fmt.Printf("%s %s\n", Key("Активное ядро:"), Bold(c.Name()))
+		fmt.Printf("%s        %s\n", Key("Бинарь:"), Hint(c.BinaryPath()))
+		fmt.Printf("%s        %s\n", Key("Конфиг:"), Hint(c.ConfigPath()))
 		return nil
 	}
 
@@ -59,7 +59,7 @@ func handleCore(ctx context.Context, args []string) error {
 		current = "sing-box"
 	}
 	if current == name {
-		fmt.Printf("Активное ядро: %s (без изменений)\n", name)
+		fmt.Printf("%s %s %s\n", Key("Активное ядро:"), Bold(name), Hint("(без изменений)"))
 		return nil
 	}
 
@@ -78,8 +78,8 @@ func handleCore(ctx context.Context, args []string) error {
 	if err := saveState(st); err != nil {
 		return fmt.Errorf("--core: сохранение state: %w", err)
 	}
-	fmt.Printf("Активное ядро в state.json изменено: %s → %s\n", current, name)
-	fmt.Println("Внимание: для применения требуется --restart (config будет регенерирован под новое ядро).")
+	fmt.Printf("%s %s → %s\n", OK("Активное ядро в state.json изменено:"), current, Bold(name))
+	fmt.Println(Warn("Внимание:") + " для применения требуется --restart (config будет регенерирован под новое ядро).")
 	return nil
 }
 
@@ -116,27 +116,27 @@ func handleCoreInstall(ctx context.Context, args []string) error {
 		return fmt.Errorf("--core-install: создание bin dir: %w", err)
 	}
 
-	fmt.Printf("Загрузка %s (arch=%s)...\n", c.Name(), arch)
+	fmt.Printf("%s %s (arch=%s)...\n", Info("Загрузка"), c.Name(), arch)
 	dl, err := c.Download(ctx, arch, c.CacheDir())
 	if err != nil {
 		return fmt.Errorf("--core-install: download: %w", err)
 	}
 	if !dl.Downloaded {
-		fmt.Printf("Архив актуален (ETag): %s\n", dl.Path)
+		fmt.Printf("%s %s\n", Info("Архив актуален (ETag):"), Hint(dl.Path))
 	} else {
-		fmt.Printf("Скачано: %s (%s)\n", dl.Path, dl.Version)
+		fmt.Printf("%s %s (%s)\n", OK("Скачано:"), Hint(dl.Path), dl.Version)
 	}
 
-	fmt.Printf("Установка в %s...\n", c.BinaryPath())
+	fmt.Printf("%s %s...\n", Info("Установка в"), Hint(c.BinaryPath()))
 	if err := c.Install(ctx, exectx.OS, dl.Path); err != nil {
 		return fmt.Errorf("--core-install: install: %w", err)
 	}
 
 	ver, vErr := c.BinaryVersion(ctx, exectx.OS)
 	if vErr != nil {
-		fmt.Printf("Установлено %s в %s (версия не прочитана: %v)\n", c.Name(), c.BinaryPath(), vErr)
+		fmt.Printf("%s %s в %s (%s: %v)\n", OK("Установлено"), c.Name(), Hint(c.BinaryPath()), Warn("версия не прочитана"), vErr)
 	} else {
-		fmt.Printf("Установлено %s v%s в %s\n", c.Name(), ver, c.BinaryPath())
+		fmt.Printf("%s %s v%s в %s\n", OK("Установлено"), c.Name(), ver, Hint(c.BinaryPath()))
 	}
 
 	st, stErr := loadState()
@@ -145,7 +145,7 @@ func handleCoreInstall(ctx context.Context, args []string) error {
 		active = st.Core
 	}
 	if name != active {
-		fmt.Printf("Активное ядро не изменено (sign-craze --core %s для переключения).\n", name)
+		fmt.Printf("%s %s\n", Hint("Активное ядро не изменено"), Hint("(sign-craze --core "+name+" для переключения)"))
 	}
 	return nil
 }
@@ -162,32 +162,34 @@ func handleCoreList(ctx context.Context, _ []string) error {
 
 	names := core.Names()
 	if len(names) == 0 {
-		fmt.Println("Нет зарегистрированных ядер.")
+		fmt.Println(Warn("Нет зарегистрированных ядер."))
 		return nil
 	}
 
-	fmt.Println("Зарегистрированные ядра:")
+	fmt.Println(Header("Зарегистрированные ядра:"))
 	for _, name := range names {
 		c, err := core.Get(name)
 		if err != nil {
 			continue
 		}
 		marker := "  "
+		nameStr := name
 		if name == active {
-			marker = "* "
+			marker = Green("* ")
+			nameStr = Bold(name)
 		}
-		installed := "не установлено"
+		installed := Err("не установлено")
 		if _, err := os.Stat(c.BinaryPath()); err == nil {
 			ver, vErr := c.BinaryVersion(ctx, exectx.OS)
 			if vErr == nil {
-				installed = "v" + ver
+				installed = OK("v" + ver)
 			} else {
-				installed = "установлено (версия не прочитана)"
+				installed = Warn("установлено (версия не прочитана)")
 			}
 		}
-		fmt.Printf("%s%-10s  %-32s  %s\n", marker, name, c.BinaryPath(), installed)
+		fmt.Printf("%s%-10s  %-32s  %s\n", marker, nameStr, Hint(c.BinaryPath()), installed)
 	}
 	fmt.Println()
-	fmt.Println("* — активное ядро (state.core)")
+	fmt.Println(Hint("* — активное ядро (state.core)"))
 	return nil
 }

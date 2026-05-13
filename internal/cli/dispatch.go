@@ -69,9 +69,9 @@ func validateFlag(s string) error {
 }
 
 func showHelp() error {
-	fmt.Println("Использование: sign-craze <команда> [опции]")
+	fmt.Println(Header("Использование:") + " sign-craze <команда> [опции]")
 	fmt.Println()
-	fmt.Println("Команды:")
+	fmt.Println(Header("Команды:"))
 	for _, c := range registry {
 		if c.Hidden {
 			continue
@@ -80,7 +80,12 @@ func showHelp() error {
 		if c.Short != "" {
 			short = c.Short
 		}
-		fmt.Printf("  %-4s  %-24s  %s\n", short, c.Long, c.Help)
+		fmt.Printf("  %-4s  %-24s  %s\n", short, Key(c.Long), c.Help)
 	}
+	fmt.Println()
+	fmt.Println(Header("Глобальные опции:"))
+	fmt.Printf("  %-4s  %-24s  %s\n", "", Key("--no-color"), "отключить ANSI-цвет в выводе")
+	fmt.Println()
+	fmt.Println(Hint("Переменные окружения: NO_COLOR (выкл.), FORCE_COLOR (вкл. даже в pipe), TERM=dumb (выкл.)."))
 	return nil
 }

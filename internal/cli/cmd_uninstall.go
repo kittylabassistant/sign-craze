@@ -123,11 +123,11 @@ func removeAllIfExists(path string) bool {
 // команда отработала с ошибкой.
 func printRemoved(header string, removed []string) {
 	if len(removed) == 0 {
-		fmt.Println(header + ": ничего не найдено (sign-craze уже не установлен).")
+		fmt.Println(Bold(header) + ": " + Hint("ничего не найдено (sign-craze уже не установлен)."))
 		return
 	}
-	fmt.Println(header + ":")
+	fmt.Println(Bold(header) + ":")
 	for _, r := range removed {
-		fmt.Println("  - " + r)
+		fmt.Println("  " + Dim("-") + " " + Hint(r))
 	}
 }

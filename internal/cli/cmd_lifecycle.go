@@ -147,7 +147,7 @@ func doStart(ctx context.Context) error {
 	if statErr != nil {
 		log.L().Warn("--start: чтение статуса ядра", "core", c.Name(), "err", statErr)
 	}
-	fmt.Printf("Сервис запущен (%s pid=%d, режим=%s)\n", c.Name(), coreStat.PID, st.Mode)
+	fmt.Printf("%s (%s pid=%d, режим=%s)\n", OK("Сервис запущен"), c.Name(), coreStat.PID, st.Mode)
 	return nil
 }
 
@@ -194,7 +194,7 @@ func doStop(ctx context.Context) error {
 		return fmt.Errorf("--stop: firewall remove: %w", err)
 	}
 
-	fmt.Println("Сервис остановлен")
+	fmt.Println(Info("Сервис остановлен"))
 	return nil
 }
 
