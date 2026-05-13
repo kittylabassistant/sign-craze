@@ -484,6 +484,26 @@ Chain PREROUTING
 Chain FORWARD
   -o $WAN_IFACE -m mark ! --mark 0x53 -j signcraze_dpi_fwd   # только если DPIEnabled=true
 
+Chain signcraze_policy      # инварианты порядка правил: bypass-правила вставляются
+                            # через -I 1 (в начало), до TPROXY/MARK
+
+  # --- LOCAL bypass (pos=1) ---
+  # Keenetic метит mark 0xffffaaXX весь трафик от policy-устройств, включая пакеты
+  # с dst=LAN_IP роутера. Без этого RETURN SSH/dropbear:222 и веб-интерфейс роутера
+  # перехватываются TPROXY и становятся недоступны для policy-устройств.
+  # LAN_IP определяется через netif.DetectLANAddr при Apply.
+  -d <LAN_IP>    -j RETURN  # трафик к самому роутеру — вернуть без перехвата
+
+  # --- Admin-ports bypass (pos=1, defense-in-depth) ---
+  # Страхует доступ к SSH/web-admin даже если DetectLANAddr вернул неверный IP
+  # (multi-LAN роутер, нестандартный бридж). Порты: 22 (OpenSSH), 222 (dropbear Entware).
+  -p tcp --dport 22  -j RETURN
+  -p udp --dport 22  -j RETURN
+  -p tcp --dport 222 -j RETURN
+  -p udp --dport 222 -j RETURN
+
+  # --- TPROXY/MARK правила (далее) ---
+
 Chain signcraze
   ! -s 127.0.0.0/8 ! -s 169.254.0.0/16 ! -i lo \
     -m mark --mark 0xffffaaXX -p tcp -j MARK --set-mark 0x53
@@ -717,8 +737,16 @@ Shim делегирует в `sign-craze --service-start` (внутренняя 
 
 ### `--uninstall` в режиме `policy`
 
-Перед удалением sing-box и iptables: `ndm.DeletePolicy()` + `SaveConfig()`.
-Ошибки RCI логируются как WARN, но не прерывают uninstall.
+Перед удалением sing-box и iptables выполняется следующая последовательность:
+
+1. `ndm.GetHostsWithPolicy(ctx, PolicyName)` — получить список MAC-адресов, привязанных к данной policy через `ip hotspot host`.
+2. Для каждого MAC — `ndm.UnsetHostPolicy(ctx, mac)` (RCI: `{"ip":{"hotspot":{"host":{"mac":"<MAC>","policy":{"no":true}}}}}`). Ошибки логируются как WARN и не прерывают процесс.
+3. `ndm.DeletePolicy(ctx, PolicyName)` — удалить само определение policy.
+4. `ndm.SaveConfig()` — сохранить изменения в startup-config.
+
+Без шага 2 сиротские записи `ip hotspot host <MAC> policy <name>` сохраняются в startup-config Keenetic (flash) и восстанавливаются NDM при каждом reboot — устранить их без factory reset невозможно.
+
+Ошибки RCI на любом из шагов логируются как WARN, но не прерывают uninstall.
 
 ### Мониторинг процессов
 

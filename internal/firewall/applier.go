@@ -80,6 +80,11 @@ type Config struct {
 	// TUN-устройство. Sing-box оставляет SkipTUNCheck=false (default).
 	SkipTUNCheck bool
 
+	// LANAddrs — IP-адреса LAN-интерфейсов роутера для LOCAL bypass в policy mode.
+	// Если пустой — applyPolicyMode попробует автодетект через netif.DetectLANAddr.
+	// При failure детекта bypass пропускается (WARN), AdminPorts остаются как страховка.
+	LANAddrs []string
+
 	// UseTProxy переключает режим sing-box с TUN-inbound на TPROXY-inbound.
 	// Когда true:
 	//   - pre-flight CheckTUNAvailable пропускается;
@@ -278,6 +283,38 @@ func (a *applierImpl) deleteWANUIDrop(ctx context.Context) {
 	}
 }
 
+// ensureLANBypass вставляет RETURN-правила для LAN-IP в начало chain.
+// Использует InsertRule(pos=1), идемпотентно. Failures fatal.
+func (a *applierImpl) ensureLANBypass(ctx context.Context, table, chainName string) error {
+	addrs := a.cfg.LANAddrs
+	if len(addrs) == 0 {
+		if ip, err := netif.DetectLANAddr(); err == nil && ip != "" {
+			addrs = []string{ip}
+		} else {
+			log.L().Warn("firewall: LAN-addr автодетект не удался, LOCAL bypass пропущен", "err", err)
+			return nil
+		}
+	}
+	for _, spec := range modes.LocalBypassRules(table, chainName, addrs) {
+		if err := a.ipt.InsertRule(ctx, spec.Table, spec.Chain, 1, spec.Args...); err != nil {
+			return fmt.Errorf("firewall: LOCAL bypass (%s/%s): %w", table, chainName, err)
+		}
+	}
+	return nil
+}
+
+// ensureAdminPortsBypass — RETURN-правила для admin портов в начало chain.
+// Defense-in-depth поверх ensureLANBypass. Pos=1 → попадает выше LAN bypass
+// (или вровень — порядок RETURN-правил между собой не важен).
+func (a *applierImpl) ensureAdminPortsBypass(ctx context.Context, table, chainName string) error {
+	for _, spec := range modes.AdminPortsBypassRulesForChain(a.cfg.AdminPorts, table, chainName) {
+		if err := a.ipt.InsertRule(ctx, spec.Table, spec.Chain, 1, spec.Args...); err != nil {
+			return fmt.Errorf("firewall: admin-ports bypass (%s/%s): %w", table, chainName, err)
+		}
+	}
+	return nil
+}
+
 // applyPolicyMode — режим интеграции с Keenetic IP Policy.
 //
 // Не создаёт ipset, не использует собственный fwmark для маркировки трафика.
@@ -334,6 +371,12 @@ func (a *applierImpl) applyPolicyMode(ctx context.Context) error {
 			if err := a.ipt.EnsureChain(ctx, "mangle", modes.PolicyChainName); err != nil {
 				return err
 			}
+			if err := a.ensureLANBypass(ctx, "mangle", modes.PolicyChainName); err != nil {
+				return err
+			}
+			if err := a.ensureAdminPortsBypass(ctx, "mangle", modes.PolicyChainName); err != nil {
+				return err
+			}
 			for _, spec := range modes.PolicyTProxyRulesReal(a.cfg.PolicyMark, a.cfg.FWMark, a.cfg.Port) {
 				if err := a.ipt.EnsureRule(ctx, spec.Table, spec.Chain, spec.Args...); err != nil {
 					return err
@@ -346,6 +389,12 @@ func (a *applierImpl) applyPolicyMode(ctx context.Context) error {
 			log.L().Warn("firewall: xt_TPROXY недоступен, fallback на REDIRECT (TCP-only)")
 			// REDIRECT-mode: цепочка в nat, DNAT в local stack.
 			if err := a.ipt.EnsureChain(ctx, "nat", modes.PolicyChainName); err != nil {
+				return err
+			}
+			if err := a.ensureLANBypass(ctx, "nat", modes.PolicyChainName); err != nil {
+				return err
+			}
+			if err := a.ensureAdminPortsBypass(ctx, "nat", modes.PolicyChainName); err != nil {
 				return err
 			}
 			for _, spec := range modes.PolicyTProxyRules(a.cfg.PolicyMark, a.cfg.FWMark, a.cfg.Port) {
@@ -374,6 +423,12 @@ func (a *applierImpl) applyPolicyMode(ctx context.Context) error {
 		// TUN-mode (legacy): цепочка в mangle, помечаем трафик fwmark
 		// для подъёма в таблицу через TUN.
 		if err := a.ipt.EnsureChain(ctx, "mangle", modes.PolicyChainName); err != nil {
+			return err
+		}
+		if err := a.ensureLANBypass(ctx, "mangle", modes.PolicyChainName); err != nil {
+			return err
+		}
+		if err := a.ensureAdminPortsBypass(ctx, "mangle", modes.PolicyChainName); err != nil {
 			return err
 		}
 		for _, spec := range modes.PolicyRules(a.cfg.PolicyMark, a.cfg.FWMark) {

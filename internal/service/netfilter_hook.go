@@ -37,14 +37,39 @@ var hookTemplate = template.Must(template.New("hook").Parse(`#!/bin/sh
 # Сгенерировано sign-craze. Не редактировать вручную.
 # NDM вызывает hook после rebuild iptables; реапплаим mangle-правила.
 # NDM env: type=iptables|ip6tables|ipset, table=mangle|nat|filter
+#
+# Сериализация через flock + trailing debounce: при пакете NDM-событий
+# (например 10 устройств в policy подряд) первый процесс захватывает
+# lock и делает reapply, остальные ставят pending-маркер и моментально
+# выходят. После reapply lock-holder спит 2с, проверяет pending — если
+# есть, удаляет и делает второй финальный reapply. Это снимает CPU-шторм
+# на slow MIPS и гарантирует что финальное состояние всё равно
+# зареапплаится.
 SC={{ .BinPath }}
+LOCK=/opt/var/run/sign-craze-hook.lock
+PENDING=/opt/var/run/sign-craze-hook.pending
 [ -x "$SC" ] || exit 0
 [ -f {{ .PIDPath }} ] || exit 0
 case "${type:-iptables}/${table:-mangle}" in
     iptables/mangle|ip6tables/mangle|ipset/*) ;;
     *) exit 0 ;;
 esac
+# Fallback если flock недоступен (минимальный Entware без util-linux).
+if ! command -v flock >/dev/null 2>&1; then
+    "$SC" --reapply >/dev/null 2>&1 || true
+    exit 0
+fi
+exec 9>"$LOCK"
+if ! flock -x -n 9; then
+    touch "$PENDING"
+    exit 0
+fi
 "$SC" --reapply >/dev/null 2>&1 || true
+sleep 2
+if [ -f "$PENDING" ]; then
+    rm -f "$PENDING"
+    "$SC" --reapply >/dev/null 2>&1 || true
+fi
 `))
 
 // HookParams задаёт параметры для генерации netfilter.d hook.

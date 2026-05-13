@@ -274,3 +274,57 @@ func hasInterface(list []string, want string) bool {
 	}
 	return false
 }
+
+// rawHotspotHostRC — формат хоста в /rci/show/rc/ip/hotspot.
+// Поле policy может отсутствовать (omitempty) — значит хост без привязки.
+type rawHotspotHostRC struct {
+	Mac    string `json:"mac"`
+	Policy string `json:"policy,omitempty"`
+}
+
+type rawHotspotRC struct {
+	Host []rawHotspotHostRC `json:"host"`
+}
+
+// GetHostsWithPolicy возвращает MAC-адреса хостов, привязанных к policy.
+// Используется в --uninstall для отвязки перед DeletePolicy.
+// Если эндпоинт недоступен на этой прошивке — возвращает ошибку, caller
+// должен залогировать WARN и продолжить (uninstall не блокируется).
+func (c *Client) GetHostsWithPolicy(ctx context.Context, policyName string) ([]string, error) {
+	var rc rawHotspotRC
+	if err := c.Get(ctx, "/show/rc/ip/hotspot", &rc); err != nil {
+		return nil, fmt.Errorf("ndm: GetHostsWithPolicy: %w", err)
+	}
+	var macs []string
+	for _, h := range rc.Host {
+		if h.Policy == policyName {
+			macs = append(macs, h.Mac)
+		}
+	}
+	return macs, nil
+}
+
+// UnsetHostPolicy снимает policy-привязку с устройства.
+// RCI: POST / с {"ip":{"hotspot":{"host":{"mac":"<MAC>","policy":{"no":true}}}}}.
+// Идемпотентно: Keenetic возвращает OK даже если хост не привязан.
+func (c *Client) UnsetHostPolicy(ctx context.Context, mac string) error {
+	if mac == "" {
+		return fmt.Errorf("ndm: UnsetHostPolicy: mac пустой")
+	}
+	payload := map[string]any{
+		"ip": map[string]any{
+			"hotspot": map[string]any{
+				"host": map[string]any{
+					"mac": mac,
+					"policy": map[string]any{
+						"no": true,
+					},
+				},
+			},
+		},
+	}
+	if _, err := c.PostJSON(ctx, "/", payload); err != nil {
+		return fmt.Errorf("ndm: UnsetHostPolicy(%s): %w", mac, err)
+	}
+	return nil
+}

@@ -267,6 +267,30 @@ func (s *seedRunner) Run(ctx context.Context, name string, args ...string) (exec
 	return s.autoRunner.Run(ctx, name, args...)
 }
 
+func TestApplier_Apply_Policy_LocalAndAdminBypass(t *testing.T) {
+	r := &autoRunner{}
+	cfg := DefaultConfig()
+	cfg.PolicyMark = 0xffffaab
+	cfg.AdminPorts = []uint16{22, 222}
+	cfg.LANAddrs = []string{"172.16.0.1"}
+	a := NewApplier(r, cfg)
+	if err := a.Apply(context.Background(), types.ModePolicy); err != nil {
+		t.Fatalf("Apply(policy): %v", err)
+	}
+	// LOCAL bypass для LAN-IP вставлен через -I в начало signcraze_policy.
+	if !r.hasCall("iptables -t mangle -I signcraze_policy 1 -d 172.16.0.1 -j RETURN") {
+		t.Error("LOCAL bypass для 172.16.0.1 не вставлен через -I в начало signcraze_policy")
+	}
+	// Admin-port bypass для порта 222 TCP.
+	if !r.hasCall("iptables -t mangle -I signcraze_policy 1 -p tcp --dport 222 -j RETURN") {
+		t.Error("admin port 222 TCP bypass не вставлен в signcraze_policy")
+	}
+	// Admin-port bypass для порта 22 TCP.
+	if !r.hasCall("iptables -t mangle -I signcraze_policy 1 -p tcp --dport 22 -j RETURN") {
+		t.Error("admin port 22 TCP bypass не вставлен в signcraze_policy")
+	}
+}
+
 func TestApplier_Apply_Policy_НулевойMarkОшибка(t *testing.T) {
 	r := &autoRunner{}
 	cfg := DefaultConfig()

@@ -128,3 +128,40 @@ func TestWriteHook_Idempotent(t *testing.T) {
 		t.Error("WriteHook перезаписал файл без изменений (idempotency нарушена)")
 	}
 }
+
+// TestRenderHook_ContainsFlockSerialize — шаблон должен содержать все маркеры
+// flock-логики для сериализации параллельных NDM-событий на slow MIPS.
+func TestRenderHook_ContainsFlockSerialize(t *testing.T) {
+	data, err := RenderHook(HookParams{BinPath: "/opt/sbin/sign-craze"})
+	if err != nil {
+		t.Fatalf("RenderHook: %v", err)
+	}
+	s := string(data)
+	// Основные маркеры flock-логики
+	for _, marker := range []string{
+		"flock -x -n 9",
+		"LOCK=/opt/var/run/sign-craze-hook.lock",
+		"PENDING=/opt/var/run/sign-craze-hook.pending",
+		"sleep 2",
+		"command -v flock",
+	} {
+		if !strings.Contains(s, marker) {
+			t.Errorf("шаблон должен содержать %q, получено:\n%s", marker, s)
+		}
+	}
+}
+
+// TestRenderHook_TrailingDebouncePresent — --reapply должен вызываться дважды:
+// первый раз сразу после захвата lock, второй — trailing после sleep 2
+// если был pending-маркер от вытесненных конкурентов.
+func TestRenderHook_TrailingDebouncePresent(t *testing.T) {
+	data, err := RenderHook(HookParams{BinPath: "/opt/sbin/sign-craze"})
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	s := string(data)
+	// --reapply должен вызываться дважды (initial + trailing)
+	if strings.Count(s, "--reapply") < 2 {
+		t.Errorf("ожидалось минимум 2 вызова --reapply (initial + trailing), получено %d", strings.Count(s, "--reapply"))
+	}
+}

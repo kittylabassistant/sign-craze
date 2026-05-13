@@ -49,6 +49,20 @@ func doUninstall(ctx context.Context, label string) []string {
 	// ModePolicy: убрать policy из Keenetic RCI до удаления state.
 	if st, err := loadState(); err == nil && st.Mode == types.ModePolicy && st.PolicyName != "" {
 		client := ndm.NewClient()
+		// 1. Отвязать все хосты от policy. Errors → WARN, не блокируем uninstall:
+		//    на старых прошивках /show/rc/ip/hotspot может быть недоступен.
+		if macs, err := client.GetHostsWithPolicy(ctx, st.PolicyName); err != nil {
+			log.L().Warn(label+": ndm.GetHostsWithPolicy", "name", st.PolicyName, "err", err)
+		} else if len(macs) > 0 {
+			for _, mac := range macs {
+				if err := client.UnsetHostPolicy(ctx, mac); err != nil {
+					log.L().Warn(label+": ndm.UnsetHostPolicy", "mac", mac, "err", err)
+				}
+			}
+			log.L().Info(label+": отвязано устройств от policy", "count", len(macs))
+			removed = append(removed, fmt.Sprintf("Keenetic policy bindings: %d устр.", len(macs)))
+		}
+		// 2. Удалить policy.
 		if err := client.DeletePolicy(ctx, st.PolicyName); err != nil {
 			log.L().Warn(label+": ndm.DeletePolicy", "name", st.PolicyName, "err", err)
 		} else {

@@ -309,3 +309,82 @@ func TestWaitForMark_PendingThenReady(t *testing.T) {
 		t.Errorf("ожидалось >= 2 опросов GetPolicy, было %d", calls)
 	}
 }
+
+// --- Тесты GetHostsWithPolicy и UnsetHostPolicy (T3) ---
+
+const fixtureHotspotRC = `{
+  "host": [
+    {"mac": "60:3d:61:7d:9b:70", "policy": "sign-craze"},
+    {"mac": "dc:a6:32:35:4d:10", "policy": "sign-craze"},
+    {"mac": "9c:37:cb:6b:78:a7", "policy": "Policy0"},
+    {"mac": "aa:bb:cc:dd:ee:ff"}
+  ]
+}`
+
+func TestGetHostsWithPolicy_FiltersOnlyTargetPolicy(t *testing.T) {
+	c, _ := newMockServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/show/rc/ip/hotspot") {
+			_, _ = io.WriteString(w, fixtureHotspotRC)
+			return
+		}
+		http.NotFound(w, r)
+	})
+	macs, err := c.GetHostsWithPolicy(context.Background(), "sign-craze")
+	if err != nil {
+		t.Fatalf("GetHostsWithPolicy: %v", err)
+	}
+	if len(macs) != 2 {
+		t.Fatalf("ожидалось 2 MAC, получено %d: %v", len(macs), macs)
+	}
+}
+
+func TestGetHostsWithPolicy_EmptyResult(t *testing.T) {
+	c, _ := newMockServer(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"host": []}`)
+	})
+	macs, err := c.GetHostsWithPolicy(context.Background(), "sign-craze")
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if len(macs) != 0 {
+		t.Errorf("ожидался пустой slice, получено %v", macs)
+	}
+}
+
+func TestUnsetHostPolicy_PostsCorrectPayload(t *testing.T) {
+	var got map[string]any
+	c, _ := newMockServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/" {
+			_ = json.NewDecoder(r.Body).Decode(&got)
+			_, _ = io.WriteString(w, `{}`)
+			return
+		}
+		http.NotFound(w, r)
+	})
+	if err := c.UnsetHostPolicy(context.Background(), "aa:bb:cc:dd:ee:ff"); err != nil {
+		t.Fatalf("%v", err)
+	}
+	// Проверка структуры payload.
+	hotspot, _ := got["ip"].(map[string]any)["hotspot"].(map[string]any)
+	host, _ := hotspot["host"].(map[string]any)
+	if host["mac"] != "aa:bb:cc:dd:ee:ff" {
+		t.Errorf("mac = %v", host["mac"])
+	}
+	policy, _ := host["policy"].(map[string]any)
+	if policy["no"] != true {
+		t.Errorf("policy.no = %v, ожидалось true", policy["no"])
+	}
+}
+
+func TestUnsetHostPolicy_EmptyMac(t *testing.T) {
+	c, _ := newMockServer(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{}`)
+	})
+	err := c.UnsetHostPolicy(context.Background(), "")
+	if err == nil {
+		t.Fatal("ожидалась ошибка при пустом mac")
+	}
+	if !strings.Contains(err.Error(), "mac пустой") {
+		t.Errorf("неожиданный текст ошибки: %v", err)
+	}
+}

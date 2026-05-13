@@ -16,6 +16,7 @@ import (
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/firewall"
 	"github.com/kittylabassistant/sign-craze/internal/log"
+	"github.com/kittylabassistant/sign-craze/internal/netif"
 	"github.com/kittylabassistant/sign-craze/internal/routing"
 	"github.com/kittylabassistant/sign-craze/internal/service"
 	"github.com/kittylabassistant/sign-craze/internal/singbox"
@@ -98,6 +99,11 @@ func newFirewallApplier(s *state.State) (firewall.Applier, error) {
 	cfg.Excludes = excl
 
 	cfg.VPNExcludeIPs = collectVPNExcludeIPs(s)
+
+	if ip, err := netif.DetectLANAddr(); err == nil && ip != "" {
+		cfg.LANAddrs = []string{ip}
+	}
+
 	return firewall.NewApplier(exectx.OS, cfg), nil
 }
 

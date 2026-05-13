@@ -18,11 +18,11 @@ func ExcludeRules() []RuleSpec {
 	}
 }
 
-// AdminPortsBypassRules возвращает RETURN-правила для трафика на admin порты
-// (TCP+UDP на каждый порт), защищая SSH и web admin от случайного попадания
-// в TPROXY (safety-fixes #2). Порты со значением 0 пропускаются.
-// Пустой/nil slice → возвращает nil.
-func AdminPortsBypassRules(ports []uint16) []RuleSpec {
+// AdminPortsBypassRulesForChain — обобщённая версия AdminPortsBypassRules
+// с явным table+chainName. Позволяет переиспользовать в policy mode
+// (table="mangle"/"nat", chain="signcraze_policy") в дополнение к
+// full mode (table="mangle", chain="signcraze").
+func AdminPortsBypassRulesForChain(ports []uint16, table, chainName string) []RuleSpec {
 	var rules []RuleSpec
 	for _, port := range ports {
 		if port == 0 {
@@ -31,14 +31,38 @@ func AdminPortsBypassRules(ports []uint16) []RuleSpec {
 		portStr := strconv.Itoa(int(port))
 		rules = append(rules,
 			RuleSpec{
-				Table: "mangle", Chain: "signcraze",
+				Table: table, Chain: chainName,
 				Args: []string{"-p", "tcp", "--dport", portStr, "-j", "RETURN"},
 			},
 			RuleSpec{
-				Table: "mangle", Chain: "signcraze",
+				Table: table, Chain: chainName,
 				Args: []string{"-p", "udp", "--dport", portStr, "-j", "RETURN"},
 			},
 		)
+	}
+	return rules
+}
+
+// AdminPortsBypassRules — back-compat обёртка для full-mode "signcraze" chain.
+func AdminPortsBypassRules(ports []uint16) []RuleSpec {
+	return AdminPortsBypassRulesForChain(ports, "mangle", "signcraze")
+}
+
+// LocalBypassRules возвращает RETURN-правила для трафика с dst = LAN-IP роутера.
+// Защита SSH/web-admin от перехвата в TPROXY в режиме policy: Keenetic метит
+// mark всех policy-устройств, включая пакеты с dst=LAN_IP роутера. Без bypass
+// эти пакеты уходят в sing-box, который их не обслуживает → коннект виснет.
+// Вставлять в pos=1 ДО TPROXY/MARK правил через InsertRule. Пустой lanIPs → nil.
+func LocalBypassRules(table, chainName string, lanIPs []string) []RuleSpec {
+	var rules []RuleSpec
+	for _, ip := range lanIPs {
+		if ip == "" {
+			continue
+		}
+		rules = append(rules, RuleSpec{
+			Table: table, Chain: chainName,
+			Args: []string{"-d", ip, "-j", "RETURN"},
+		})
 	}
 	return rules
 }
