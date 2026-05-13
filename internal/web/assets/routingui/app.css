@@ -15,6 +15,15 @@
   --sc-sidebar-fg:       #f4f4f5;
   --sc-shadow:           0 8px 32px 0 rgba(0, 0, 0, 0.4);
 
+  /* Цвета компонентов (переопределяются в светлой теме) */
+  --sc-btn-secondary-bg:       rgba(255, 255, 255, 0.05);
+  --sc-btn-secondary-hover-bg: rgba(255, 255, 255, 0.10);
+  --sc-form-bg:                rgba(15, 20, 28, 0.60);
+  --sc-chips-bg:               rgba(15, 20, 28, 0.40);
+  --sc-overlay-bg:             rgba(0, 0, 0, 0.65);
+  --sc-menu-shadow:            0 4px 12px rgba(0, 0, 0, 0.40);
+  --sc-code-fg:                #e2e8f0;
+
   /* Pico v2 переопределения */
   --pico-primary:                    var(--sc-primary);
   --pico-primary-hover:              var(--sc-primary-hover);
@@ -31,13 +40,40 @@
   --pico-h3-color:                   var(--sc-fg);
   --pico-muted-color:                var(--sc-fg-muted);
   --pico-muted-border-color:         var(--sc-border);
-  --pico-form-element-background-color: rgba(15, 20, 28, 0.6);
+  --pico-form-element-background-color: var(--sc-form-bg);
   --pico-form-element-color:         var(--sc-fg);
   --pico-form-element-border-color:  var(--sc-border);
   --pico-form-element-focus-color:   var(--sc-primary);
   --pico-table-border-color:         var(--sc-border);
-  --pico-code-background-color:      rgba(15, 20, 28, 0.6);
-  --pico-code-color:                 #e2e8f0;
+  --pico-code-background-color:      var(--sc-form-bg);
+  --pico-code-color:                 var(--sc-code-fg);
+}
+
+/* ===== Светлая тема ===== */
+:root[data-theme="light"] {
+  --sc-bg:               #f8fafc;
+  --sc-card-bg:          rgba(255, 255, 255, 0.92);
+  --sc-fg:               #1a2332;
+  --sc-fg-muted:         #64748b;
+  --sc-primary:          #2aa89c;
+  --sc-primary-hover:    #3bbeb1;
+  --sc-accent:           #d96b3e;
+  --sc-border:           rgba(42, 168, 156, 0.30);
+  --sc-danger:           #dc2626;
+  --sc-success:          #16a34a;
+  --sc-sidebar-bg:       #e6f7f6;
+  --sc-sidebar-fg:       #1a2332;
+  --sc-shadow:           0 8px 32px 0 rgba(0, 0, 0, 0.08);
+
+  --sc-btn-secondary-bg:       rgba(0, 0, 0, 0.04);
+  --sc-btn-secondary-hover-bg: rgba(0, 0, 0, 0.08);
+  --sc-form-bg:                rgba(255, 255, 255, 0.85);
+  --sc-chips-bg:               rgba(240, 248, 247, 0.80);
+  --sc-overlay-bg:             rgba(0, 0, 0, 0.45);
+  --sc-menu-shadow:            0 4px 12px rgba(0, 0, 0, 0.12);
+  --sc-code-fg:                #1e2837;
+
+  --pico-primary-inverse: #ffffff;
 }
 
 html, body { background: var(--sc-bg); color: var(--sc-fg); }
@@ -49,7 +85,7 @@ button {
   border-radius: calc(0.25rem * 1.05);
   background: var(--sc-primary);
   border: 1px solid var(--sc-primary);
-  color: #0f141c;
+  color: var(--pico-primary-inverse);
   font-weight: 500;
   transition: background 0.2s ease, transform 0.2s ease;
 }
@@ -59,12 +95,12 @@ button:hover:not(:disabled) {
   transform: translateY(-1px);
 }
 button.secondary, button[class*="secondary"] {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--sc-btn-secondary-bg);
   border-color: var(--sc-border);
   color: var(--sc-fg);
 }
 button.secondary:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--sc-btn-secondary-hover-bg);
   border-color: var(--sc-primary);
 }
 
@@ -98,11 +134,11 @@ button.secondary:hover {
   background: none;
 }
 
-/* ===== Модальное окно (тёмный glass) ===== */
+/* ===== Модальное окно ===== */
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.65);
+  background: var(--sc-overlay-bg);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   display: flex;
@@ -139,13 +175,13 @@ button.secondary:hover {
   margin-top: 1rem;
 }
 
-/* Inputs внутри модалки тоже тёмные.
- * Чекбоксы и радио-кнопки исключены — иначе тёмный background перекрывает
+/* Inputs внутри модалки.
+ * Чекбоксы и радио-кнопки исключены — иначе background перекрывает
  * нативный маркер, и пользователь не видит снят/поставлен галочку. */
 .modal-content input:not([type="checkbox"]):not([type="radio"]),
 .modal-content select,
 .modal-content textarea {
-  background: rgba(15, 20, 28, 0.6);
+  background: var(--sc-form-bg);
   color: var(--sc-fg);
   border: 1px solid var(--sc-border);
 }
@@ -183,7 +219,7 @@ button.secondary:hover {
   min-height: 2.5rem;
   align-items: center;
   cursor: text;
-  background: rgba(15, 20, 28, 0.4);
+  background: var(--sc-chips-bg);
 }
 
 .chip {
@@ -191,7 +227,7 @@ button.secondary:hover {
   align-items: center;
   gap: 0.25rem;
   background: var(--sc-primary);
-  color: #0f141c;
+  color: var(--pico-primary-inverse);
   border-radius: calc(1rem * 1.05);
   padding: 0.1rem 0.5rem;
   font-size: 0.8rem;
@@ -256,6 +292,13 @@ button.secondary:hover {
 .toolbar h1 span,
 .toolbar h1 strong { color: var(--sc-primary); }
 
+/* ===== Кнопка переключения темы ===== */
+.theme-toggle {
+  font-size: 1rem;
+  padding: 0.3rem 0.6rem;
+  line-height: 1;
+}
+
 /* ===== Toast ===== */
 .toast {
   position: fixed;
@@ -299,8 +342,8 @@ table th { color: var(--sc-fg-muted); font-weight: 500; }
 
 /* ===== Preview конфига ===== */
 .config-preview {
-  background: rgba(15, 20, 28, 0.6);
-  color: #e2e8f0;
+  background: var(--sc-form-bg);
+  color: var(--sc-code-fg);
   border: 1px solid var(--sc-border);
   border-radius: calc(0.25rem * 1.05);
   padding: 1rem;
@@ -334,7 +377,7 @@ table th { color: var(--sc-fg-muted); font-weight: 500; }
   border-radius: 0.25rem;
   min-width: 280px;
   z-index: 200;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--sc-menu-shadow);
 }
 .preset-item {
   padding: 0.5rem 0.6rem;

@@ -8,6 +8,28 @@ import htm from './vendor/htm.module.js';
 const html = htm.bind(h);
 
 // ---------------------------------------------------------------------------
+// useTheme — переключение тёмной/светлой темы, хранится в localStorage
+// ---------------------------------------------------------------------------
+function useTheme() {
+  const [theme, setTheme] = useState(() => {
+    const saved = localStorage.getItem('sc-theme') || 'dark';
+    document.documentElement.dataset.theme = saved;
+    return saved;
+  });
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('sc-theme', theme);
+  }, [theme]);
+
+  const toggle = useCallback(() => {
+    setTheme(t => t === 'dark' ? 'light' : 'dark');
+  }, []);
+
+  return [theme, toggle];
+}
+
+// ---------------------------------------------------------------------------
 // routingEqual — глубокое сравнение routing-секции (rules + rule_sets + final).
 // Используется для isDirty: localCfg против serverCfg.
 // ---------------------------------------------------------------------------
@@ -848,7 +870,7 @@ function PresetsDropdown({ onApplyPreset, showToast }) {
 // ---------------------------------------------------------------------------
 // Toolbar — Validate / Preview / Apply (всегда виден)
 // ---------------------------------------------------------------------------
-function Toolbar({ onReload, showToast, isDirty, onApplyPreset }) {
+function Toolbar({ onReload, showToast, isDirty, onApplyPreset, theme, onToggleTheme }) {
   const [previewModal, setPreviewModal] = useState(false);
   const [previewText, setPreviewText] = useState('');
   const [restartModal, setRestartModal] = useState(false);
@@ -901,6 +923,9 @@ function Toolbar({ onReload, showToast, isDirty, onApplyPreset }) {
       <${PresetsDropdown} onApplyPreset=${onApplyPreset} showToast=${showToast} />
       <button class="secondary" onClick=${handleValidate}>Validate</button>
       <button class="secondary" onClick=${handlePreview}>Preview</button>
+      <button class="secondary theme-toggle" onClick=${onToggleTheme} title=${theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'} aria-label="Переключить тему">
+        ${theme === 'dark' ? '☀' : '☾'}
+      </button>
       <button onClick=${handleApply} class=${isDirty ? 'apply-dirty' : ''} title=${isDirty ? 'Есть несохранённые изменения routing' : ''}>
         Apply${isDirty ? html`<span class="dirty-dot" aria-hidden="true">●</span>` : ''}
       </button>
@@ -950,6 +975,7 @@ const TABS = [
 ];
 
 function App() {
+  const [theme, toggleTheme] = useTheme();
   const [tab, setTab] = useState('inbounds');
   // serverCfg — последний загруженный с сервера (или сохранённый туда) snapshot.
   // localCfg — рабочий черновик: пользователь редактирует только его.
@@ -1071,6 +1097,8 @@ function App() {
         showToast=${showToast}
         isDirty=${isDirty}
         onApplyPreset=${handleApplyPreset}
+        theme=${theme}
+        onToggleTheme=${toggleTheme}
       />
 
       ${loading && html`<p aria-busy="true">Загрузка…</p>`}
