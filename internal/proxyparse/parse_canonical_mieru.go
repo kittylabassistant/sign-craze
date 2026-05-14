@@ -304,12 +304,12 @@ func parseMieruWireConfig(data []byte) (mieruWireCfg, error) {
 
 		if fieldNum == 1 && wireType == wireBytes && !firstProfileFound {
 			// profiles[0]
-			profileBytes, m, err := readBytes(data[pos:])
-			if err != nil {
-				return cfg, fmt.Errorf("profiles[0]: %w", err)
+			profileBytes, m, rdErr := readBytes(data[pos:])
+			if rdErr != nil {
+				return cfg, fmt.Errorf("profiles[0]: %w", rdErr)
 			}
-			if err := parseMieruProfile(profileBytes, &cfg); err != nil {
-				return cfg, err
+			if pErr := parseMieruProfile(profileBytes, &cfg); pErr != nil {
+				return cfg, pErr
 			}
 			firstProfileFound = true
 			pos += m
@@ -534,7 +534,7 @@ func parseMieruMux(data []byte, cfg *mieruWireCfg) error {
 // ─── Минимальный protobuf wire-format decoder ──────────────────────────────
 
 const (
-	wireVarint = 0
+	wireVarint  = 0
 	wireFixed64 = 1
 	wireBytes   = 2
 	wireFixed32 = 5

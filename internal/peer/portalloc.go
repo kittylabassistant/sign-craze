@@ -1,6 +1,7 @@
 package peer
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"strconv"
@@ -112,7 +113,8 @@ func collectUsedMieruPorts(outbounds []types.Outbound, skip int) map[int]struct{
 // для немедленного использования peer-процессом.
 func canBind(port int) bool {
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
-	l, err := net.Listen("tcp", addr)
+	lc := net.ListenConfig{}
+	l, err := lc.Listen(context.Background(), "tcp", addr)
 	if err != nil {
 		return false
 	}

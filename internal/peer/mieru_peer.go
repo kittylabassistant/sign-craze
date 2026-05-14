@@ -143,7 +143,7 @@ func CollectMieruStatuses(ctx context.Context, outbounds []types.Outbound) []Mie
 		}
 		paths := MieruPathsFor(ob.Tag)
 		lc := NewMieruLifecycle(paths)
-		st, _ := lc.Status(ctx)
+		st, sErr := lc.Status(ctx)
 		entry := MieruPeerStatus{
 			Tag:    ob.Tag,
 			Config: paths.ConfigPath,
@@ -151,8 +151,10 @@ func CollectMieruStatuses(ctx context.Context, outbounds []types.Outbound) []Mie
 		if ob.Proto != nil {
 			entry.LocalPort = ob.Proto.MieruLocalPort
 		}
-		entry.Running = st.Running
-		entry.PID = st.PID
+		if sErr == nil {
+			entry.Running = st.Running
+			entry.PID = st.PID
+		}
 		out = append(out, entry)
 	}
 	return out

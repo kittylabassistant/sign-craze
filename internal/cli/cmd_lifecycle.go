@@ -50,11 +50,11 @@ func doStart(ctx context.Context) error {
 	// Каждый этап идемпотентен; failure на любом шаге прерывает --start без
 	// побочных эффектов на firewall (он ещё не применён).
 	if peer.HasMieruOutbounds(st.Outbounds) {
-		if err := peer.AllocateAllMieruPorts(st.Outbounds); err != nil {
-			return fmt.Errorf("--start: mieru port allocation: %w", err)
+		if allocErr := peer.AllocateAllMieruPorts(st.Outbounds); allocErr != nil {
+			return fmt.Errorf("--start: mieru port allocation: %w", allocErr)
 		}
-		if err := saveState(st); err != nil {
-			return fmt.Errorf("--start: persist mieru ports: %w", err)
+		if saveErr := saveState(st); saveErr != nil {
+			return fmt.Errorf("--start: persist mieru ports: %w", saveErr)
 		}
 		for _, ob := range st.Outbounds {
 			if ob.Protocol != types.ProtocolMieru {
@@ -64,10 +64,10 @@ func doStart(ctx context.Context) error {
 				return fmt.Errorf("--start: mieru config %q: %w", ob.Tag, wErr)
 			}
 		}
-		if err := peer.StartMieruPeers(ctx, st.Outbounds); err != nil {
+		if startErr := peer.StartMieruPeers(ctx, st.Outbounds); startErr != nil {
 			// Откатить ранее запущенные peers — частичный успех нежелателен.
 			peer.StopMieruPeers(ctx, st.Outbounds)
-			return fmt.Errorf("--start: %w", err)
+			return fmt.Errorf("--start: %w", startErr)
 		}
 	}
 

@@ -497,19 +497,19 @@ func setupNaiveDefault(ctx context.Context, st *state.State) error {
 	if err != nil {
 		return fmt.Errorf("naive setup: detect arch: %w", err)
 	}
-	if err := os.MkdirAll(naiveproxy.DefaultCacheDir, 0o755); err != nil {
-		return fmt.Errorf("naive setup: mkdir cache: %w", err)
+	if mkErr := os.MkdirAll(naiveproxy.DefaultCacheDir, 0o755); mkErr != nil {
+		return fmt.Errorf("naive setup: mkdir cache: %w", mkErr)
 	}
 	res, err := naiveproxy.Download(ctx, arch, naiveproxy.DefaultCacheDir)
 	if err != nil {
 		return fmt.Errorf("naive setup: download: %w", err)
 	}
-	if err := naiveproxy.Install(res.Path, naiveproxy.DefaultBinPath); err != nil {
-		return fmt.Errorf("naive setup: install: %w", err)
+	if instErr := naiveproxy.Install(res.Path, naiveproxy.DefaultBinPath); instErr != nil {
+		return fmt.Errorf("naive setup: install: %w", instErr)
 	}
 	st.NaiveEnabled = true
-	if err := state.Save(state.DefaultPath, st); err != nil {
-		return fmt.Errorf("naive setup: state: %w", err)
+	if saveErr := state.Save(state.DefaultPath, st); saveErr != nil {
+		return fmt.Errorf("naive setup: state: %w", saveErr)
 	}
 	log.L().Info("naive установлен", "version", res.Version, "bin", naiveproxy.DefaultBinPath)
 	return nil

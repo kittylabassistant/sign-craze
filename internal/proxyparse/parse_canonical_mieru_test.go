@@ -296,7 +296,7 @@ func FuzzMieruWireProto(f *testing.F) {
 	f.Add([]byte{})
 	f.Add(buildMieruProto("d", "u", "p", "host", 80, 1, 2))
 	f.Add([]byte{0xff, 0xff, 0xff})
-	f.Add([]byte{0x08, 0x05}) // varint field=1 wire=0
+	f.Add([]byte{0x08, 0x05})             // varint field=1 wire=0
 	f.Add([]byte{0x0a, 0xff, 0xff, 0xff}) // bytes с фиктивной длиной
 
 	f.Fuzz(func(t *testing.T, data []byte) {

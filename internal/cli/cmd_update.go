@@ -190,8 +190,8 @@ func handleUpdateNaive(ctx context.Context, _ []string) error {
 		if err != nil {
 			return fmt.Errorf("--update-naive: %w", err)
 		}
-		if err := os.MkdirAll(naiveproxy.DefaultCacheDir, 0o755); err != nil {
-			return fmt.Errorf("--update-naive: mkdir cache: %w", err)
+		if mkErr := os.MkdirAll(naiveproxy.DefaultCacheDir, 0o755); mkErr != nil {
+			return fmt.Errorf("--update-naive: mkdir cache: %w", mkErr)
 		}
 		res, err := naiveproxy.Download(ctx, arch, naiveproxy.DefaultCacheDir)
 		if err != nil {
