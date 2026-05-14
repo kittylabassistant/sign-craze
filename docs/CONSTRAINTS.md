@@ -17,6 +17,12 @@ Single source of truth для инвариантов, нарушение кот�
 | HTTP-тело (admin API) | 1 МБ (`1 << 20`) | 50 МБ malformed JSON убивает 128 МБ роутер; safety-fixes #7 | `MaxBytesReader` в `apiConfigPost`, `apiPortsAdd`, `apiExcludesAdd` |
 | Geo-файл (.srs) | ≤ 200 МБ hard cap; streaming, не в RAM | Потоковая запись через `WriteFileAtomicFromReader`; `internal/geo/srs.go:27` | 8 КБ буфер, `io.CopyBuffer` |
 
+### naiveproxy daemon
+
+При включении naive outbound добавляется отдельный процесс `naive` с RSS ~30–50 МБ
+(Chrome network stack). На роутерах с 128 МБ RAM проверяйте свободную память перед
+включением. Суммарный RSS sign-craze + sing-box + nfqws2 + naive может превысить 80 МБ.
+
 ---
 
 ## 2. Toolchain

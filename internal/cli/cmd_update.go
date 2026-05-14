@@ -14,6 +14,7 @@ import (
 	"github.com/kittylabassistant/sign-craze/internal/geo"
 	"github.com/kittylabassistant/sign-craze/internal/ghrelease"
 	"github.com/kittylabassistant/sign-craze/internal/log"
+	"github.com/kittylabassistant/sign-craze/internal/naiveproxy"
 	"github.com/kittylabassistant/sign-craze/internal/selfupdate"
 	"github.com/kittylabassistant/sign-craze/internal/singbox"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
@@ -23,6 +24,7 @@ func init() {
 	Register(Cmd{Short: "-u", Long: "--update", Help: "обновить sign-craze", Handler: handleUpdate})
 	Register(Cmd{Short: "-g", Long: "--update-geo", Help: "обновить geo-файлы", Handler: handleUpdateGeo})
 	Register(Cmd{Long: "--update-core", Help: "обновить активное прокси-ядро", Handler: handleUpdateCore})
+	Register(Cmd{Long: "--update-naive", Help: "обновить бинарь naiveproxy", Handler: handleUpdateNaive})
 }
 
 func handleUpdate(ctx context.Context, _ []string) error {
@@ -178,6 +180,33 @@ func handleUpdateCore(ctx context.Context, _ []string) error {
 		}
 
 		fmt.Printf("%s до %s. %s\n", OK(c.Name()+" обновлён"), res.Version, Hint("Перезапустите сервис: sign-craze --restart"))
+		return nil
+	})
+}
+
+func handleUpdateNaive(ctx context.Context, _ []string) error {
+	return withLock(ctx, func() error {
+		arch, err := types.DetectHostArch()
+		if err != nil {
+			return fmt.Errorf("--update-naive: %w", err)
+		}
+		if err := os.MkdirAll(naiveproxy.DefaultCacheDir, 0o755); err != nil {
+			return fmt.Errorf("--update-naive: mkdir cache: %w", err)
+		}
+		res, err := naiveproxy.Download(ctx, arch, naiveproxy.DefaultCacheDir)
+		if err != nil {
+			return fmt.Errorf("--update-naive: %w", err)
+		}
+		if !res.Downloaded {
+			log.L().Info("naive: актуальная версия уже установлена", "version", res.Version)
+			fmt.Printf("%s %s\n", OK("naive"), Hint("уже актуален."))
+			return nil
+		}
+		if err := naiveproxy.Install(res.Path, naiveproxy.DefaultBinPath); err != nil {
+			return fmt.Errorf("--update-naive: установка: %w", err)
+		}
+		log.L().Info("naive обновлён", "version", res.Version)
+		fmt.Printf("%s до %s. %s\n", OK("naive обновлён"), res.Version, Hint("Перезапустите сервис: sign-craze --restart"))
 		return nil
 	})
 }

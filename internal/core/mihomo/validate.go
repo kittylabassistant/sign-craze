@@ -15,6 +15,17 @@ import (
 // его не реализует, render mihomo это поле молча пропускает, REALITY-handshake
 // работает без него. Поэтому валидацию по spider_x не блокируем.
 func Validate(c types.Canonical) error {
+	if c.Protocol == types.ProtocolMieru {
+		// mieru = supervised peer (ADR-0020). Поддерживается только sing-box
+		// (через socks bridge). Mihomo не имеет аналогичной интеграции.
+		return fmt.Errorf("mihomo не поддерживает mieru как supervised peer, используйте --core sing-box")
+	}
+	if c.Protocol == types.ProtocolNaive {
+		// naive = supervised peer (ADR-0021-naiveproxy-process-chain).
+		// sign-craze запускает klzgrad/naiveproxy daemon и подключает sing-box
+		// через локальный SOCKS5. Для xray/mihomo аналогичной интеграции нет.
+		return fmt.Errorf("mihomo не поддерживает naive как supervised peer, используйте --core sing-box")
+	}
 	if c.Proto == nil {
 		return nil
 	}

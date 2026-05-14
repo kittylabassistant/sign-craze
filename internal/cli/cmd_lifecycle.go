@@ -13,6 +13,7 @@ import (
 	"github.com/kittylabassistant/sign-craze/internal/firewall"
 	"github.com/kittylabassistant/sign-craze/internal/log"
 	"github.com/kittylabassistant/sign-craze/internal/ndm"
+	"github.com/kittylabassistant/sign-craze/internal/peer"
 	"github.com/kittylabassistant/sign-craze/internal/state"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
@@ -41,6 +42,59 @@ func doStart(ctx context.Context) error {
 		return fmt.Errorf("--start: %s не установлен (запустите --install)", c.Name())
 	}
 
+	// Pre-start supervised peers (mieru = ADR-0020). Этапы:
+	//   1. AllocateAllMieruPorts — выделить LocalSocksPort, persist state.
+	//   2. WriteMieruConfig — записать /opt/etc/sign-craze/mieru-<tag>.conf.json.
+	//   3. StartMieruPeers — запустить mieru-клиенты ДО рендера sing-box config,
+	//      потому что render ссылается на 127.0.0.1:LocalSocksPort.
+	// Каждый этап идемпотентен; failure на любом шаге прерывает --start без
+	// побочных эффектов на firewall (он ещё не применён).
+	if peer.HasMieruOutbounds(st.Outbounds) {
+		if err := peer.AllocateAllMieruPorts(st.Outbounds); err != nil {
+			return fmt.Errorf("--start: mieru port allocation: %w", err)
+		}
+		if err := saveState(st); err != nil {
+			return fmt.Errorf("--start: persist mieru ports: %w", err)
+		}
+		for _, ob := range st.Outbounds {
+			if ob.Protocol != types.ProtocolMieru {
+				continue
+			}
+			if _, wErr := peer.WriteMieruConfig(peer.MieruConfigDir, ob); wErr != nil {
+				return fmt.Errorf("--start: mieru config %q: %w", ob.Tag, wErr)
+			}
+		}
+		if err := peer.StartMieruPeers(ctx, st.Outbounds); err != nil {
+			// Откатить ранее запущенные peers — частичный успех нежелателен.
+			peer.StopMieruPeers(ctx, st.Outbounds)
+			return fmt.Errorf("--start: %w", err)
+		}
+	}
+
+	// Старт naive-демонов ДО рендера конфига: sing-box при CheckConfig проверяет
+	// доступность 127.0.0.1:NaiveListenPort — naive должен быть готов к этому моменту.
+	if st.NaiveEnabled {
+		for _, ob := range st.Outbounds {
+			if ob.Protocol != types.ProtocolNaive {
+				continue
+			}
+			lc, lcErr := newNaiveLifecycleFromOutbound(ob)
+			if lcErr != nil {
+				log.L().Warn("--start: naive lifecycle build", "tag", ob.Tag, "err", lcErr)
+				continue
+			}
+			if startErr := lc.Start(ctx); startErr != nil {
+				log.L().Warn("--start: naive не стартовал", "tag", ob.Tag, "err", startErr)
+			} else {
+				listenPort := 0
+				if ob.Proto != nil {
+					listenPort = ob.Proto.NaiveListenPort
+				}
+				log.L().Info("naive запущен", "tag", ob.Tag, "listen_port", listenPort)
+			}
+		}
+	}
+
 	// Рендеринг и запись конфига активного ядра — единый путь для всех ядер.
 	// ensureConfigFreshForCore читает routing.json, прокидывает CoreRenderParams
 	// (RoutingConfig + InboundMode + DefaultOutboundTag) в c.RenderConfig.
@@ -67,6 +121,9 @@ func doStart(ctx context.Context) error {
 		return err
 	}
 	if applyErr := applier.Apply(ctx, st.Mode); applyErr != nil {
+		// Откатить уже запущенные mieru peers — без firewall их трафик
+		// никуда не пойдёт, держать процессы бессмысленно.
+		peer.StopMieruPeers(ctx, st.Outbounds)
 		return fmt.Errorf("--start: firewall: %w", applyErr)
 	}
 
@@ -96,6 +153,9 @@ func doStart(ctx context.Context) error {
 		if rmErr := applier.Remove(ctx); rmErr != nil {
 			log.L().Warn("--start: откат firewall не удался", "err", rmErr)
 		}
+		// Остановить ранее запущенные mieru peers — sing-box не стартанул,
+		// peers не имеют потребителя.
+		peer.StopMieruPeers(ctx, st.Outbounds)
 		return fmt.Errorf("--start: %s: %w", c.Name(), startErr)
 	}
 
@@ -118,6 +178,7 @@ func doStart(ctx context.Context) error {
 			if rmErr := applier.Remove(ctx); rmErr != nil {
 				log.L().Warn("--start: откат firewall не удался", "err", rmErr)
 			}
+			peer.StopMieruPeers(ctx, st.Outbounds)
 			return fmt.Errorf("--start: TUN attach: %w", attachErr)
 		}
 	} else {
@@ -166,6 +227,11 @@ func doStop(ctx context.Context) error {
 		log.L().Debug("--stop: nfqws2 stop", "err", err)
 	}
 
+	// naive: останавливаем до sing-box (sing-box держит подключение к 127.0.0.1:18443).
+	if stopErr := newNaiveLifecycle().Stop(ctx); stopErr != nil {
+		log.L().Warn("--stop: naive не остановился чисто", "err", stopErr)
+	}
+
 	c := mustActiveCore()
 	coreLC := c.NewLifecycle()
 	if err := coreLC.Stop(ctx); err != nil {
@@ -176,6 +242,13 @@ func doStop(ctx context.Context) error {
 	st, err := loadState()
 	if err != nil {
 		st = state.Default()
+	}
+
+	// Остановить supervised peers (mieru) после sing-box. Порядок важен
+	// (Inv-Peer-Order в BEHAVIOR_SPEC §7): sing-box должен закрыть свои
+	// SOCKS5-коннекты к mieru до того, как mieru уйдёт.
+	if peer.HasMieruOutbounds(st.Outbounds) {
+		peer.StopMieruPeers(ctx, st.Outbounds)
 	}
 
 	// Принудительно зачистить TUN-интерфейс — только когда ядро создаёт TUN.

@@ -1,0 +1,7 @@
+{
+  "server": "127.0.0.1",
+  "server_port": 40000,
+  "tag": "mieru-out",
+  "type": "socks",
+  "version": "5"
+}

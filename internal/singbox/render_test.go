@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kittylabassistant/sign-craze/pkg/types"
@@ -432,6 +433,126 @@ var canonicalGoldenCases = []struct {
 			},
 		},
 	},
+	{
+		// mieru = supervised peer (ADR-0020). Sing-box видит его как обычный
+		// SOCKS5-outbound на 127.0.0.1:<MieruLocalPort>. Реальный mieru-сервер
+		// (Server/Port в Outbound) sing-box'у недоступен — туда идёт через
+		// SOCKS5 mieru-клиент, который sign-craze запускает рядом.
+		name: "mieru_socks_bridge",
+		outbound: types.Outbound{
+			Tag:      "mieru-out",
+			Type:     "socks",
+			Server:   "remote.example.com",
+			Port:     8080,
+			Protocol: types.ProtocolMieru,
+			Proto: &types.ProtoOpts{
+				MieruUsername:     "alice",
+				MieruPassword:     "hunter2",
+				MieruPort:         8080,
+				MieruProtocol:     "TCP",
+				MieruMultiplexing: "MULTIPLEXING_HIGH",
+				MieruProfile:      "default",
+				MieruLocalPort:    40000,
+			},
+		},
+	},
+}
+
+// TestRenderMieru_MissingLocalPort — если MieruLocalPort=0, render обязан
+// вернуть ошибку. Это страховка против вызова без peer.AllocateMieruPort.
+func TestRenderMieru_MissingLocalPort(t *testing.T) {
+	o := types.Outbound{
+		Tag:      "mieru-noport",
+		Type:     "socks",
+		Server:   "host",
+		Port:     8080,
+		Protocol: types.ProtocolMieru,
+		Proto: &types.ProtoOpts{
+			MieruUsername: "u",
+			MieruPassword: "p",
+			MieruPort:     8080,
+			// MieruLocalPort=0 — не выделен
+		},
+	}
+	_, err := renderOutboundJSON(o)
+	if err == nil {
+		t.Fatal("ожидалась ошибка при MieruLocalPort=0")
+	}
+	if !strings.Contains(err.Error(), "LocalSocksPort не выделен") {
+		t.Errorf("err = %v; ожидалось содержит 'LocalSocksPort не выделен'", err)
+	}
+}
+
+// TestRenderMieru_HappyPath — render для mieru = SOCKS5 bridge на 127.0.0.1.
+func TestRenderMieru_HappyPath(t *testing.T) {
+	o := types.Outbound{
+		Tag:      "mieru-ok",
+		Type:     "socks",
+		Server:   "real.vps",
+		Port:     8080,
+		Protocol: types.ProtocolMieru,
+		Proto: &types.ProtoOpts{
+			MieruLocalPort: 41234,
+		},
+	}
+	m, err := renderOutboundJSON(o)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if m["type"] != "socks" {
+		t.Errorf("type=%v, ожидалось socks", m["type"])
+	}
+	if m["server"] != "127.0.0.1" {
+		t.Errorf("server=%v, ожидалось 127.0.0.1", m["server"])
+	}
+	if m["server_port"].(uint16) != 41234 {
+		t.Errorf("server_port=%v, ожидалось 41234", m["server_port"])
+	}
+	if m["version"] != "5" {
+		t.Errorf("version=%v, ожидалось 5", m["version"])
+	}
+}
+
+func TestRenderOutboundJSON_NaiveCanonical(t *testing.T) {
+	ob := types.Outbound{
+		Tag:      "naive-out",
+		Type:     "socks",
+		Server:   "real.example.com", // upstream — игнорируется рендером (используется daemon)
+		Port:     443,
+		Protocol: types.ProtocolNaive,
+		Proto: &types.ProtoOpts{
+			NaiveUsername:   "user",
+			NaivePassword:   "secret",
+			NaiveListenPort: 18443,
+		},
+	}
+	out, err := renderOutboundJSON(ob)
+	if err != nil {
+		t.Fatalf("renderOutboundJSON: %v", err)
+	}
+	if out["type"] != "socks" {
+		t.Errorf("type=%v, want \"socks\"", out["type"])
+	}
+	if out["server"] != "127.0.0.1" {
+		t.Errorf("server=%v, want \"127.0.0.1\"", out["server"])
+	}
+	if out["server_port"] != uint16(18443) {
+		t.Errorf("server_port=%v, want uint16(18443)", out["server_port"])
+	}
+	if out["tag"] != "naive-out" {
+		t.Errorf("tag=%v", out["tag"])
+	}
+}
+
+func TestRenderOutboundJSON_NaiveCanonical_MissingListenPort_Error(t *testing.T) {
+	ob := types.Outbound{
+		Tag: "naive-out", Type: "socks", Server: "ex.com", Port: 443,
+		Protocol: types.ProtocolNaive,
+		Proto:    &types.ProtoOpts{NaiveUsername: "u"},
+	}
+	if _, err := renderOutboundJSON(ob); err == nil {
+		t.Fatal("ожидалась ошибка про NaiveListenPort=0")
+	}
 }
 
 // TestRender_GoldenWriteback проверяет соответствие вывода renderOutboundJSON

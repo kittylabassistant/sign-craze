@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/netip"
 	"os"
+	"runtime"
 	"strings"
 
 	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
@@ -116,6 +117,11 @@ type State struct {
 	// Пустое значение (старые state.json) мигрируется в "tproxy" при Load().
 	// Влияет на генерацию конфига sing-box и firewall-правила (TPROXY vs TUN).
 	Inbound string `json:"inbound,omitempty"`
+
+	// NaiveEnabled — включена ли поддержка naiveproxy daemon. При true и
+	// наличии outbound'ов с Protocol=ProtocolNaive, --start запускает naive-демон
+	// на 127.0.0.1:NaiveListenPort для каждого. См. ADR-0021-naiveproxy-process-chain.
+	NaiveEnabled bool `json:"naive_enabled,omitempty"`
 }
 
 // DefaultInbound — режим inbound для новых установок.
@@ -330,6 +336,36 @@ func (s *State) Validate() error {
 	}
 	if s.DPIUpdateIntervalHours < 0 {
 		return fmt.Errorf("state: dpi_update_interval_hours не может быть отрицательным")
+	}
+	// mieru supervised peer: MieruLocalPort должен быть в валидном диапазоне,
+	// если задан. Ноль допустим (ещё не выделен через peer.AllocateMieruPort).
+	for _, ob := range s.Outbounds {
+		if ob.Proto == nil || ob.Proto.MieruLocalPort == 0 {
+			continue
+		}
+		if ob.Proto.MieruLocalPort < 1024 || ob.Proto.MieruLocalPort > 65535 {
+			return fmt.Errorf("state: outbound %q: mieru_local_port=%d вне диапазона 1024..65535", ob.Tag, ob.Proto.MieruLocalPort)
+		}
+	}
+	// naive supervised peer (ADR-0021-naiveproxy-process-chain): MVP допускает
+	// ровно один naive outbound, big-endian MIPS не поддерживается upstream
+	// klzgrad/naiveproxy.
+	naiveCount := 0
+	for _, ob := range s.Outbounds {
+		if ob.Protocol == types.ProtocolNaive {
+			naiveCount++
+			if ob.Proto != nil && ob.Proto.NaiveListenPort != 0 {
+				if ob.Proto.NaiveListenPort < 1024 || ob.Proto.NaiveListenPort > 65535 {
+					return fmt.Errorf("state: outbound %q: naive_listen_port=%d вне диапазона 1024..65535", ob.Tag, ob.Proto.NaiveListenPort)
+				}
+			}
+		}
+	}
+	if naiveCount > 1 {
+		return fmt.Errorf("state: MVP допускает не более одного naive outbound (найдено %d)", naiveCount)
+	}
+	if naiveCount > 0 && runtime.GOARCH == "mips" {
+		return fmt.Errorf("state: naive outbound не поддерживается на big-endian MIPS (klzgrad/naiveproxy публикует только linux-mipsel)")
 	}
 	return nil
 }

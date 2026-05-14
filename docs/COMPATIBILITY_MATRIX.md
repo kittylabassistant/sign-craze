@@ -108,6 +108,21 @@
 
 ---
 
+## 5.1. naiveproxy (klzgrad/naiveproxy)
+
+| Arch     | Поддержка | Asset                          | Причина / Replacement                              |
+|----------|-----------|--------------------------------|----------------------------------------------------|
+| arm64    | Да        | linux-arm64.tar.xz             |                                                    |
+| armv7    | Да        | linux-arm.tar.xz               |                                                    |
+| mipsle   | Да        | linux-mipsel.tar.xz            |                                                    |
+| mips BE  | **Нет**   | (отсутствует)                  | klzgrad публикует только linux-mipsel (little-endian) |
+| amd64    | Да        | linux-x64.tar.xz               | self-test в Docker                                 |
+
+Версия pin: latest GitHub release (v148.0.7778.96-5 на момент интеграции).
+Формат tarball: tar.xz (требует `github.com/ulikunitz/xz` decoder).
+
+---
+
 ## 6. Несовместимости
 
 - **systemd**: sign-craze не генерирует systemd unit-файлы. Используется только Entware init.d (`/opt/etc/init.d/S99signcraze`). На системах с systemd без Entware установка не поддерживается.

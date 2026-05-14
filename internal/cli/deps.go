@@ -16,6 +16,7 @@ import (
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/firewall"
 	"github.com/kittylabassistant/sign-craze/internal/log"
+	"github.com/kittylabassistant/sign-craze/internal/naiveproxy"
 	"github.com/kittylabassistant/sign-craze/internal/netif"
 	"github.com/kittylabassistant/sign-craze/internal/routing"
 	"github.com/kittylabassistant/sign-craze/internal/service"
@@ -63,6 +64,22 @@ func hostlistShouldApply(st *state.State) bool {
 		return true
 	}
 	return false
+}
+
+// newNaiveLifecycle возвращает Lifecycle naive с дефолтными путями.
+// Используется для Stop — параметры ProxyURL не нужны (только PIDFile).
+// Для старта использовать newNaiveLifecycleFromOutbound — ProxyURL обязателен.
+func newNaiveLifecycle() service.Lifecycle { return naiveproxy.DefaultLifecycle() }
+
+// newNaiveLifecycleFromOutbound собирает Lifecycle с параметрами из конкретного
+// outbound (Protocol=ProtocolNaive). Используется в --start: на каждый naive
+// outbound запускается отдельный naive-демон с upstream URL из state.
+func newNaiveLifecycleFromOutbound(o types.Outbound) (service.Lifecycle, error) {
+	params, err := naiveproxy.ParamsFromCanonical(o)
+	if err != nil {
+		return nil, err
+	}
+	return naiveproxy.NewLifecycle(naiveproxy.DefaultBinPath, params, naiveproxy.DefaultPIDFile), nil
 }
 
 // newFirewallApplier строит Applier из state: пробрасывает ports/excludes/admin

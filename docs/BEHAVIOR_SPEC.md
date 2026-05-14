@@ -798,13 +798,15 @@ SIGHUP-перезагрузки нет. Изменения конфига тре
 /opt/
 ├── sbin/
 │   ├── sign-craze          # основной бинарь
-│   └── sing-box            # скачанный бинарь sing-box
+│   ├── sing-box            # скачанный бинарь sing-box
+│   └── mieru               # бинарь mieru-клиента (только если в outbound есть mierus://|mieru://)
 ├── etc/
 │   ├── sign-craze/
-│   │   ├── config.json         # конфиг sing-box (генерируется)
-│   │   ├── nfqws2.conf         # конфиг nfqws2 (генерируется, опционально)
-│   │   ├── dpi-hostlist.txt    # SNI-цели Selective DPI (генерируется, опционально)
-│   │   └── admin.creds         # bcrypt-хэш пароля для web UI
+│   │   ├── config.json             # конфиг sing-box (генерируется)
+│   │   ├── nfqws2.conf             # конфиг nfqws2 (генерируется, опционально)
+│   │   ├── dpi-hostlist.txt        # SNI-цели Selective DPI (генерируется, опционально)
+│   │   ├── mieru-<tag>.conf.json   # конфиг mieru-клиента (генерируется, mode 0600, один файл на mieru-outbound)
+│   │   └── admin.creds             # bcrypt-хэш пароля для web UI
 │   ├── init.d/
 │   │   └── S99signcraze    # init.d shim (генерируется)
 │   └── ndm/
@@ -820,10 +822,13 @@ SIGHUP-перезагрузки нет. Изменения конфига тре
     ├── log/
     │   └── sign-craze/
     │       ├── sign-craze.log
-    │       └── sing-box.log
+    │       ├── sing-box.log
+    │       └── mieru-<tag>.log     # stderr supervised peer mieru (опционально)
     └── run/
         ├── sign-craze-singbox.pid
         ├── sign-craze-nfqws2.pid
+        ├── sign-craze/
+        │   └── mieru-<tag>.pid     # PID-файл supervised peer mieru
         └── sign-craze-reapply.last   # mtime-маркер throttle --reapply (v0.8.0)
 ```
 
@@ -873,3 +878,150 @@ POST   /api/dpi/presets/{name}/apply — применить пресет по и
 ### Инвариант: LAN-only доступ к Web UI
 
 **Inv-Web-LAN-Only**: web-серверы (9090/9091/9092) слушают на `0.0.0.0`; правила в `filter/INPUT` (owner-комментарий `signcraze:wan-block`, идемпотентно через `EnsureRule`) дропают входящий трафик на порт 9090 от WAN-интерфейса (`DetectISPInterface`). Правила применяются при `--ui on` и снимаются при `--ui off`. Из локальной сети доступ открыт.
+
+---
+
+## 7. Supervised peers — внешние процессы, управляемые sign-craze
+
+Раздел описывает протоколы, которые **не реализованы ни одним из встроенных ядер (sing-box / xray / mihomo)** и требуют запуска отдельного клиентского бинаря рядом с ядром. На момент v0.X.Y единственный такой случай — **mieru** (https://github.com/enfein/mieru). Архитектурное обоснование — ADR-0020.
+
+### 7.1. mieru — URL-форматы импорта
+
+sign-craze принимает два URL-формата mieru (флаг `--proxy` команды `--install`):
+
+1. **`mierus://<user>:<pass>@<host>?port=<N>&protocol=TCP|UDP&multiplexing=<level>&profile=<name>#<tag>`**
+   Human-readable, экспортируется командой mieru `mieru export config simple`. Обязательные поля: `user`, `pass`, `host`, `port`. Опциональные: `protocol` (default TCP), `multiplexing` (`MULTIPLEXING_OFF|LOW|MIDDLE|HIGH`, default `MULTIPLEXING_LOW`), `profile` (default `default`), `#<tag>` (default `mieru-out`).
+
+2. **`mieru://<base64-protobuf>`**
+   Полный protobuf-config клиента; экспортируется командой `mieru export config`. Парсится ручным wire-format декодером — sign-craze извлекает только: `profile.user.{name,password}`, `profile.servers[0].{ipAddress|domainName, portBindings[0].{port,protocol}}`, `profile.multiplexing.level`. Остальные поля игнорируются.
+
+### 7.2. Состояние и порт
+
+В `Outbound.Proto` для protocol=`mieru` дополнительно сохраняются:
+
+| Поле | Описание |
+|---|---|
+| `MieruUsername` | имя пользователя mieru (для auth) |
+| `MieruPassword` | пароль mieru |
+| `MieruPort` | удалённый порт mieru-сервера |
+| `MieruProtocol` | `TCP` или `UDP` |
+| `MieruMultiplexing` | `MULTIPLEXING_OFF|LOW|MIDDLE|HIGH` |
+| `MieruProfile` | имя профиля mieru (default `default`) |
+| `MieruLocalPort` | локальный SOCKS5-порт, выделенный sign-craze (см. 7.3) |
+
+**Inv-Peer-State-Persist**: `MieruLocalPort` персистируется в `state.json` и переиспользуется между `--start`/`--restart`. Меняется только при `--install --reinstall` или ручном удалении outbound из state.
+
+### 7.3. Port allocation
+
+sign-craze выделяет `MieruLocalPort` при первом `--start` после `--install`. Алгоритм:
+
+1. Если `MieruLocalPort > 0` уже задан в outbound — используется без изменений (idempotent).
+2. Иначе sign-craze пробует порты `40000 + idx*100`, `40000 + idx*100 + 1`, … (где `idx` — индекс outbound в `state.Outbounds`), через `net.Listen("tcp", "127.0.0.1:<port>") + Close`, пропуская занятые. Первый успешный — назначается и сохраняется в state.
+3. Диапазон ограничен `40000–49999`. При выходе за диапазон — ошибка `peer: не удалось выделить локальный SOCKS5-порт для mieru<tag>`.
+
+**Inv-Peer-Port-Idempotent**: повторный `--start` без изменений в outbound НЕ меняет `MieruLocalPort`.
+
+### 7.4. Lifecycle и порядок
+
+`--start` (упорядоченно):
+
+1. Загрузка state, валидация.
+2. `peer.AllocateMieruPorts` (только для mieru-outbound'ов; persist в state).
+3. `peer.WriteMieruConfig` для каждого mieru-outbound → `/opt/etc/sign-craze/mieru-<tag>.conf.json` (mode 0600, atomic write).
+4. `peer.StartMieruPeers` (по одному `service.Lifecycle.Start` на каждый mieru-outbound).
+5. `ensureConfigFreshForCore` (sing-box config содержит `socks` outbound `127.0.0.1:<MieruLocalPort>`).
+6. `applier.Apply` (firewall).
+7. `coreLC.Start` (sing-box).
+
+`--stop` — обратный порядок:
+
+1. `stopWatchdog`.
+2. `coreLC.Stop` (sing-box).
+3. `peer.StopMieruPeers` (SIGTERM, grace 10 s, затем SIGKILL).
+4. `firewall.Remove`.
+
+**Inv-Peer-Order**: mieru стартует **до** sing-box; останавливается **после** sing-box. Любое отклонение от этого порядка — баг.
+
+### 7.5. sing-box render для mieru
+
+`renderCanonical(o)` при `o.Protocol == ProtocolMieru` строит **SOCKS5-bridge outbound**:
+
+```json
+{
+  "type": "socks",
+  "tag":  "<o.Tag>",
+  "server": "127.0.0.1",
+  "server_port": <o.Proto.MieruLocalPort>,
+  "version": "5"
+}
+```
+
+Если `MieruLocalPort == 0` — render возвращает ошибку `singbox render: mieru: LocalSocksPort не выделен (запустите --start)`. Это страховка: render не должен вызываться до `peer.AllocateMieruPorts`.
+
+### 7.6. Файлы
+
+| Путь | Описание | Mode |
+|---|---|---|
+| `/opt/sbin/mieru` | бинарь mieru-клиента | 0755 |
+| `/opt/etc/sign-craze/mieru-<tag>.conf.json` | конфиг mieru-клиента (генерируется) | 0600 |
+| `/opt/var/run/sign-craze/mieru-<tag>.pid` | PID-файл supervised peer | 0644 |
+| `/opt/var/log/sign-craze/mieru-<tag>.log` | stderr + stdout mieru-процесса | 0640 |
+
+### 7.7. init.d shim — отсутствует
+
+mieru **не** имеет собственного S97mieru.sh init.d shim. Управление полностью делегировано sign-craze: `S99signcraze --service-start` через `doStart` поднимает все mieru-peers до старта sing-box. Соответствует существующему паттерну (sing-box и nfqws2 тоже не имеют отдельных init.d shim'ов).
+
+### 7.8. CLI-команды (диагностика)
+
+- `sign-craze --status` — в JSON-выводе появляется секция `"peers": [{"name":"mieru-<tag>","running":true,"pid":1234,"local_port":40000}, ...]`.
+- `sign-craze --diag` — в support-bundle включается `mieru-<tag>.log` с redaction username/password в первой строке конфига (см. 7.9).
+
+### 7.9. Redaction в логах и diag
+
+При диагностическом выводе sign-craze redact'ит `username`/`password` mieru-клиента — заменяет на `***`. Это касается:
+
+- `--diag` support-bundle (включает `mieru-<tag>.conf.json` и хвост `mieru-<tag>.log`).
+- Сообщений об ошибках при failure mieru.Start.
+
+Файлы `/opt/etc/sign-craze/mieru-<tag>.conf.json` на диске остаются полноценными (mode 0600).
+
+### 7.10. Не-поддерживается
+
+- **mieru-сервер (mita)**: sign-craze управляет только клиентским режимом mieru. Развёртывание сервера — задача оператора VPS.
+- **HTTP-proxy режим mieru**: sign-craze всегда использует mieru как SOCKS5-bridge.
+- **mieru без profile**: импорт URL без `profile=` использует `default` (первый профиль).
+
+---
+
+## 8. Supervised peers — naiveproxy
+
+naiveproxy (https://github.com/klzgrad/naiveproxy) — второй supervised peer в sign-craze. Архитектурное обоснование — ADR-0021.
+
+### Протокол naive (klzgrad/naiveproxy)
+
+**URL формат:**
+```
+naive+https://<user>:<password>@<server>:<port>[?padding=true][&extra-headers=<encoded>]
+naive+quic://<user>:<password>@<server>:<port>
+```
+
+**Архитектура:** process chain. sign-craze запускает upstream `klzgrad/naiveproxy` бинарь
+как daemon на `127.0.0.1:18443` (default), и подключает sing-box через локальный SOCKS5
+outbound. См. ADR-0021-naiveproxy-process-chain.
+
+**CLI:**
+- `--install --proxy naive+https://...` — установка с naive в качестве outbound.
+- `--with-naive` — опт-ин на download/install naive бинаря при `--install` без `--proxy`.
+- `--update-naive` — обновление naive бинаря с GitHub.
+
+**Пути:**
+- бинарь: `/opt/sbin/naive`
+- PID: `/opt/var/run/sign-craze-naive.pid`
+- stderr-лог: `/opt/var/log/sign-craze/naive.stderr.log`
+- кеш tarball: `/opt/var/lib/sign-craze/cache/naive/`
+
+**Поддерживаемые архитектуры:** arm64, armv7, mipsle (LE). **mips (big-endian) не
+поддерживается** — klzgrad публикует только linux-mipsel (little-endian).
+
+**Ограничения MVP:** ровно один naive outbound в state. Множественные naive
+outbounds — Phase 2 (требует port allocator).

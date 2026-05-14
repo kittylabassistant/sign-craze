@@ -13,7 +13,7 @@ var expectedCommands = []string{
 	"--start", "--stop", "--restart", "--service-start",
 	"--status", "--version",
 	"--diag",
-	"--update", "--update-geo", "--update-core",
+	"--update", "--update-geo", "--update-core", "--update-naive",
 	"--uninstall",
 	"--dpi", "--dpi-strategy", "--dpi-update",
 	"--mode",

@@ -130,6 +130,21 @@ sign-craze --diag            # 2. PASS/WARN/FAIL по 12 проверкам
 | NFQUEUE счётчик UDP/443 = 0 (в выводе `iptables -t mangle -nvL`) | В v0.8.0 jump имеет `-o $WAN_IFACE`: QUIC-трафик устройств в policy уходит через TPROXY до POSTROUTING, минуя цепочку на `eth3` | `iptables -t mangle -nvL \| grep NFQUEUE` | Нормальное поведение v0.8.0. Если QUIC-клиентов нет в policy и счётчик всё равно 0 — проверить `sign-craze --diag` |
 | После `--dpi-update-now` файл `dpi-hostlist.txt` создан, но nfqws2 десинкает ВЕСЬ трафик, а не только хосты из листа | До v0.8.2 nfqws2 получал `--hostlist=<path>` только если `state.dpi_targets` непуст. Auto-update создавал файл на диске, но не дописывал `DPITargets` — selective-режим не активировался | `ps -ef \| grep nfqws2` — аргументы без `--hostlist=` | Обновиться до v0.8.2+ (auto-detect файла на диске). Временный fix: `sign-craze --dpi-targets youtube.com,googlevideo.com --restart` |
 
+### naive daemon не стартует
+
+**Симптом:** `--start` сообщает "naive: процесс упал сразу после старта".
+
+**Диагностика:**
+1. Прочитай stderr-лог: `cat /opt/var/log/sign-craze/naive.stderr.log`
+2. Типичные причины:
+   - Некорректный upstream URL (опечатка, неверный пароль) — naive напишет "could not resolve" / "401 unauthorized".
+   - Порт 18443 занят другим процессом — `netstat -tlnp | grep 18443`.
+   - Бинарь не ELF либо повреждён — `file /opt/sbin/naive`.
+
+**Симптом:** `--install --proxy naive+https://...` падает с "naiveproxy: архитектура mips (big-endian) не поддерживается".
+
+**Причина:** klzgrad/naiveproxy не публикует big-endian MIPS бинари (только linux-mipsel = little-endian). Решение: использовать другой протокол (VLESS+Reality, Trojan).
+
 ### Переключение ядра (multi-core, v1.0.0+)
 
 | Симптом | Вероятная причина | Команда проверки | Fix |

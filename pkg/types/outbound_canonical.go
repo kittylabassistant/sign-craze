@@ -29,6 +29,17 @@ const (
 	ProtocolHysteria2   Protocol = "hysteria2"   // Hysteria 2
 	ProtocolTUIC        Protocol = "tuic"        // TUIC v5
 	ProtocolWireGuard   Protocol = "wireguard"   // WireGuard клиент
+	// ProtocolMieru — supervised peer (см. ADR-0020). Ни одно из встроенных
+	// ядер (sing-box/xray/mihomo) не реализует mieru, поэтому sign-craze
+	// запускает отдельный mieru-клиент и направляет sing-box на его
+	// локальный SOCKS5-порт (Proto.MieruLocalPort).
+	ProtocolMieru Protocol = "mieru"
+	// ProtocolNaive — naiveproxy supervised peer (см. ADR-0021-naiveproxy-process-chain).
+	// sing-box не имеет нативного naive outbound в multi-arch CGO_ENABLED=0 сборках
+	// (требует libcronet + with_naive_outbound build tag). sign-craze запускает
+	// naive-демон как отдельный процесс на 127.0.0.1:NaiveListenPort и направляет
+	// sing-box socks5-outbound на него (паттерн идентичен ProtocolMieru).
+	ProtocolNaive Protocol = "naive"
 )
 
 // TransportKind — тип транспорта (внутри "сырого" TCP/UDP).
@@ -152,6 +163,28 @@ type ProtoOpts struct {
 	WGPublicKey  string   `json:"wg_public_key,omitempty"`
 	WGPreshared  string   `json:"wg_preshared_key,omitempty"`
 	WGAddresses  []string `json:"wg_addresses,omitempty"`
+
+	// mieru (supervised peer; см. ADR-0020).
+	// Username/Password/Port/Protocol/Multiplexing/Profile приходят из URL
+	// (mierus:// или mieru://); MieruLocalPort выделяется peer.AllocateMieruPort
+	// при первом --start и персистируется в state.json.
+	MieruUsername     string `json:"mieru_username,omitempty"`
+	MieruPassword     string `json:"mieru_password,omitempty"`
+	MieruPort         int    `json:"mieru_port,omitempty"`         // удалённый порт mieru-сервера
+	MieruProtocol     string `json:"mieru_protocol,omitempty"`     // TCP | UDP
+	MieruMultiplexing string `json:"mieru_multiplexing,omitempty"` // MULTIPLEXING_OFF|LOW|MIDDLE|HIGH
+	MieruProfile      string `json:"mieru_profile,omitempty"`      // имя профиля (default = "default")
+	MieruLocalPort    int    `json:"mieru_local_port,omitempty"`   // локальный SOCKS5, выделенный sign-craze
+
+	// naive supervised peer (ADR-0021-naiveproxy-process-chain).
+	// Username/Password/Padding/ExtraHeaders приходят из URL (naive+https://);
+	// NaiveListenPort выделяется ParseProxyURLToOutbound при первом --install
+	// (MVP: фикс 18443) и персистируется в state.json.
+	NaiveUsername   string `json:"naive_username,omitempty"`
+	NaivePassword   string `json:"naive_password,omitempty"`
+	NaivePadding    bool   `json:"naive_padding,omitempty"`
+	NaiveExtraHdrs  string `json:"naive_extra_headers,omitempty"` // raw "Header1: val1\r\nHeader2: val2"
+	NaiveListenPort int    `json:"naive_listen_port,omitempty"`   // локальный SOCKS5 для sing-box → naive
 }
 
 // Canonical — собранное canonical-описание outbound, не привязанное к ядру.

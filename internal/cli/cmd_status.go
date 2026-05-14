@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
+	"github.com/kittylabassistant/sign-craze/internal/peer"
 	"github.com/kittylabassistant/sign-craze/internal/version"
 )
 
@@ -42,6 +43,20 @@ func handleStatus(ctx context.Context, _ []string) error {
 
 	fmt.Printf("%s  %s\n", Key(c.Name()+":"), formatService(sb.Running, sb.PID))
 	fmt.Printf("%s    %s\n", Key("nfqws2:"), formatService(dpiSt.Running, dpiSt.PID))
+
+	// Supervised peers (mieru). Выводим только если есть mieru-outbound'ы,
+	// чтобы не засорять status пустой секцией для обычных пользователей.
+	if peer.HasMieruOutbounds(st.Outbounds) {
+		for _, p := range peer.CollectMieruStatuses(ctx, st.Outbounds) {
+			label := fmt.Sprintf("mieru[%s]:", p.Tag)
+			suffix := ""
+			if p.LocalPort > 0 {
+				suffix = fmt.Sprintf("  (socks5 → 127.0.0.1:%d)", p.LocalPort)
+			}
+			fmt.Printf("%s  %s%s\n", Key(label), formatService(p.Running, p.PID), suffix)
+		}
+	}
+
 	fmt.Printf("%s     %s\n", Key("режим:"), string(st.Mode))
 	if coreVer != "" {
 		fmt.Printf("%s    sign-craze %s / %s v%s\n", Key("версия:"), version.Short(), c.Name(), coreVer)

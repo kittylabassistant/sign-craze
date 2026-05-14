@@ -92,6 +92,28 @@ func renderCanonical(o types.Outbound) (map[string]any, error) {
 			out["password"] = o.Proto.Password
 		}
 
+	case types.ProtocolMieru:
+		// mieru = supervised peer (ADR-0020). Реальный mieru-клиент слушает
+		// SOCKS5 на 127.0.0.1:MieruLocalPort; sing-box подключается к нему
+		// обычным socks outbound. MieruLocalPort выделяется peer.AllocateMieruPort
+		// при первом --start и хранится в state.json.
+		if o.Proto == nil || o.Proto.MieruLocalPort == 0 {
+			return nil, fmt.Errorf("singbox render: mieru %q: LocalSocksPort не выделен (запустите --start)", o.Tag)
+		}
+		out["server"] = "127.0.0.1"
+		out["server_port"] = uint16(o.Proto.MieruLocalPort)
+		out["version"] = "5"
+
+	case types.ProtocolNaive:
+		// naive = supervised peer (ADR-0021-naiveproxy-process-chain).
+		// sing-box подключается к локальному naiveproxy demon через SOCKS5.
+		// NaiveListenPort выделяется при первом --install (фикс 18443 MVP).
+		if o.Proto == nil || o.Proto.NaiveListenPort == 0 {
+			return nil, fmt.Errorf("singbox render: naive %q: NaiveListenPort не выделен", o.Tag)
+		}
+		out["server"] = "127.0.0.1"
+		out["server_port"] = uint16(o.Proto.NaiveListenPort)
+
 	default:
 		return nil, fmt.Errorf("singbox render: неподдерживаемый протокол %q", o.Protocol)
 	}
@@ -100,7 +122,7 @@ func renderCanonical(o types.Outbound) (map[string]any, error) {
 }
 
 // singboxTypeName маппит canonical Protocol в тип outbound для sing-box.
-// Большинство имён совпадают; исключения — shadowsocks, socks5, http.
+// Большинство имён совпадают; исключения — shadowsocks, socks5, http, mieru.
 func singboxTypeName(p types.Protocol) string {
 	switch p {
 	case types.ProtocolShadowsocks:
@@ -109,6 +131,14 @@ func singboxTypeName(p types.Protocol) string {
 		return "socks"
 	case types.ProtocolHTTP:
 		return "http"
+	case types.ProtocolMieru:
+		// mieru = supervised peer; sing-box обращается к локальному mieru-клиенту
+		// как к обычному SOCKS5-серверу (см. ADR-0020).
+		return "socks"
+	case types.ProtocolNaive:
+		// naive = supervised peer; sing-box обращается к локальному naive-демону
+		// как к обычному SOCKS5-серверу (см. ADR-0021).
+		return "socks"
 	default:
 		return string(p)
 	}

@@ -160,3 +160,31 @@ func TestParseProxyURLToOutbound_ReturnsRecommended(t *testing.T) {
 		t.Errorf("recommended=%q, ожидалось sing-box (default при наличии)", rec)
 	}
 }
+
+// TestParseProxyURLToOutbound_NaiveHTTPS — naive+https URL должен дать
+// Protocol=ProtocolNaive и NaiveListenPort=18443.
+func TestParseProxyURLToOutbound_NaiveHTTPS(t *testing.T) {
+	url := "naive+https://alice:secret@proxy.example.com:8443#naive-tag"
+	o, _, err := parseProxyURLToOutbound(url)
+	if err != nil {
+		t.Fatalf("parseProxyURLToOutbound naive+https: %v", err)
+	}
+	if o.Protocol != types.ProtocolNaive {
+		t.Errorf("Protocol=%q, ожидалось %q", o.Protocol, types.ProtocolNaive)
+	}
+	if o.Proto == nil {
+		t.Fatal("Proto = nil, ожидались заполненные NaiveUsername/NaiveListenPort")
+	}
+	if o.Proto.NaiveListenPort != 18443 {
+		t.Errorf("NaiveListenPort=%d, ожидалось 18443", o.Proto.NaiveListenPort)
+	}
+	if o.Proto.NaiveUsername != "alice" {
+		t.Errorf("NaiveUsername=%q, ожидалось alice", o.Proto.NaiveUsername)
+	}
+	if o.Server != "proxy.example.com" {
+		t.Errorf("Server=%q, ожидалось proxy.example.com", o.Server)
+	}
+	if o.Port != 8443 {
+		t.Errorf("Port=%d, ожидалось 8443", o.Port)
+	}
+}

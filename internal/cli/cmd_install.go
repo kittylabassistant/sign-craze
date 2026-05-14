@@ -15,6 +15,7 @@ import (
 	"github.com/kittylabassistant/sign-craze/internal/dpi"
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/log"
+	"github.com/kittylabassistant/sign-craze/internal/naiveproxy"
 	"github.com/kittylabassistant/sign-craze/internal/proxyparse"
 	"github.com/kittylabassistant/sign-craze/internal/service"
 	"github.com/kittylabassistant/sign-craze/internal/singbox"
@@ -95,6 +96,22 @@ func parseWithDPIFlag(args []string) (withDPI bool, rest []string) {
 	return
 }
 
+// parseWithNaiveFlag вытягивает булев флаг --with-naive из args.
+// При наличии: скачивает и устанавливает бинарь naive, выставляет
+// State.NaiveEnabled=true БЕЗ добавления outbound (пользователь добавит
+// позже через wizard или web UI).
+func parseWithNaiveFlag(args []string) (withNaive bool, rest []string) {
+	rest = make([]string, 0, len(args))
+	for _, a := range args {
+		if a == "--with-naive" {
+			withNaive = true
+			continue
+		}
+		rest = append(rest, a)
+	}
+	return
+}
+
 // parseProxyFlag вытягивает --proxy <URL> / --proxy=<URL> из args.
 // URL без --proxy остаётся в rest (для install-offline он трактуется как путь к tarball).
 func parseProxyFlag(args []string) (proxyURL string, rest []string) {
@@ -118,9 +135,10 @@ func handleInstall(ctx context.Context, args []string) error {
 	coreName, rest := parseInstallCoreFlag(args)
 	proxyURL, rest := parseProxyFlag(rest)
 	withDPI, rest := parseWithDPIFlag(rest)
+	withNaive, rest := parseWithNaiveFlag(rest)
 	inbound, _ := parseInboundFlag(rest)
 	return withLock(ctx, func() error {
-		return doInstall(ctx, installInteractive, "", false, coreName, proxyURL, withDPI, inbound)
+		return doInstall(ctx, installInteractive, "", false, coreName, proxyURL, withDPI, withNaive, inbound)
 	})
 }
 
@@ -128,9 +146,10 @@ func handleInstallAuto(ctx context.Context, args []string) error {
 	coreName, rest := parseInstallCoreFlag(args)
 	proxyURL, rest := parseProxyFlag(rest)
 	withDPI, rest := parseWithDPIFlag(rest)
+	withNaive, rest := parseWithNaiveFlag(rest)
 	inbound, _ := parseInboundFlag(rest)
 	return withLock(ctx, func() error {
-		return doInstall(ctx, installAuto, "", false, coreName, proxyURL, withDPI, inbound)
+		return doInstall(ctx, installAuto, "", false, coreName, proxyURL, withDPI, withNaive, inbound)
 	})
 }
 
@@ -138,6 +157,7 @@ func handleInstallOffline(ctx context.Context, args []string) error {
 	coreName, rest := parseInstallCoreFlag(args)
 	proxyURL, rest := parseProxyFlag(rest)
 	withDPI, rest := parseWithDPIFlag(rest)
+	withNaive, rest := parseWithNaiveFlag(rest)
 	inbound, rest := parseInboundFlag(rest)
 	if len(rest) == 0 {
 		return fmt.Errorf("--install-offline: требуется путь к tarball")
@@ -146,7 +166,7 @@ func handleInstallOffline(ctx context.Context, args []string) error {
 	// установки (например, валидация конфига упала), пользователь явно
 	// указывает локальный tarball — переустановка поверх ожидаемое поведение.
 	return withLock(ctx, func() error {
-		return doInstall(ctx, installOffline, rest[0], true, coreName, proxyURL, withDPI, inbound)
+		return doInstall(ctx, installOffline, rest[0], true, coreName, proxyURL, withDPI, withNaive, inbound)
 	})
 }
 
@@ -154,17 +174,18 @@ func handleReinstall(ctx context.Context, args []string) error {
 	_, rest := parseInstallCoreFlag(args)
 	proxyURL, rest := parseProxyFlag(rest)
 	withDPI, rest := parseWithDPIFlag(rest)
+	withNaive, rest := parseWithNaiveFlag(rest)
 	inbound, _ := parseInboundFlag(rest)
 	mode := installAuto
 	if proxyURL != "" {
 		mode = installInteractive
 	}
 	return withLock(ctx, func() error {
-		return doInstall(ctx, mode, "", true, "", proxyURL, withDPI, inbound)
+		return doInstall(ctx, mode, "", true, "", proxyURL, withDPI, withNaive, inbound)
 	})
 }
 
-func doInstall(ctx context.Context, mode installMode, offlineTar string, force bool, coreName string, proxyURL string, withDPI bool, inboundMode string) error {
+func doInstall(ctx context.Context, mode installMode, offlineTar string, force bool, coreName string, proxyURL string, withDPI bool, withNaive bool, inboundMode string) error {
 	// Auto-detect ядра по proxy URL если --core явно не указан.
 	// Multi-match → sing-box default + info-print. Конфликт явного --core с
 	// несовместимым URL обрабатывается ниже (после core.Get).
@@ -378,6 +399,22 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string, force b
 		}
 	}
 
+	// 7.6 Опционально: скачать и установить naive бинарь + выставить NaiveEnabled.
+	// Срабатывает при --with-naive ИЛИ если в outbounds уже есть naive outbound
+	// (добавлен через --proxy naive+https://...).
+	naiveInOutbounds := false
+	for _, ob := range st.Outbounds {
+		if ob.Protocol == types.ProtocolNaive {
+			naiveInOutbounds = true
+			break
+		}
+	}
+	if withNaive || naiveInOutbounds {
+		if err := setupNaiveDefault(ctx, st); err != nil {
+			return fmt.Errorf("--install --with-naive: %w", err)
+		}
+	}
+
 	// 8. Создать init.d shim.
 	if err := service.WriteShim(service.DefaultShimPath, service.ShimParams{BinPath: service.DefaultSignCrazeBin}); err != nil {
 		return fmt.Errorf("--install: init.d shim: %w", err)
@@ -403,6 +440,9 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string, force b
 	}
 	if withDPI {
 		fmt.Println(Info("DPI включён:") + " nfqws2 + preset discord-youtube. После --start заработает обход YT/Discord.")
+	}
+	if withNaive || naiveInOutbounds {
+		fmt.Println(Info("naive установлен:") + " бинарь naive готов. Добавьте outbound через --proxy naive+https://... или web UI.")
 	}
 	if force {
 		fmt.Println(Hint("Перезапуск сервиса: sign-craze --restart"))
@@ -446,6 +486,35 @@ func setupDPIDefault(ctx context.Context, st *state.State) error {
 	return nil
 }
 
+// setupNaiveDefault скачивает и устанавливает бинарь naive, выставляет
+// State.NaiveEnabled=true. Вызывается при --with-naive или автоматически
+// когда в state добавлен naive outbound (Protocol=ProtocolNaive).
+//
+// На момент вызова state уже сохранён (шаг 5 doInstall) — здесь мы только
+// дополняем NaiveEnabled и пересохраняем.
+func setupNaiveDefault(ctx context.Context, st *state.State) error {
+	arch, err := types.DetectHostArch()
+	if err != nil {
+		return fmt.Errorf("naive setup: detect arch: %w", err)
+	}
+	if err := os.MkdirAll(naiveproxy.DefaultCacheDir, 0o755); err != nil {
+		return fmt.Errorf("naive setup: mkdir cache: %w", err)
+	}
+	res, err := naiveproxy.Download(ctx, arch, naiveproxy.DefaultCacheDir)
+	if err != nil {
+		return fmt.Errorf("naive setup: download: %w", err)
+	}
+	if err := naiveproxy.Install(res.Path, naiveproxy.DefaultBinPath); err != nil {
+		return fmt.Errorf("naive setup: install: %w", err)
+	}
+	st.NaiveEnabled = true
+	if err := state.Save(state.DefaultPath, st); err != nil {
+		return fmt.Errorf("naive setup: state: %w", err)
+	}
+	log.L().Info("naive установлен", "version", res.Version, "bin", naiveproxy.DefaultBinPath)
+	return nil
+}
+
 // detectCoreFromProxyURL парсит URL и возвращает рекомендованное ядро +
 // список всех совместимых ядер. ok=false если URL невалиден или
 // canonical-парсинг не дал совместимых ядер — в этом случае caller
@@ -478,6 +547,15 @@ func parseProxyURLToOutbound(url string) (types.Outbound, string, error) {
 		o.Transport = canon.Transport
 		o.TLS = canon.TLS
 		o.Proto = canon.Proto
+	}
+	// Для naive outbound: выставить NaiveListenPort если не задан.
+	if o.Protocol == types.ProtocolNaive {
+		if o.Proto == nil {
+			o.Proto = &types.ProtoOpts{}
+		}
+		if o.Proto.NaiveListenPort == 0 {
+			o.Proto.NaiveListenPort = 18443
+		}
 	}
 	if err := o.Validate(); err != nil {
 		return types.Outbound{}, "", fmt.Errorf("валидация: %w", err)
@@ -515,7 +593,7 @@ func runProxyWizard(in io.Reader, out io.Writer) ([]types.Outbound, error) {
 
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, Header("Настройка outbound прокси:"))
-	fmt.Fprintln(out, "  "+Cyan("1)")+" Полный URL (socks5://, http://, vless://, vmess://, ss://, trojan://)")
+	fmt.Fprintln(out, "  "+Cyan("1)")+" Полный URL (socks5://, http://, vless://, vmess://, ss://, trojan://, naive+https://)")
 	fmt.Fprintln(out, "  "+Cyan("2)")+" Пропустить (создаст stub direct — sing-box без проксирования)")
 	fmt.Fprint(out, Key("Выбор [1/2]: "))
 	choice, err := readLineE(r)

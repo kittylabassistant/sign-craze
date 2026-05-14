@@ -37,6 +37,12 @@ func ParseCanonical(rawURL string) (types.Outbound, types.Canonical, error) {
 		return canonicalSocks5(rawURL)
 	case "http", "https":
 		return canonicalHTTP(rawURL)
+	case "mierus":
+		return canonicalMieruSimple(rawURL)
+	case "mieru":
+		return canonicalMieruProto(rawURL)
+	case "naive+https", "naive+quic":
+		return canonicalNaive(rawURL)
 	default:
 		return types.Outbound{}, types.Canonical{}, fmt.Errorf("proxyparse: неизвестная схема %q", scheme)
 	}
@@ -690,5 +696,50 @@ func canonicalHTTP(s string) (types.Outbound, types.Canonical, error) {
 		Port:   port,
 	}
 
+	return ob, canon, nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Naive (process chain через naiveproxy demon)
+// ─────────────────────────────────────────────────────────────────────────────
+
+func canonicalNaive(s string) (types.Outbound, types.Canonical, error) {
+	u, err := url.Parse(s)
+	if err != nil {
+		return types.Outbound{}, types.Canonical{}, fmt.Errorf("proxyparse naive: %w", err)
+	}
+	if u.User == nil || u.User.Username() == "" {
+		return types.Outbound{}, types.Canonical{}, fmt.Errorf("proxyparse naive: отсутствует username")
+	}
+	host, port, err := splitHostPort(u.Host)
+	if err != nil {
+		return types.Outbound{}, types.Canonical{}, fmt.Errorf("proxyparse naive: %w", err)
+	}
+
+	q := u.Query()
+	proto := &types.ProtoOpts{
+		NaiveUsername: u.User.Username(),
+	}
+	if pw, ok := u.User.Password(); ok {
+		proto.NaivePassword = pw
+	}
+	if v := q.Get("padding"); v == "1" || strings.EqualFold(v, "true") {
+		proto.NaivePadding = true
+	}
+	if v := q.Get("extra-headers"); v != "" {
+		proto.NaiveExtraHdrs = v
+	}
+
+	canon := types.Canonical{
+		Protocol: types.ProtocolNaive,
+		Proto:    proto,
+	}
+
+	ob := types.Outbound{
+		Tag:    tagFromFragment(u, "naive-out"),
+		Type:   "socks", // sing-box-side: подключаемся к локальному naive-демону
+		Server: host,    // upstream server, сохраняется в state — daemon использует
+		Port:   port,    // upstream port
+	}
 	return ob, canon, nil
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/locks"
 	"github.com/kittylabassistant/sign-craze/internal/ndm"
+	"github.com/kittylabassistant/sign-craze/internal/peer"
 	"github.com/kittylabassistant/sign-craze/internal/service"
 	"github.com/kittylabassistant/sign-craze/internal/singbox"
 	"github.com/kittylabassistant/sign-craze/internal/state"
@@ -79,6 +80,39 @@ func DefaultChecks(d Deps) []Check {
 		checkGeoFiles(d.GeoDir, d.GeoMaxAgeDays),
 		checkLockFree(d.LockPath),
 		checkKeeneticPolicy(),
+		checkMieruPeers(),
+	}
+}
+
+// checkMieruPeers проверяет статус supervised-peers (mieru) из state.
+// PASS если все peers running; WARN если хоть один остановлен; PASS-skip
+// если нет mieru-outbound'ов в state.
+func checkMieruPeers() Check {
+	return func(ctx context.Context) Result {
+		st, err := state.Load(state.DefaultPath)
+		if err != nil {
+			return Result{Name: "mieru-peers", Status: WARN, Detail: fmt.Sprintf("state.Load: %v", err)}
+		}
+		if !peer.HasMieruOutbounds(st.Outbounds) {
+			return Result{Name: "mieru-peers", Status: PASS, Detail: "пропуск: mieru-outbound'ов нет"}
+		}
+		statuses := peer.CollectMieruStatuses(ctx, st.Outbounds)
+		var stopped []string
+		var details []string
+		for _, p := range statuses {
+			if !p.Running {
+				stopped = append(stopped, p.Tag)
+			}
+			details = append(details, fmt.Sprintf("%s (pid=%d port=%d)", p.Tag, p.PID, p.LocalPort))
+		}
+		if len(stopped) > 0 {
+			return Result{
+				Name:   "mieru-peers",
+				Status: WARN,
+				Detail: fmt.Sprintf("остановлены: %s (всего: %s)", strings.Join(stopped, ","), strings.Join(details, "; ")),
+			}
+		}
+		return Result{Name: "mieru-peers", Status: PASS, Detail: strings.Join(details, "; ")}
 	}
 }
 
