@@ -8,9 +8,14 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"time"
 )
 
 const wsGUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+
+// wsPingInterval — интервал keepalive ping-фреймов (RFC 6455 §5.5.2).
+// Предотвращает NAT timeout на долгоживущих соединениях /traffic, /logs.
+const wsPingInterval = 30 * time.Second
 
 // wsConn — сырое TCP-соединение после WebSocket-рукопожатия.
 type wsConn struct {
@@ -53,6 +58,26 @@ func wsUpgrade(w http.ResponseWriter, r *http.Request) (*wsConn, error) {
 	}
 
 	return &wsConn{conn}, nil
+}
+
+// StartPingLoop запускает горутину, которая каждые wsPingInterval отправляет
+// ping-фрейм (opcode=0x9, RFC 6455 §5.5.2). Горутина завершается при закрытии
+// done-канала — вызывающий должен закрыть его при завершении соединения.
+// Клиент отвечает pong (opcode=0xA); ответ нас не интересует, TCP read обработает.
+func (c *wsConn) StartPingLoop(done <-chan struct{}) {
+	ticker := time.NewTicker(wsPingInterval)
+	go func() {
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				// ping-фрейм: FIN=1, opcode=0x9, payload len=0
+				_, _ = c.Write([]byte{0x89, 0x00}) //nolint:errcheck // закрытое соединение даст ошибку при следующем Write
+			}
+		}
+	}()
 }
 
 // SendText отправляет один WebSocket text-фрейм (FIN=1, opcode=0x1).

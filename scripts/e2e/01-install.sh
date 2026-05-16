@@ -17,7 +17,7 @@ pass() { log "PASS:${STEP}"; }
 
 ssh_cmd() {
     # shellcheck disable=SC2029
-    ssh -i "${KEENETIC_KEY}" -o StrictHostKeyChecking=no \
+    ssh -i "${KEENETIC_KEY}" -o StrictHostKeyChecking=accept-new \
         "${KEENETIC_USER}@${KEENETIC_HOST}" "$@"
 }
 
@@ -26,7 +26,7 @@ ssh_cmd() {
 
 # ---------- копируем бинарь ----------
 log "SCP ${BINARY} → ${KEENETIC_HOST}:${REMOTE_TMP}"
-scp -i "${KEENETIC_KEY}" -o StrictHostKeyChecking=no \
+scp -i "${KEENETIC_KEY}" -o StrictHostKeyChecking=accept-new \
     "${BINARY}" "${KEENETIC_USER}@${KEENETIC_HOST}:${REMOTE_TMP}"
 
 # ---------- установка ----------

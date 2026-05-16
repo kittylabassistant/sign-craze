@@ -16,7 +16,7 @@ pass() { log "PASS:${STEP}"; }
 
 ssh_cmd() {
     # shellcheck disable=SC2029
-    ssh -i "${KEENETIC_KEY}" -o StrictHostKeyChecking=no \
+    ssh -i "${KEENETIC_KEY}" -o StrictHostKeyChecking=accept-new \
         -o ConnectTimeout=5 \
         "${KEENETIC_USER}@${KEENETIC_HOST}" "$@"
 }

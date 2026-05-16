@@ -254,7 +254,10 @@ func Render(p ConfigParams) ([]byte, error) {
 
 	out := buf.Bytes()
 
-	// проверяем, что результат — валидный JSON
+	// TODO(perf): json.Valid — защитная проверка на случай ошибки в шаблоне.
+	// WriteConfig дополнительно валидирует через `sing-box check -c`.
+	// На MIPS softfloat json.Valid для типичного конфига (~4KB) занимает <1ms,
+	// поэтому оставляем как early-catch без build-tag.
 	if !json.Valid(out) {
 		return nil, fmt.Errorf("singbox config: сгенерированный JSON невалиден")
 	}
@@ -285,6 +288,9 @@ func WriteConfig(ctx context.Context, runner exectx.Runner, p ConfigParams, binP
 // buildRuleSets формирует список rule_set дескрипторов для секции route (legacy путь).
 func buildRuleSets(r types.RoutingRules) []types.RuleSetRef {
 	const (
+		// ruleSetBaseURL — базовый URL репозитория sign-craze-dat.
+		// Репозиторий публикует source JSON под расширением .srs (не бинарный).
+		// Поэтому Format должен быть "source", не "binary".
 		ruleSetBaseURL = "https://github.com/kittylabassistant/sign-craze-dat/releases/latest/download/"
 		detour         = "direct"
 	)
@@ -297,10 +303,13 @@ func buildRuleSets(r types.RoutingRules) []types.RuleSetRef {
 			return
 		}
 		seen[cat] = true
+		// sign-craze-dat публикует source JSON (не скомпилированный бинарный rule_set),
+		// поэтому Format="source". Для внешних репозиториев (sing-geoip/sing-geosite)
+		// формат задаётся явно через RuleSets/RoutingConfig.RuleSets.
 		refs = append(refs, types.RuleSetRef{
 			Tag:            cat,
 			Type:           "remote",
-			Format:         "binary",
+			Format:         "source",
 			URL:            ruleSetBaseURL + cat + ".srs",
 			DownloadDetour: detour,
 		})

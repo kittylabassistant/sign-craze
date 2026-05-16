@@ -17,7 +17,7 @@ Host keenetic
     HostName 192.168.1.1
     User root
     IdentityFile ~/.ssh/keenetic
-    StrictHostKeyChecking no
+    StrictHostKeyChecking accept-new
 ```
 
 ## Переменные окружения
@@ -75,3 +75,15 @@ KEENETIC_HOST=192.168.1.1 ./scripts/e2e/03-dpi-hostlist.sh
 ```
 
 При любом FAIL оркестратор завершается с `exit 1` и прерывает дальнейший прогон.
+
+## Безопасность SSH
+
+Скрипты используют `StrictHostKeyChecking=accept-new`:
+- Первое подключение к роутеру автоматически добавляет fingerprint в `~/.ssh/known_hosts`.
+- Последующие подключения проверяют, что fingerprint совпадает — защита от MITM.
+- Если роутер пересоздаёт SSH-ключ (factory reset, firmware upgrade), нужно очистить запись:
+  `ssh-keygen -R "$ROUTER_HOST"` или `ssh-keygen -R "[$ROUTER_HOST]:222"`
+
+## Прерывание
+
+`run.sh` устанавливает trap на INT/TERM. При Ctrl-C автоматически вызывает `sign-craze --stop` на роутере, чтобы не оставлять частично настроенный firewall.

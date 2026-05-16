@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestLoadOrCreateCreds_создаёт_файл_если_нет(t *testing.T) {
@@ -95,6 +97,17 @@ func TestCheckPassword_неверный_пароль(t *testing.T) {
 	hash, _ := os.ReadFile(path)
 	if err := CheckPassword(bytes.TrimSpace(hash), "неверный-пароль"); err == nil {
 		t.Error("неверный пароль принят")
+	}
+}
+
+// TestBcryptCost_SanityRange проверяет, что bcryptCost находится в допустимом
+// диапазоне bcrypt: [MinCost=4, MaxCost=31].
+func TestBcryptCost_SanityRange(t *testing.T) {
+	if bcryptCost < bcrypt.MinCost {
+		t.Errorf("bcryptCost=%d меньше bcrypt.MinCost=%d", bcryptCost, bcrypt.MinCost)
+	}
+	if bcryptCost > bcrypt.MaxCost {
+		t.Errorf("bcryptCost=%d больше bcrypt.MaxCost=%d", bcryptCost, bcrypt.MaxCost)
 	}
 }
 

@@ -6,6 +6,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/kittylabassistant/sign-craze/internal/exectx"
+	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
 func TestWatchdog_ВызываетReconcileПоТику(t *testing.T) {
@@ -86,5 +89,131 @@ func TestNewWatchdog_NegativeIntervalUseDefault(t *testing.T) {
 	w := NewWatchdog(-1*time.Second, func(_ context.Context) error { return nil })
 	if w.interval != DefaultWatchdogInterval {
 		t.Errorf("interval = %v, ожидался default", w.interval)
+	}
+}
+
+// --- Task C: CheckCriticalRules ---
+
+// ruleSet — mock runner, который матчит ключи по "iptables -t TABLE -C CHAIN ARGS".
+// Правила из set возвращают успех, всё остальное — ошибку (правило отсутствует).
+type ruleSet struct {
+	present map[string]bool
+}
+
+func (r *ruleSet) Run(_ context.Context, name string, args ...string) (exectx.Result, error) {
+	key := name
+	for _, a := range args {
+		key += " " + a
+	}
+	if r.present[key] {
+		return exectx.Result{ExitCode: 0}, nil
+	}
+	return exectx.Result{ExitCode: 1}, errors.New("no rule")
+}
+
+// tunRules возвращает базовый набор ключей для filter/FORWARD ACCEPT на TUN.
+func tunRules() map[string]bool {
+	return map[string]bool{
+		"iptables -t filter -C FORWARD -o signbox-tun -j ACCEPT": true,
+		"iptables -t filter -C FORWARD -i signbox-tun -j ACCEPT": true,
+	}
+}
+
+// TestCheckCriticalRules_Policy_TProxy_OK — mangle PREROUTING -j signcraze_policy есть,
+// TUN FORWARD ACCEPT есть → пусто.
+func TestCheckCriticalRules_Policy_TProxy_OK(t *testing.T) {
+	rules := tunRules()
+	rules["iptables -t mangle -C PREROUTING -j signcraze_policy"] = true
+	ipt := New(&ruleSet{rules})
+	missing := ipt.CheckCriticalRules(context.Background(), types.ModePolicy, 0)
+	if len(missing) != 0 {
+		t.Errorf("ожидалось 0 missing, получено: %v", missing)
+	}
+}
+
+// TestCheckCriticalRules_Policy_TProxy_Missing — mangle PREROUTING отсутствует.
+func TestCheckCriticalRules_Policy_TProxy_Missing(t *testing.T) {
+	ipt := New(&ruleSet{tunRules()})
+	missing := ipt.CheckCriticalRules(context.Background(), types.ModePolicy, 0)
+	found := false
+	for _, m := range missing {
+		if m == "mangle/PREROUTING -j signcraze_policy" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("ожидался 'mangle/PREROUTING -j signcraze_policy' в missing, получено: %v", missing)
+	}
+}
+
+// TestCheckCriticalRules_Policy_Redirect_OK — REDIRECT-mode (UseTProxy+!TProxyKernelOK),
+// nat PREROUTING -j signcraze_policy есть.
+func TestCheckCriticalRules_Policy_Redirect_OK(t *testing.T) {
+	rules := tunRules()
+	rules["iptables -t nat -C PREROUTING -j signcraze_policy"] = true
+	ipt := New(&ruleSet{rules})
+	cfg := &CriticalRulesConfig{UseTProxy: true, TProxyKernelOK: false}
+	missing := ipt.CheckCriticalRules(context.Background(), types.ModePolicy, 0, cfg)
+	if len(missing) != 0 {
+		t.Errorf("ожидалось 0 missing, получено: %v", missing)
+	}
+}
+
+// TestCheckCriticalRules_Policy_Redirect_Missing — REDIRECT-mode, nat/PREROUTING отсутствует.
+func TestCheckCriticalRules_Policy_Redirect_Missing(t *testing.T) {
+	ipt := New(&ruleSet{tunRules()})
+	cfg := &CriticalRulesConfig{UseTProxy: true, TProxyKernelOK: false}
+	missing := ipt.CheckCriticalRules(context.Background(), types.ModePolicy, 0, cfg)
+	found := false
+	for _, m := range missing {
+		if m == "nat/PREROUTING -j signcraze_policy (REDIRECT)" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("ожидался 'nat/PREROUTING -j signcraze_policy (REDIRECT)' в missing, получено: %v", missing)
+	}
+}
+
+// TestCheckCriticalRules_Policy_DPI_OK — DPIEnabled=true, WANIface=eth3, fwmark=0x53,
+// jump в mangle FORWARD присутствует.
+func TestCheckCriticalRules_Policy_DPI_OK(t *testing.T) {
+	rules := tunRules()
+	rules["iptables -t mangle -C PREROUTING -j signcraze_policy"] = true
+	rules["iptables -t mangle -C FORWARD -o eth3 -m mark ! --mark 0x53 -j signcraze_dpi_fwd"] = true
+	ipt := New(&ruleSet{rules})
+	cfg := &CriticalRulesConfig{DPIEnabled: true, WANIface: "eth3", FWMark: 0x53}
+	missing := ipt.CheckCriticalRules(context.Background(), types.ModePolicy, 0, cfg)
+	if len(missing) != 0 {
+		t.Errorf("ожидалось 0 missing при DPI OK, получено: %v", missing)
+	}
+}
+
+// TestCheckCriticalRules_Policy_DPI_Missing — DPIEnabled=true, DPI jump отсутствует.
+func TestCheckCriticalRules_Policy_DPI_Missing(t *testing.T) {
+	rules := tunRules()
+	rules["iptables -t mangle -C PREROUTING -j signcraze_policy"] = true
+	ipt := New(&ruleSet{rules})
+	cfg := &CriticalRulesConfig{DPIEnabled: true, WANIface: "eth3", FWMark: 0x53}
+	missing := ipt.CheckCriticalRules(context.Background(), types.ModePolicy, 0, cfg)
+	found := false
+	for _, m := range missing {
+		if m == "mangle/FORWARD -j signcraze_dpi_fwd" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("ожидался 'mangle/FORWARD -j signcraze_dpi_fwd' в missing, получено: %v", missing)
+	}
+}
+
+// TestCheckCriticalRules_Full_OK — ModeFull, mangle PREROUTING -j signcraze есть.
+func TestCheckCriticalRules_Full_OK(t *testing.T) {
+	rules := tunRules()
+	rules["iptables -t mangle -C PREROUTING -j signcraze"] = true
+	ipt := New(&ruleSet{rules})
+	missing := ipt.CheckCriticalRules(context.Background(), types.ModeFull, 0)
+	if len(missing) != 0 {
+		t.Errorf("ожидалось 0 missing, получено: %v", missing)
 	}
 }

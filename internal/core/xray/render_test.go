@@ -163,6 +163,85 @@ func TestRender_GoldenWriteback(t *testing.T) {
 	}
 }
 
+// TestRender_Geosite_NoDat_ReturnsError проверяет, что при отсутствии geosite.dat
+// Render возвращает понятную ошибку, а не FATAL внутри xray.
+func TestRender_Geosite_NoDat_ReturnsError(t *testing.T) {
+	tmp := t.TempDir() // tempdir без geosite.dat/geoip.dat
+
+	p := DefaultConfigParams()
+	p.GeoAssetsDir = tmp
+	p.RoutingConfig = &types.RoutingConfig{
+		Version: 1,
+		Rules: []types.RouteRule{
+			{RuleSet: []string{"geosite-youtube"}, Outbound: "direct"},
+		},
+		Final: "direct",
+	}
+	p.Outbounds = []types.Outbound{{Tag: "direct", Type: "direct"}}
+
+	_, err := Render(p)
+	if err == nil {
+		t.Fatal("Render должен вернуть ошибку при отсутствии geosite.dat")
+	}
+	if !strings.Contains(err.Error(), "geosite.dat") {
+		t.Errorf("ошибка должна содержать 'geosite.dat', получено: %v", err)
+	}
+	if !strings.Contains(err.Error(), "--update-geo") {
+		t.Errorf("ошибка должна содержать '--update-geo', получено: %v", err)
+	}
+}
+
+// TestRender_Geoip_NoDat_ReturnsError проверяет, что при отсутствии geoip.dat
+// Render возвращает понятную ошибку.
+func TestRender_Geoip_NoDat_ReturnsError(t *testing.T) {
+	tmp := t.TempDir() // tempdir без geoip.dat
+
+	p := DefaultConfigParams()
+	p.GeoAssetsDir = tmp
+	p.RoutingConfig = &types.RoutingConfig{
+		Version: 1,
+		Rules: []types.RouteRule{
+			{RuleSet: []string{"geoip-ru"}, Outbound: "direct"},
+		},
+		Final: "direct",
+	}
+	p.Outbounds = []types.Outbound{{Tag: "direct", Type: "direct"}}
+
+	_, err := Render(p)
+	if err == nil {
+		t.Fatal("Render должен вернуть ошибку при отсутствии geoip.dat")
+	}
+	if !strings.Contains(err.Error(), "geoip.dat") {
+		t.Errorf("ошибка должна содержать 'geoip.dat', получено: %v", err)
+	}
+}
+
+// TestRender_Geosite_DatPresent_OK проверяет, что при наличии geosite.dat
+// Render не возвращает ошибку.
+func TestRender_Geosite_DatPresent_OK(t *testing.T) {
+	tmp := t.TempDir()
+	// создаём фиктивные .dat файлы
+	if err := os.WriteFile(filepath.Join(tmp, "geosite.dat"), []byte("fake"), 0o644); err != nil {
+		t.Fatalf("не удалось создать geosite.dat: %v", err)
+	}
+
+	p := DefaultConfigParams()
+	p.GeoAssetsDir = tmp
+	p.RoutingConfig = &types.RoutingConfig{
+		Version: 1,
+		Rules: []types.RouteRule{
+			{RuleSet: []string{"geosite-youtube"}, Outbound: "direct"},
+		},
+		Final: "direct",
+	}
+	p.Outbounds = []types.Outbound{{Tag: "direct", Type: "direct"}}
+
+	_, err := Render(p)
+	if err != nil {
+		t.Fatalf("Render не должен возвращать ошибку при наличии geosite.dat: %v", err)
+	}
+}
+
 // mustRender — вспомогательная функция: вызывает Render и проваливает тест при ошибке.
 func mustRender(t *testing.T, p ConfigParams) map[string]any {
 	t.Helper()

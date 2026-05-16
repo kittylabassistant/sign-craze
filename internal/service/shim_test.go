@@ -7,6 +7,26 @@ import (
 	"testing"
 )
 
+// TestService_DefaultShimPath_IsS99 — инвариант 2026-05-07:
+// DefaultShimPath ОБЯЗАН содержать "S99signcraze". S99 гарантирует, что shim
+// стартует ПОСЛЕ S51dropbear; любой fail shim с set -eu не убивает SSH 222.
+// Любой prefix S05/S10/S20/S30/S40/S50 → SSH недоступен после reboot (инцидент 2026-05-07).
+func TestService_DefaultShimPath_IsS99(t *testing.T) {
+	if !strings.Contains(DefaultShimPath, "S99signcraze") {
+		t.Errorf("DefaultShimPath должен содержать S99signcraze, получили: %s", DefaultShimPath)
+	}
+	forbidden := []string{"S05", "S10", "S20", "S30", "S40", "S50"}
+	for _, p := range forbidden {
+		if strings.Contains(DefaultShimPath, p+"signcraze") {
+			t.Errorf(
+				"DefaultShimPath содержит %ssigncraze — это ЗАПРЕЩЕНО: "+
+					"boot order должен быть ПОСЛЕ S51dropbear (инцидент 2026-05-07)",
+				p,
+			)
+		}
+	}
+}
+
 func TestRenderShim_ContainsBinPath(t *testing.T) {
 	p := ShimParams{BinPath: "/opt/sbin/sign-craze"}
 	data, err := RenderShim(p)

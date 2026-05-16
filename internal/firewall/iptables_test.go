@@ -3,6 +3,7 @@ package firewall
 import (
 	"context"
 	"fmt"
+	"io"
 	"testing"
 
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
@@ -229,6 +230,98 @@ func TestIPTables_DeleteRulesByComment_QuotedComment(t *testing.T) {
 	err := ipt.DeleteRulesByComment(context.Background(), "mangle", "signcraze:")
 	if err != nil {
 		t.Fatalf("неожиданная ошибка: %v", err)
+	}
+}
+
+// --- Task A: BatchBuilder + RestoreBatch ---
+
+// stdinRecorder — StdinRunner, записывающий переданный stdin для golden-тестов.
+type stdinRecorder struct {
+	name  string
+	args  []string
+	stdin []byte
+	fail  bool
+}
+
+func (r *stdinRecorder) Run(_ context.Context, name string, args ...string) (exectx.Result, error) {
+	return exectx.Result{ExitCode: 0}, nil
+}
+
+func (r *stdinRecorder) RunWithStdin(_ context.Context, stdin io.Reader, name string, args ...string) (exectx.Result, error) {
+	r.name = name
+	r.args = args
+	data, err := io.ReadAll(stdin)
+	if err != nil {
+		return exectx.Result{ExitCode: 1}, err
+	}
+	r.stdin = data
+	if r.fail {
+		return exectx.Result{ExitCode: 1, Stderr: []byte("iptables-restore error")},
+			fmt.Errorf("iptables-restore failed")
+	}
+	return exectx.Result{ExitCode: 0}, nil
+}
+
+// TestBatchBuilder_Bytes_формат — проверяет что BatchBuilder генерирует
+// корректный формат iptables-save: *table / :chain / -A rules / COMMIT.
+func TestBatchBuilder_Bytes_формат(t *testing.T) {
+	var b BatchBuilder
+	b.Table("mangle").
+		Chain("signcraze_policy").
+		Rule("PREROUTING", "-j", "signcraze_policy").
+		Rule("signcraze_policy", "-m", "mark", "--mark", "0xab", "-j", "MARK", "--set-mark", "0x53").
+		Commit()
+
+	got := string(b.Bytes())
+	want := "*mangle\n:signcraze_policy - [0:0]\n-A PREROUTING -j signcraze_policy\n-A signcraze_policy -m mark --mark 0xab -j MARK --set-mark 0x53\nCOMMIT\n"
+	if got != want {
+		t.Errorf("BatchBuilder.Bytes():\ngot:  %q\nwant: %q", got, want)
+	}
+}
+
+// TestIPTables_RestoreBatch_ПередаётСтандартныйВвод — RestoreBatch должен
+// вызвать iptables-restore --noflush --wait 2 с правильным stdin.
+func TestIPTables_RestoreBatch_ПередаётСтандартныйВвод(t *testing.T) {
+	rec := &stdinRecorder{}
+	ipt := New(rec)
+	dump := []byte("*mangle\nCOMMIT\n")
+	if err := ipt.RestoreBatch(context.Background(), dump); err != nil {
+		t.Fatalf("RestoreBatch вернул ошибку: %v", err)
+	}
+	if rec.name != "iptables-restore" {
+		t.Errorf("команда = %q, ожидалось iptables-restore", rec.name)
+	}
+	if string(rec.stdin) != string(dump) {
+		t.Errorf("stdin = %q, ожидалось %q", rec.stdin, dump)
+	}
+	// Проверяем флаги.
+	wantArgs := []string{"--noflush", "--wait", "2"}
+	for i, want := range wantArgs {
+		if i >= len(rec.args) || rec.args[i] != want {
+			t.Errorf("args[%d] = %q, ожидалось %q (args=%v)", i, rec.args[i], want, rec.args)
+		}
+	}
+}
+
+// TestIPTables_RestoreBatch_ОшибкаBezStdinRunner — runner без StdinRunner
+// должен вернуть ошибку (не паниковать).
+func TestIPTables_RestoreBatch_ОшибкаBezStdinRunner(t *testing.T) {
+	r := exectx.Mock(map[string]exectx.Result{})
+	ipt := New(r)
+	err := ipt.RestoreBatch(context.Background(), []byte("*mangle\nCOMMIT\n"))
+	if err == nil {
+		t.Fatal("ожидалась ошибка при runner без StdinRunner")
+	}
+}
+
+// TestIPTables_RestoreBatch_ПробрасываетОшибку — ошибка iptables-restore
+// должна вернуться наружу.
+func TestIPTables_RestoreBatch_ПробрасываетОшибку(t *testing.T) {
+	rec := &stdinRecorder{fail: true}
+	ipt := New(rec)
+	err := ipt.RestoreBatch(context.Background(), []byte("*mangle\nCOMMIT\n"))
+	if err == nil {
+		t.Fatal("ожидалась ошибка от iptables-restore")
 	}
 }
 

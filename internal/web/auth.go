@@ -11,8 +11,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const bcryptCost = 12
-
 // LoadOrCreateCreds читает bcrypt-хэш из path.
 // Если файл отсутствует — генерирует случайный пароль, выводит на stdout и сохраняет хэш.
 func LoadOrCreateCreds(path string) ([]byte, error) {

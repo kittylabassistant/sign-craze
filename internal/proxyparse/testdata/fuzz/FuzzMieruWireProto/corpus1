@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("\n7\n\adefault\x12\x10\n\x05alice\x12\ahunter2\x1a\x16\n\r192.168.1.100\x1a\x05\b\x90?\x10\x01\"\x02\b\x02 \xb8\b")

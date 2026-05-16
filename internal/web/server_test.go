@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -56,6 +57,19 @@ func TestSecurityHeaders_присутствуют(t *testing.T) {
 	}
 	if rec.Header().Get("Content-Security-Policy") == "" {
 		t.Error("отсутствует Content-Security-Policy")
+	}
+}
+
+// TestServer_AdminHasReadHeaderTimeout — admin server (9091) должен иметь
+// ReadHeaderTimeout > 0 для защиты от slowloris.
+func TestServer_AdminHasReadHeaderTimeout(t *testing.T) {
+	s, _ := makeTestServer(t)
+	if s.admin.ReadHeaderTimeout <= 0 {
+		t.Errorf("admin.ReadHeaderTimeout=%v, ожидалось > 0", s.admin.ReadHeaderTimeout)
+	}
+	const wantTimeout = 15 * time.Second
+	if s.admin.ReadHeaderTimeout != wantTimeout {
+		t.Errorf("admin.ReadHeaderTimeout=%v, ожидалось %v", s.admin.ReadHeaderTimeout, wantTimeout)
 	}
 }
 

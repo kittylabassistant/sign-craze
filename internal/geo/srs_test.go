@@ -233,6 +233,36 @@ func TestLocalSHA256_СовпадаетСЭталонным(t *testing.T) {
 	}
 }
 
+// TestLocalSHA256_StreamingEqualsNonStreaming проверяет, что потоковое вычисление
+// SHA256 через io.Copy совпадает с sha256.Sum256(content) для .srs-подобных файлов.
+func TestLocalSHA256_StreamingEqualsNonStreaming(t *testing.T) {
+	// Симулируем "большой" .srs файл — 64KB контрольных данных.
+	const chunkSize = 64 * 1024
+	content := make([]byte, chunkSize)
+	for i := range content {
+		content[i] = byte(i % 251) // простое число, чтобы не было паттернов из нулей
+	}
+
+	// Эталон: однократный sha256.Sum256 (non-streaming).
+	expected := sha256Hex(content)
+
+	f, err := os.CreateTemp(t.TempDir(), "streaming-*.srs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Write(content); err != nil {
+		f.Close()
+		t.Fatal(err)
+	}
+	f.Close()
+
+	// Потоковое вычисление через localSHA256.
+	got := localSHA256(f.Name())
+	if got != expected {
+		t.Errorf("streaming SHA256 = %s, non-streaming = %s: результаты не совпадают", got, expected)
+	}
+}
+
 func TestLocalSHA256_ВозвращаетПустуюДляОтсутствующегоФайла(t *testing.T) {
 	got := localSHA256("/nonexistent/path/file.srs")
 	if got != "" {

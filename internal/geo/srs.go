@@ -207,16 +207,19 @@ func (c *countingReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// localSHA256 вычисляет SHA256 файла по пути. Возвращает пустую строку если файл не существует.
+// localSHA256 вычисляет SHA256 файла по пути потоково (без загрузки в RAM).
+// Возвращает пустую строку если файл не существует или не читается.
+// Использует io.Copy для поддержки .srs файлов 30-100MB на роутере с 128MB RAM.
 func localSHA256(path string) string {
-	data, err := os.ReadFile(path)
+	f, err := os.Open(path)
 	if err != nil {
 		return ""
 	}
-	return hashBytes(data)
-}
+	defer f.Close()
 
-func hashBytes(data []byte) string {
-	h := sha256.Sum256(data)
-	return hex.EncodeToString(h[:])
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return ""
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }

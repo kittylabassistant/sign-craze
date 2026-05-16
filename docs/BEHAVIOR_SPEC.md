@@ -842,6 +842,15 @@ SIGHUP-перезагрузки нет. Изменения конфига тре
 
 Все эндпоинты обоих портов доступны без аутентификации (auth удалён).
 
+#### bcrypt cost по архитектурам
+
+При наличии защищённого доступа (`admin.creds`) bcrypt cost зависит от целевой архитектуры:
+
+- **MIPS / MIPSLE** (Keenetic softfloat, ~400 MHz): `cost=10` — login ≤ 2s.
+- **arm64, arm7, amd64**: `cost=12` — рекомендуемый production минимум.
+
+Выбор происходит через Go build tags (`//go:build mips || mipsle`) — без runtime-проверки.
+
 ### Порт 9091 — Admin REST API
 
 ```plain

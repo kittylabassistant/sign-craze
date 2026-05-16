@@ -2,7 +2,6 @@ package dpi
 
 import (
 	"archive/tar"
-	"bytes"
 	"compress/gzip"
 	"errors"
 	"fmt"
@@ -118,60 +117,77 @@ func openNfqwsBinaryStreamTarGZ(tarPath string) (*binaryStream, error) {
 // openNfqwsBinaryStreamIPK извлекает бинарь "nfqws2" из Entware .ipk пакета.
 // Формат .ipk: tar.gz → { data.tar.gz, control.tar.gz, debian-binary }.
 // Бинарь находится в data.tar.gz по пути */sbin/nfqws2 или */bin/nfqws2.
-// Всё содержимое data.tar.gz буферизуется в RAM (обычно < 500KB).
+//
+// Стриминговая реализация: файл остаётся открытым до вызова Close() на возвращённом
+// binaryStream. io.ReadAll не используется — критично для 128MB MIPS-роутеров.
 func openNfqwsBinaryStreamIPK(ipkPath string) (*binaryStream, error) {
 	f, err := os.Open(ipkPath)
 	if err != nil {
 		return nil, fmt.Errorf("открытие .ipk: %w", err)
 	}
-	defer f.Close()
 
-	outerGZ, err := gzip.NewReader(f)
+	// closeAll закрывает все ресурсы при ошибке (до возврата stream).
+	var (
+		outerGZ *gzip.Reader
+		innerGZ *gzip.Reader
+	)
+	cleanup := func() {
+		if innerGZ != nil {
+			_ = innerGZ.Close()
+		}
+		if outerGZ != nil {
+			_ = outerGZ.Close()
+		}
+		_ = f.Close()
+	}
+
+	outerGZ, err = gzip.NewReader(f)
 	if err != nil {
+		cleanup()
 		return nil, fmt.Errorf(".ipk gzip reader: %w", err)
 	}
-	defer outerGZ.Close()
 
-	// Ищем data.tar.gz в outer tar.
+	// Ищем data.tar.gz в outer tar потоково — без io.ReadAll.
 	outerTar := tar.NewReader(outerGZ)
-	var dataTarBytes []byte
-	var hdr *tar.Header
+	found := false
 	for {
+		var hdr *tar.Header
 		hdr, err = outerTar.Next()
 		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
+			cleanup()
 			return nil, fmt.Errorf(".ipk outer tar: %w", err)
 		}
 		if hdr.Name == "./data.tar.gz" || hdr.Name == "data.tar.gz" {
-			dataTarBytes, err = io.ReadAll(outerTar)
-			if err != nil {
-				return nil, fmt.Errorf(".ipk чтение data.tar.gz: %w", err)
-			}
+			found = true
 			break
 		}
+		// Пропускаем прочие записи (control.tar.gz, debian-binary).
 	}
-	if dataTarBytes == nil {
+	if !found {
+		cleanup()
 		return nil, fmt.Errorf(".ipk: data.tar.gz не найден в %s", ipkPath)
 	}
 
-	// Ищем бинарь nfqws2 в data.tar.gz.
-	innerGZ, err := gzip.NewReader(bytes.NewReader(dataTarBytes))
+	// outerTar стоит на data.tar.gz — читаем его через вложенный gzip прямо из потока.
+	innerGZ, err = gzip.NewReader(outerTar)
 	if err != nil {
+		cleanup()
 		return nil, fmt.Errorf(".ipk inner gzip: %w", err)
 	}
-	defer innerGZ.Close()
 
 	innerTar := tar.NewReader(innerGZ)
-	var binBytes []byte
 	for {
-		hdr, err = innerTar.Next()
-		if errors.Is(err, io.EOF) {
+		hdr, hdrErr := innerTar.Next()
+		if errors.Is(hdrErr, io.EOF) {
+			cleanup()
 			return nil, fmt.Errorf("бинарь 'nfqws2' не найден в data.tar.gz (%s)", ipkPath)
 		}
-		if err != nil {
-			return nil, fmt.Errorf(".ipk inner tar: %w", err)
+		if hdrErr != nil {
+			cleanup()
+			return nil, fmt.Errorf(".ipk inner tar: %w", hdrErr)
 		}
 		if hdr.Typeflag != tar.TypeReg {
 			continue
@@ -179,15 +195,13 @@ func openNfqwsBinaryStreamIPK(ipkPath string) (*binaryStream, error) {
 		if filepath.Base(hdr.Name) != "nfqws2" {
 			continue
 		}
-		// Читаем бинарь в буфер — innerTar ссылается на dataTarBytes, уже в RAM.
-		binBytes, err = io.ReadAll(innerTar)
-		if err != nil {
-			return nil, fmt.Errorf(".ipk чтение бинаря: %w", err)
+		// Позиция innerTar — начало бинаря; возвращаем stream, держа файл открытым.
+		closer := func() error {
+			_ = innerGZ.Close()
+			_ = outerGZ.Close()
+			return f.Close()
 		}
-		return &binaryStream{
-			Reader: bytes.NewReader(binBytes),
-			closer: func() error { return nil },
-		}, nil
+		return &binaryStream{Reader: innerTar, closer: closer}, nil
 	}
 }
 
@@ -241,7 +255,7 @@ func InstallAssets(ipkPath, blobDir, luaDir string) error {
 	defer outerGZ.Close()
 
 	outerTar := tar.NewReader(outerGZ)
-	var dataTarBytes []byte
+	foundData := false
 	for {
 		hdr, hdrErr := outerTar.Next()
 		if errors.Is(hdrErr, io.EOF) {
@@ -251,18 +265,16 @@ func InstallAssets(ipkPath, blobDir, luaDir string) error {
 			return fmt.Errorf("dpi assets: outer tar: %w", hdrErr)
 		}
 		if hdr.Name == "./data.tar.gz" || hdr.Name == "data.tar.gz" {
-			dataTarBytes, err = io.ReadAll(outerTar)
-			if err != nil {
-				return fmt.Errorf("dpi assets: чтение data.tar.gz: %w", err)
-			}
+			foundData = true
 			break
 		}
 	}
-	if dataTarBytes == nil {
+	if !foundData {
 		return fmt.Errorf("dpi assets: data.tar.gz не найден в %s", ipkPath)
 	}
 
-	innerGZ, err := gzip.NewReader(bytes.NewReader(dataTarBytes))
+	// outerTar стоит на data.tar.gz — читаем inner gzip прямо из потока без io.ReadAll.
+	innerGZ, err := gzip.NewReader(outerTar)
 	if err != nil {
 		return fmt.Errorf("dpi assets: inner gzip: %w", err)
 	}
@@ -282,6 +294,9 @@ func InstallAssets(ipkPath, blobDir, luaDir string) error {
 			continue
 		}
 		clean := filepath.Clean(hdr.Name)
+		if strings.Contains(clean, "..") {
+			return fmt.Errorf("dpi assets: path traversal в записи %q", hdr.Name)
+		}
 		base := filepath.Base(clean)
 
 		switch {
@@ -294,24 +309,17 @@ func InstallAssets(ipkPath, blobDir, luaDir string) error {
 			log.L().Debug("dpi blob извлечён", "name", base, "dst", dstPath)
 
 		case strings.Contains(clean, "etc/nfqws2/lua/") && strings.HasSuffix(base, ".lua.gz"):
-			// Распаковываем .lua.gz → .lua (gunzip).
-			gzData, err := io.ReadAll(innerTar)
-			if err != nil {
-				return fmt.Errorf("dpi assets: чтение %s: %w", base, err)
-			}
-			gz, err := gzip.NewReader(bytes.NewReader(gzData))
+			// Распаковываем .lua.gz → .lua потоково, без io.ReadAll.
+			gz, err := gzip.NewReader(innerTar)
 			if err != nil {
 				return fmt.Errorf("dpi assets: %s gzip: %w", base, err)
 			}
-			luaData, err := io.ReadAll(gz)
-			_ = gz.Close()
-			if err != nil {
-				return fmt.Errorf("dpi assets: %s decompress: %w", base, err)
-			}
 			outName := strings.TrimSuffix(base, ".gz")
 			dstPath := filepath.Join(luaDir, outName)
-			if err := atomicfs.WriteFileAtomic(dstPath, luaData, 0o644); err != nil {
-				return fmt.Errorf("dpi assets: запись lua %s: %w", dstPath, err)
+			writeErr := atomicfs.WriteFileAtomicFromReader(dstPath, gz, 0o644)
+			_ = gz.Close()
+			if writeErr != nil {
+				return fmt.Errorf("dpi assets: запись lua %s: %w", dstPath, writeErr)
 			}
 			luaCount++
 			log.L().Debug("dpi lua извлечён", "name", outName, "dst", dstPath)

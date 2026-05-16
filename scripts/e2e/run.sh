@@ -7,6 +7,23 @@
 #   KEENETIC_HOST=192.168.1.1 ./scripts/e2e/run.sh --from 02
 set -euo pipefail
 
+# ---------- cleanup при прерывании ----------
+cleanup() {
+  local exitcode=$?
+  # При прерывании пытаемся аккуратно остановить sign-craze на роутере
+  if [ -n "${KEENETIC_HOST:-}" ] && [ "$exitcode" -ne 0 ]; then
+    echo "[CLEANUP] Прерывание: пытаюсь остановить sign-craze на $KEENETIC_HOST" >&2
+    ssh -i "${KEENETIC_KEY:-${HOME}/.ssh/keenetic}" \
+        -o StrictHostKeyChecking=accept-new \
+        -o ConnectTimeout=5 \
+        -o BatchMode=yes \
+        "${KEENETIC_USER:-root}@${KEENETIC_HOST}" \
+        'sign-craze --stop || true' 2>/dev/null || true
+  fi
+  exit $exitcode
+}
+trap cleanup INT TERM EXIT
+
 # ---------- настройки ----------
 export KEENETIC_HOST="${KEENETIC_HOST:?Укажите KEENETIC_HOST (IP роутера)}"
 export KEENETIC_USER="${KEENETIC_USER:-root}"

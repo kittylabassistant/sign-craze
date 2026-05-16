@@ -1,5 +1,5 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-LDFLAGS := -s -w -X github.com/kittylabassistant/sign-craze/internal/version.Version=$(VERSION)
+LDFLAGS := -s -w -buildid= -X github.com/kittylabassistant/sign-craze/internal/version.Version=$(VERSION)
 DIST    := dist
 
 TARGETS := arm64 arm7 mipsle mips

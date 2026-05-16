@@ -48,6 +48,9 @@ jobs:
       - name: go mod tidy
         run: go mod tidy
 
+      - name: Set SOURCE_DATE_EPOCH
+        run: echo "SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)" >> $GITHUB_ENV
+
       - name: build
         env:
           CGO_ENABLED: "0"
@@ -62,7 +65,7 @@ jobs:
           rm -rf dist
           mkdir -p dist
           go build -buildvcs=false \
-            -ldflags="-s -w -X github.com/kittylabassistant/sign-craze/internal/version.Version=${{ github.ref_name }}" \
+            -ldflags="-s -w -buildid= -X github.com/kittylabassistant/sign-craze/internal/version.Version=${{ github.ref_name }}" \
             -trimpath \
             -o dist/sign-craze-${{ matrix.suffix }} \
             ./cmd/sign-craze
@@ -117,6 +120,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write    # OIDC для cosign keyless signing
+      attestations: write
     steps:
       - uses: actions/checkout@v6
 
@@ -128,8 +133,32 @@ jobs:
       - name: stage install.sh
         run: cp scripts/install.sh dist/install.sh
 
+      - name: sha256sums.txt (aggregate)
+        run: cd dist && sha256sum sign-craze-* > sha256sums.txt
+
+      - uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v2.4.1'
+
+      - name: Sign release artifacts (keyless OIDC)
+        run: |
+          for f in dist/sign-craze-*; do
+            [ -f "$f" ] || continue
+            cosign sign-blob --yes "$f" \
+              --output-signature "$f.sig" \
+              --output-certificate "$f.pem"
+          done
+
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: 'dist/sign-craze-*'
+
       - name: create release
         uses: softprops/action-gh-release@v3
         with:
-          files: dist/**
+          files: |
+            dist/sign-craze-*
+            dist/signcraze-*.tar.gz
+            dist/sha256sums.txt
+            dist/install.sh
           generate_release_notes: true

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kittylabassistant/sign-craze/pkg/types"
@@ -472,6 +473,32 @@ func TestBuildRuleSets_NoDuplicates(t *testing.T) {
 	for tag, count := range seen {
 		if count > 1 {
 			t.Errorf("дублирующийся rule_set tag: %q (встречается %d раз)", tag, count)
+		}
+	}
+}
+
+// TestBuildRuleSets_SignCrazeDat_FormatSource проверяет, что URL'ы из репозитория
+// sign-craze-dat получают Format="source", а не "binary".
+// sign-craze-dat/.github/workflows/update.yml публикует source JSON под .srs расширением.
+func TestBuildRuleSets_SignCrazeDat_FormatSource(t *testing.T) {
+	r := types.RoutingRules{
+		GeoSiteProxy:  []string{"geosite-blocked"},
+		GeoSiteDirect: []string{"geosite-ru"},
+	}
+	refs := buildRuleSets(r)
+
+	if len(refs) == 0 {
+		t.Fatal("buildRuleSets вернул пустой список")
+	}
+
+	for _, ref := range refs {
+		// Все URL'ы из buildRuleSets указывают на sign-craze-dat
+		if !strings.Contains(ref.URL, "sign-craze-dat") {
+			t.Errorf("ref %q: URL %q не содержит sign-craze-dat", ref.Tag, ref.URL)
+		}
+		if ref.Format != "source" {
+			t.Errorf("ref %q: Format=%q, ожидалось \"source\" (sign-craze-dat публикует source JSON)",
+				ref.Tag, ref.Format)
 		}
 	}
 }

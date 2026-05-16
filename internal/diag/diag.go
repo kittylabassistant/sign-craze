@@ -29,9 +29,9 @@ const (
 
 // Result описывает результат одной проверки.
 type Result struct {
-	Name   string
-	Status Status
-	Detail string
+	Name   string `json:"name"`
+	Status Status `json:"status"`
+	Detail string `json:"detail"`
 }
 
 // Check — функция-проверка. Не должна паниковать; возвращает Result со Status.

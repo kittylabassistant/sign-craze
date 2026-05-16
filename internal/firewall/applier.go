@@ -40,6 +40,12 @@ type Applier interface {
 	// повторный вызов на корректно настроенной системе — no-op.
 	// AttachTUN не вызывается (TUN route ставится отдельно после старта sing-box).
 	Reconcile(ctx context.Context, mode types.Mode) error
+
+	// InvalidateWANCache сбрасывает кешированное имя WAN-интерфейса.
+	// Вызывается при ошибке ensureWANRule или при детектировании смены WAN
+	// (например, после reconnect PPPoE). Следующий вызов applyInternal
+	// выполнит DetectWANIface заново.
+	InvalidateWANCache()
 }
 
 // Config содержит параметры брандмауэра. Все значения из BEHAVIOR_SPEC §3.
@@ -157,10 +163,11 @@ func NewApplier(runner exectx.Runner, cfg Config) Applier {
 }
 
 type applierImpl struct {
-	runner exectx.Runner
-	cfg    Config
-	ipt    *IPTables
-	ipset  *IPSet
+	runner         exectx.Runner
+	cfg            Config
+	ipt            *IPTables
+	ipset          *IPSet
+	cachedWANIface string // кеш результата DetectWANIface; InvalidateWANCache() сбрасывает
 }
 
 // Apply применяет правила для заданного режима. При ошибке откатывается через Remove.
@@ -208,13 +215,22 @@ func (a *applierImpl) applyInternal(ctx context.Context, mode types.Mode) error 
 	// WAN автодетект — нужен ДО applyPolicyMode для DPIForwardRules `-o $WAN`-фильтра,
 	// чтобы NFQUEUE не ловил трафик-к-TUN/loopback. ensureWANUIDrop ниже использует
 	// уже заполненный a.cfg.WANIface.
+	//
+	// Приоритет: cfg.WANIface (явно задан в Config) > cachedWANIface (результат
+	// предыдущего DetectWANIface) > DetectWANIface (fork ip route show default).
+	// Кеш экономит fork каждые 30s при тиках watchdog на slow MIPS softfloat.
 	if a.cfg.WANIface == "" {
-		iface, err := netif.DetectWANIface(ctx, a.runner)
-		if err != nil {
-			return fmt.Errorf("firewall: WANIface не задан и автодетект не удался: %w", err)
+		if a.cachedWANIface != "" {
+			a.cfg.WANIface = a.cachedWANIface
+		} else {
+			iface, err := netif.DetectWANIface(ctx, a.runner)
+			if err != nil {
+				return fmt.Errorf("firewall: WANIface не задан и автодетект не удался: %w", err)
+			}
+			a.cachedWANIface = iface
+			a.cfg.WANIface = iface
+			log.L().Info("firewall: WAN автодетект", "iface", iface)
 		}
-		a.cfg.WANIface = iface
-		log.L().Info("firewall: WAN автодетект", "iface", iface)
 	}
 	switch mode {
 	case types.ModePolicy:
@@ -242,17 +258,22 @@ func (a *applierImpl) applyInternal(ctx context.Context, mode types.Mode) error 
 var uiPorts = []string{"9090", "9091", "9092"}
 
 // ensureWANUIDrop добавляет INPUT DROP TCP/UDP на UI-порты для WAN-интерфейса.
-// applyInternal заполняет a.cfg.WANIface через автодетект ДО вызова этой функции,
-// поэтому здесь ожидается уже непустой WANIface. Дополнительный fallback оставлен
-// на случай прямого вызова из Reconcile или тестов.
+// applyInternal заполняет a.cfg.WANIface через кеш/автодетект ДО вызова этой функции,
+// поэтому здесь ожидается уже непустой WANIface. Дополнительный fallback на кеш
+// оставлен на случай прямого вызова из Reconcile или тестов.
 func (a *applierImpl) ensureWANUIDrop(ctx context.Context) error {
 	if a.cfg.WANIface == "" {
-		iface, err := netif.DetectWANIface(ctx, a.runner)
-		if err != nil {
-			return fmt.Errorf("firewall: WANIface не задан и автодетект не удался: %w", err)
+		if a.cachedWANIface != "" {
+			a.cfg.WANIface = a.cachedWANIface
+		} else {
+			iface, err := netif.DetectWANIface(ctx, a.runner)
+			if err != nil {
+				return fmt.Errorf("firewall: WANIface не задан и автодетект не удался: %w", err)
+			}
+			a.cachedWANIface = iface
+			a.cfg.WANIface = iface
+			log.L().Info("firewall: WAN автодетект (ensureWANUIDrop fallback)", "iface", iface)
 		}
-		a.cfg.WANIface = iface
-		log.L().Info("firewall: WAN автодетект", "iface", iface)
 	}
 	for _, port := range uiPorts {
 		for _, proto := range []string{"tcp", "udp"} {
@@ -321,6 +342,13 @@ func (a *applierImpl) ensureAdminPortsBypass(ctx context.Context, table, chainNa
 // Keenetic сам помечает пакеты устройств своим mark и создаёт ip rule.
 // Sign-craze добавляет TPROXY-правила с фильтром по этому mark и собственное
 // ip rule для loop-prevention исходящих от активного ядра (SO_MARK=0x53).
+//
+// Правила цепочек sign-craze применяются через iptables-restore --noflush batch
+// (один fork вместо N). Идемпотентность обеспечивается через :chain объявление
+// + -F chain (flush) перед refill. Прыжки в системные цепочки (PREROUTING/FORWARD)
+// предварительно очищаются через DeleteJumpAll, затем добавляются в том же batch.
+// Bypass-правила (LocalBypass, AdminPorts) вставляются через InsertRule(pos=1) ПОСЛЕ
+// batch, чтобы они гарантированно оказались первыми в chain.
 func (a *applierImpl) applyPolicyMode(ctx context.Context) error {
 	if a.cfg.PolicyMark == 0 {
 		return fmt.Errorf("firewall: ModePolicy требует PolicyMark != 0 (читать через ndm.GetPolicy)")
@@ -332,28 +360,6 @@ func (a *applierImpl) applyPolicyMode(ctx context.Context) error {
 		return err
 	}
 
-	// 2. DPI-цепочка signcraze_dpi_fwd в mangle FORWARD (NFQUEUE для nfqws2).
-	// Применяется ко всем LAN-устройствам, идущим через WAN-интерфейс напрямую
-	// (не через TPROXY/sing-box). Self-traffic sing-box отсекается фильтром
-	// `! --mark $loopMark` на jump-правиле.
-	if a.cfg.DPIEnabled {
-		if err := a.ipt.EnsureChain(ctx, "mangle", modes.DPIForwardChainName); err != nil {
-			return err
-		}
-	}
-
-	// 3. DPI-правила (если включено). VPNExcludeIPs защищает Reality-маскировку
-	// sing-box к VPS, если LAN-клиент сам открывает соединение к этому IP.
-	if a.cfg.DPIEnabled {
-		dpiRules := modes.DPIForwardRules(a.cfg.FWMark, a.cfg.NFQueueNum, a.cfg.WANIface, a.cfg.VPNExcludeIPs)
-		for _, spec := range dpiRules {
-			if err := a.ipt.EnsureRule(ctx, spec.Table, spec.Chain, spec.Args...); err != nil {
-				return err
-			}
-		}
-	}
-
-	// 4. Правила маркировки / перенаправления трафика Keenetic-policy.
 	if a.cfg.UseTProxy {
 		// Probe xt_socket + xt_TPROXY: пытаемся загрузить kernel-модули.
 		// Если оба загружены — используем реальный TPROXY (TCP+UDP).
@@ -367,40 +373,13 @@ func (a *applierImpl) applyPolicyMode(ctx context.Context) error {
 
 		if tproxyOK {
 			log.L().Info("firewall: TPROXY режим (xt_TPROXY загружен)")
-			// Реальный TPROXY: цепочка в mangle, сохраняет оригинальный src/dst.
-			if err := a.ipt.EnsureChain(ctx, "mangle", modes.PolicyChainName); err != nil {
-				return err
-			}
-			if err := a.ensureLANBypass(ctx, "mangle", modes.PolicyChainName); err != nil {
-				return err
-			}
-			if err := a.ensureAdminPortsBypass(ctx, "mangle", modes.PolicyChainName); err != nil {
-				return err
-			}
-			for _, spec := range modes.PolicyTProxyRulesReal(a.cfg.PolicyMark, a.cfg.FWMark, a.cfg.Port) {
-				if err := a.ipt.EnsureRule(ctx, spec.Table, spec.Chain, spec.Args...); err != nil {
-					return err
-				}
-			}
-			if err := EnsureLocalRoute(ctx, a.runner, a.cfg.Table); err != nil {
+			if err := a.applyPolicyTProxyReal(ctx); err != nil {
 				return err
 			}
 		} else {
 			log.L().Warn("firewall: xt_TPROXY недоступен, fallback на REDIRECT (TCP-only)")
-			// REDIRECT-mode: цепочка в nat, DNAT в local stack.
-			if err := a.ipt.EnsureChain(ctx, "nat", modes.PolicyChainName); err != nil {
+			if err := a.applyPolicyRedirect(ctx); err != nil {
 				return err
-			}
-			if err := a.ensureLANBypass(ctx, "nat", modes.PolicyChainName); err != nil {
-				return err
-			}
-			if err := a.ensureAdminPortsBypass(ctx, "nat", modes.PolicyChainName); err != nil {
-				return err
-			}
-			for _, spec := range modes.PolicyTProxyRules(a.cfg.PolicyMark, a.cfg.FWMark, a.cfg.Port) {
-				if err := a.ipt.EnsureRule(ctx, spec.Table, spec.Chain, spec.Args...); err != nil {
-					return err
-				}
 			}
 		}
 		// route_localnet необходим как для REDIRECT (martian-пакеты) так и для
@@ -420,28 +399,202 @@ func (a *applierImpl) applyPolicyMode(ctx context.Context) error {
 			}
 		}
 	} else {
-		// TUN-mode (legacy): цепочка в mangle, помечаем трафик fwmark
-		// для подъёма в таблицу через TUN.
-		if err := a.ipt.EnsureChain(ctx, "mangle", modes.PolicyChainName); err != nil {
+		// TUN-mode: цепочка signcraze_policy в mangle, помечаем трафик fwmark
+		// для подъёма в таблицу через TUN. DPI-цепочка signcraze_dpi_fwd
+		// обрабатывается в том же batch.
+		if err := a.applyPolicyTUNMode(ctx); err != nil {
 			return err
-		}
-		if err := a.ensureLANBypass(ctx, "mangle", modes.PolicyChainName); err != nil {
-			return err
-		}
-		if err := a.ensureAdminPortsBypass(ctx, "mangle", modes.PolicyChainName); err != nil {
-			return err
-		}
-		for _, spec := range modes.PolicyRules(a.cfg.PolicyMark, a.cfg.FWMark) {
-			if err := a.ipt.EnsureRule(ctx, spec.Table, spec.Chain, spec.Args...); err != nil {
-				return err
-			}
 		}
 	}
 
 	return nil
 }
 
+// applyPolicyTUNMode применяет правила для TUN-mode policy через batch.
+// Batch включает: signcraze_policy (mangle), filter FORWARD ACCEPT, DPI (если включено).
+// Bypass-правила вставляются через InsertRule(pos=1) ПОСЛЕ batch.
+func (a *applierImpl) applyPolicyTUNMode(ctx context.Context) error {
+	// Шаг 1: Pre-cleanup jumps из системных цепочек (до batch).
+	// DeleteJumpAll идемпотентен, использует 2-3 fork, но это раз за Apply.
+	if err := a.ipt.DeleteJumpAll(ctx, "mangle", "PREROUTING", modes.PolicyChainName); err != nil {
+		log.L().Warn("firewall: pre-cleanup PREROUTING jump", "err", err)
+	}
+	if a.cfg.DPIEnabled {
+		if err := a.ipt.DeleteJumpAll(ctx, "mangle", "FORWARD", modes.DPIForwardChainName); err != nil {
+			log.L().Warn("firewall: pre-cleanup FORWARD DPI jump", "err", err)
+		}
+	}
+
+	// Шаг 2: Собрать batch для mangle — signcraze_policy + DPI + FORWARD rules.
+	// Правила PolicyRules() включают PREROUTING jump и FORWARD TCPMSS/ACCEPT.
+	// Разделяем по таблицам: mangle и filter в отдельные batch'и.
+	var mangle, filter BatchBuilder
+
+	// mangle: signcraze_policy chain + все policy-правила + DPI
+	mangle.Table("mangle")
+	mangle.Chain(modes.PolicyChainName)
+	mangle.Flush(modes.PolicyChainName) // flush для идемпотентности
+
+	// Правила PolicyRules возвращают все правила для mangle и filter.
+	// Разбиваем по таблицам.
+	for _, spec := range modes.PolicyRules(a.cfg.PolicyMark, a.cfg.FWMark) {
+		if spec.Table == "mangle" {
+			mangle.Rule(spec.Chain, spec.Args...)
+		}
+		// filter-правила обработаем ниже
+	}
+
+	// DPI цепочка и правила в mangle FORWARD
+	if a.cfg.DPIEnabled {
+		mangle.Chain(modes.DPIForwardChainName)
+		mangle.Flush(modes.DPIForwardChainName)
+		for _, spec := range modes.DPIForwardRules(a.cfg.FWMark, a.cfg.NFQueueNum, a.cfg.WANIface, a.cfg.VPNExcludeIPs) {
+			if spec.Table == "mangle" {
+				mangle.Rule(spec.Chain, spec.Args...)
+			}
+		}
+	}
+	mangle.Commit()
+
+	// filter: FORWARD ACCEPT для signbox-tun (из PolicyRules)
+	filter.Table("filter")
+	for _, spec := range modes.PolicyRules(a.cfg.PolicyMark, a.cfg.FWMark) {
+		if spec.Table == "filter" {
+			filter.Rule(spec.Chain, spec.Args...)
+		}
+	}
+	filter.Commit()
+
+	// Шаг 3: Применить batch'и.
+	if err := a.ipt.RestoreBatch(ctx, mangle.Bytes()); err != nil {
+		return fmt.Errorf("firewall: policy mangle batch: %w", err)
+	}
+	if err := a.ipt.RestoreBatch(ctx, filter.Bytes()); err != nil {
+		return fmt.Errorf("firewall: policy filter batch: %w", err)
+	}
+
+	// Шаг 4: Bypass-правила вставить через InsertRule(pos=1) ПОСЛЕ batch.
+	// После -F цепочка пуста, InsertRule(1) добавляет правило в начало.
+	// Инвариант 2026-05-13: LOCAL bypass и AdminPorts bypass ОБЯЗАНЫ быть
+	// первыми в signcraze_policy (до MARK/TPROXY правил).
+	if err := a.ensureLANBypass(ctx, "mangle", modes.PolicyChainName); err != nil {
+		return err
+	}
+	if err := a.ensureAdminPortsBypass(ctx, "mangle", modes.PolicyChainName); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// applyPolicyTProxyReal применяет настоящие TPROXY правила (mangle + xt_TPROXY) через batch.
+func (a *applierImpl) applyPolicyTProxyReal(ctx context.Context) error {
+	// Pre-cleanup
+	if err := a.ipt.DeleteJumpAll(ctx, "mangle", "PREROUTING", modes.PolicyChainName); err != nil {
+		log.L().Warn("firewall: pre-cleanup mangle PREROUTING jump", "err", err)
+	}
+	if a.cfg.DPIEnabled {
+		if err := a.ipt.DeleteJumpAll(ctx, "mangle", "FORWARD", modes.DPIForwardChainName); err != nil {
+			log.L().Warn("firewall: pre-cleanup FORWARD DPI jump", "err", err)
+		}
+	}
+
+	var mangle BatchBuilder
+	mangle.Table("mangle")
+	mangle.Chain(modes.PolicyChainName)
+	mangle.Flush(modes.PolicyChainName)
+	for _, spec := range modes.PolicyTProxyRulesReal(a.cfg.PolicyMark, a.cfg.FWMark, a.cfg.Port) {
+		if spec.Table == "mangle" {
+			mangle.Rule(spec.Chain, spec.Args...)
+		}
+	}
+	if a.cfg.DPIEnabled {
+		mangle.Chain(modes.DPIForwardChainName)
+		mangle.Flush(modes.DPIForwardChainName)
+		for _, spec := range modes.DPIForwardRules(a.cfg.FWMark, a.cfg.NFQueueNum, a.cfg.WANIface, a.cfg.VPNExcludeIPs) {
+			if spec.Table == "mangle" {
+				mangle.Rule(spec.Chain, spec.Args...)
+			}
+		}
+	}
+	mangle.Commit()
+
+	if err := a.ipt.RestoreBatch(ctx, mangle.Bytes()); err != nil {
+		return fmt.Errorf("firewall: policy tproxy-real mangle batch: %w", err)
+	}
+	if err := EnsureLocalRoute(ctx, a.runner, a.cfg.Table); err != nil {
+		return err
+	}
+
+	// Bypass после batch
+	if err := a.ensureLANBypass(ctx, "mangle", modes.PolicyChainName); err != nil {
+		return err
+	}
+	if err := a.ensureAdminPortsBypass(ctx, "mangle", modes.PolicyChainName); err != nil {
+		return err
+	}
+	return nil
+}
+
+// applyPolicyRedirect применяет REDIRECT (DNAT) правила для fallback без xt_TPROXY через batch.
+func (a *applierImpl) applyPolicyRedirect(ctx context.Context) error {
+	// Pre-cleanup nat PREROUTING jump
+	if err := a.ipt.DeleteJumpAll(ctx, "nat", "PREROUTING", modes.PolicyChainName); err != nil {
+		log.L().Warn("firewall: pre-cleanup nat PREROUTING jump", "err", err)
+	}
+	if a.cfg.DPIEnabled {
+		if err := a.ipt.DeleteJumpAll(ctx, "mangle", "FORWARD", modes.DPIForwardChainName); err != nil {
+			log.L().Warn("firewall: pre-cleanup FORWARD DPI jump", "err", err)
+		}
+	}
+
+	var nat BatchBuilder
+	nat.Table("nat")
+	nat.Chain(modes.PolicyChainName)
+	nat.Flush(modes.PolicyChainName)
+	for _, spec := range modes.PolicyTProxyRules(a.cfg.PolicyMark, a.cfg.FWMark, a.cfg.Port) {
+		if spec.Table == "nat" {
+			nat.Rule(spec.Chain, spec.Args...)
+		}
+	}
+	nat.Commit()
+
+	if err := a.ipt.RestoreBatch(ctx, nat.Bytes()); err != nil {
+		return fmt.Errorf("firewall: policy redirect nat batch: %w", err)
+	}
+
+	// DPI в mangle (если включено)
+	if a.cfg.DPIEnabled {
+		var dpiMangle BatchBuilder
+		dpiMangle.Table("mangle")
+		dpiMangle.Chain(modes.DPIForwardChainName)
+		dpiMangle.Flush(modes.DPIForwardChainName)
+		for _, spec := range modes.DPIForwardRules(a.cfg.FWMark, a.cfg.NFQueueNum, a.cfg.WANIface, a.cfg.VPNExcludeIPs) {
+			if spec.Table == "mangle" {
+				dpiMangle.Rule(spec.Chain, spec.Args...)
+			}
+		}
+		dpiMangle.Commit()
+		if err := a.ipt.RestoreBatch(ctx, dpiMangle.Bytes()); err != nil {
+			return fmt.Errorf("firewall: policy redirect dpi mangle batch: %w", err)
+		}
+	}
+
+	// Bypass после batch
+	if err := a.ensureLANBypass(ctx, "nat", modes.PolicyChainName); err != nil {
+		return err
+	}
+	if err := a.ensureAdminPortsBypass(ctx, "nat", modes.PolicyChainName); err != nil {
+		return err
+	}
+	return nil
+}
+
 // applyFullMode — legacy-режим: ipset/fwmark/signcraze chains (бывший hybrid).
+//
+// Правила цепочек sign-craze применяются через iptables-restore --noflush batch.
+// ipset-операции и ip rule остаются per-command (не поддерживают restore-формат).
+// Bypass-правила (AdminPorts, Excludes) вставляются через InsertRule(pos=1) ПОСЛЕ batch.
 func (a *applierImpl) applyFullMode(ctx context.Context) error {
 	// 1. Создать ipset-наборы (включая signcraze_excludes).
 	if err := a.ipset.EnsureSet(ctx, string(types.IPSetIPv4), "hash:net", "inet"); err != nil {
@@ -466,14 +619,51 @@ func (a *applierImpl) applyFullMode(ctx context.Context) error {
 		return err
 	}
 
-	// 3. Создать цепочки в mangle (signcraze_ports добавлена для port-based маркировки).
-	for _, chain := range []string{"signcraze", "signcraze_full", "signcraze_dpi", "signcraze_ports"} {
-		if err := a.ipt.EnsureChain(ctx, "mangle", chain); err != nil {
-			return err
+	// 3. Pre-cleanup jumps из системных цепочек (до batch).
+	for _, target := range []string{"signcraze_dpi", "signcraze_ports", "signcraze"} {
+		if err := a.ipt.DeleteJumpAll(ctx, "mangle", "PREROUTING", target); err != nil {
+			log.L().Warn("firewall: full-mode pre-cleanup PREROUTING jump", "target", target, "err", err)
 		}
 	}
 
-	// 4. RETURN-bypass правила должны идти ПЕРЕД mark-правилами в цепочке.
+	// 4. Собрать batch для mangle: все sign-craze цепочки + правила.
+	// Порядок цепочек соответствует порядку jump-правил PREROUTING:
+	// signcraze_dpi (DPI/NFQUEUE) → signcraze (MARK по ipset) → signcraze_ports (port mark).
+	var ruleSpecs []modes.RuleSpec
+	if a.cfg.DPIEnabled {
+		ruleSpecs = modes.HybridRules(a.cfg.FWMark, a.cfg.NFQueueNum)
+	} else {
+		ruleSpecs = modes.TProxyRules(a.cfg.FWMark)
+	}
+	portSpecs := modes.PortRules(a.cfg.Ports, a.cfg.FWMark)
+
+	var mangle BatchBuilder
+	mangle.Table("mangle")
+	// Объявляем все sign-craze цепочки в mangle + flush для идемпотентности.
+	for _, chain := range []string{"signcraze", "signcraze_full", "signcraze_dpi", "signcraze_ports"} {
+		mangle.Chain(chain)
+		mangle.Flush(chain)
+	}
+	// Добавляем правила режима (MARK по ipset / NFQUEUE).
+	for _, spec := range ruleSpecs {
+		if spec.Table == "mangle" {
+			mangle.Rule(spec.Chain, spec.Args...)
+		}
+	}
+	// Добавляем port-based правила.
+	for _, spec := range portSpecs {
+		if spec.Table == "mangle" {
+			mangle.Rule(spec.Chain, spec.Args...)
+		}
+	}
+	mangle.Commit()
+
+	if err := a.ipt.RestoreBatch(ctx, mangle.Bytes()); err != nil {
+		return fmt.Errorf("firewall: full mangle batch: %w", err)
+	}
+
+	// 5. Bypass-правила вставить через InsertRule(pos=1) ПОСЛЕ batch.
+	// RETURN-bypass должны идти ПЕРЕД mark-правилами (safety-fixes #1).
 	for _, spec := range modes.AdminPortsBypassRules(a.cfg.AdminPorts) {
 		if err := a.ipt.InsertRule(ctx, spec.Table, spec.Chain, 1, spec.Args...); err != nil {
 			return err
@@ -487,26 +677,6 @@ func (a *applierImpl) applyFullMode(ctx context.Context) error {
 		}
 	}
 
-	// 5. Правила режима: MARK по ipset + опц. NFQUEUE (DPIEnabled).
-	var ruleSpecs []modes.RuleSpec
-	if a.cfg.DPIEnabled {
-		ruleSpecs = modes.HybridRules(a.cfg.FWMark, a.cfg.NFQueueNum)
-	} else {
-		ruleSpecs = modes.TProxyRules(a.cfg.FWMark)
-	}
-	for _, spec := range ruleSpecs {
-		if err := a.ipt.EnsureRule(ctx, spec.Table, spec.Chain, spec.Args...); err != nil {
-			return err
-		}
-	}
-
-	// 6. Port-based маркировка (signcraze_ports).
-	for _, spec := range modes.PortRules(a.cfg.Ports, a.cfg.FWMark) {
-		if err := a.ipt.EnsureRule(ctx, spec.Table, spec.Chain, spec.Args...); err != nil {
-			return err
-		}
-	}
-
 	return nil
 }
 
@@ -516,6 +686,12 @@ func (a *applierImpl) applyFullMode(ctx context.Context) error {
 // для signbox-tun через несколько часов после `--start`.
 func (a *applierImpl) Reconcile(ctx context.Context, mode types.Mode) error {
 	return a.applyInternal(ctx, mode)
+}
+
+// InvalidateWANCache сбрасывает кешированное имя WAN-интерфейса.
+// После вызова следующий applyInternal выполнит DetectWANIface заново.
+func (a *applierImpl) InvalidateWANCache() {
+	a.cachedWANIface = ""
 }
 
 // AttachTUN ждёт появления TUN-интерфейса (созданного sing-box) и устанавливает

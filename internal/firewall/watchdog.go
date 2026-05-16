@@ -2,8 +2,10 @@ package firewall
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	"github.com/kittylabassistant/sign-craze/internal/firewall/modes"
 	"github.com/kittylabassistant/sign-craze/internal/log"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
@@ -72,6 +74,22 @@ func (w *Watchdog) Run(ctx context.Context) {
 	}
 }
 
+// CriticalRulesConfig содержит параметры для CheckCriticalRules.
+// Позволяет проверять дополнительные правила в зависимости от конфигурации.
+type CriticalRulesConfig struct {
+	// UseTProxy=false → режим REDIRECT (nat PREROUTING); =true → mangle PREROUTING.
+	UseTProxy bool
+	// TProxyKernelOK=true → реальный TPROXY (mangle); =false → REDIRECT (nat).
+	TProxyKernelOK bool
+	// DPIEnabled=true → проверять mangle/FORWARD -j signcraze_dpi_fwd.
+	DPIEnabled bool
+	// WANIface — Linux-имя WAN для фильтра -o в DPI jump-правиле.
+	// Если пустое — jump проверяется без -o фильтра (back-compat).
+	WANIface string
+	// FWMark — собственный mark sign-craze (0x53) для DPI jump фильтра ! --mark.
+	FWMark uint32
+}
+
 // CheckCriticalRules проверяет наличие критичных правил в текущей таблице
 // iptables. Возвращает список отсутствующих описаний для diagnostics/logs.
 //
@@ -81,10 +99,21 @@ func (w *Watchdog) Run(ctx context.Context) {
 //  2. filter/FORWARD -i signbox-tun -j ACCEPT — обратное направление.
 //  3. mangle/PREROUTING -j signcraze_policy (или signcraze_full) — без jump
 //     наша цепочка не вызывается, mark не выставляется.
+//     Для ModePolicy+REDIRECT: nat/PREROUTING -j signcraze_policy.
+//  4. (DPIEnabled=true) mangle/FORWARD -j signcraze_dpi_fwd — без jump DPI
+//     не работает для LAN-устройств без VPN-policy.
 //
 // keenMark > 0 → также проверить mangle/signcraze_policy MARK rule.
 // Если все правила на месте — возвращается nil/пустой slice.
-func (t *IPTables) CheckCriticalRules(ctx context.Context, mode types.Mode, keenMark uint32) []string {
+//
+// Параметр cfg опционален (nil → использовать defaults: TProxy=false,
+// DPI=false). Метод сохраняет обратную совместимость для тестов без cfg.
+func (t *IPTables) CheckCriticalRules(ctx context.Context, mode types.Mode, keenMark uint32, cfg ...*CriticalRulesConfig) []string {
+	var ccfg CriticalRulesConfig
+	if len(cfg) > 0 && cfg[0] != nil {
+		ccfg = *cfg[0]
+	}
+
 	var missing []string
 
 	check := func(table, chain string, args ...string) bool {
@@ -102,8 +131,30 @@ func (t *IPTables) CheckCriticalRules(ctx context.Context, mode types.Mode, keen
 
 	switch mode {
 	case types.ModePolicy:
-		if !check("mangle", "PREROUTING", "-j", "signcraze_policy") {
-			missing = append(missing, "PREROUTING -j signcraze_policy")
+		// ModePolicy+UseTProxy=true → реальный TPROXY (mangle) или REDIRECT (nat).
+		// ModePolicy+UseTProxy=false → TUN-mode через mangle mark.
+		if ccfg.UseTProxy && !ccfg.TProxyKernelOK {
+			// REDIRECT-mode: jump в nat PREROUTING.
+			if !check("nat", "PREROUTING", "-j", modes.PolicyChainName) {
+				missing = append(missing, "nat/PREROUTING -j signcraze_policy (REDIRECT)")
+			}
+		} else {
+			// TUN-mode или реальный TPROXY: jump в mangle PREROUTING.
+			if !check("mangle", "PREROUTING", "-j", modes.PolicyChainName) {
+				missing = append(missing, "mangle/PREROUTING -j signcraze_policy")
+			}
+		}
+		// DPI forward chain: обязателен когда DPIEnabled=true.
+		if ccfg.DPIEnabled {
+			var dpiArgs []string
+			if ccfg.WANIface != "" {
+				dpiArgs = append(dpiArgs, "-o", ccfg.WANIface)
+			}
+			mark := fmt.Sprintf("0x%x", ccfg.FWMark)
+			dpiArgs = append(dpiArgs, "-m", "mark", "!", "--mark", mark, "-j", modes.DPIForwardChainName)
+			if !check("mangle", "FORWARD", dpiArgs...) {
+				missing = append(missing, "mangle/FORWARD -j signcraze_dpi_fwd")
+			}
 		}
 	case types.ModeFull:
 		if !check("mangle", "PREROUTING", "-j", "signcraze") {

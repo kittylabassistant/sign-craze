@@ -48,16 +48,76 @@ func TestReadPID_InvalidContent(t *testing.T) {
 	}
 }
 
+// selfComm читает comm-имя текущего процесса из /proc/self/comm.
+func selfComm(t *testing.T) string {
+	t.Helper()
+	data, err := os.ReadFile("/proc/self/comm")
+	if err != nil {
+		t.Fatalf("не удалось прочитать /proc/self/comm: %v", err)
+	}
+	return strings.TrimRight(string(data), "\n")
+}
+
 func TestProcessAlive_CurrentProcess(t *testing.T) {
-	if !processAlive(os.Getpid()) {
-		t.Error("текущий процесс должен быть alive")
+	comm := selfComm(t)
+	if !processAlive(os.Getpid(), comm) {
+		t.Errorf("текущий процесс должен быть alive (comm=%q)", comm)
 	}
 }
 
 func TestProcessAlive_DeadPID(t *testing.T) {
 	// PID 99999999 почти наверняка не существует
-	if processAlive(99999999) {
+	if processAlive(99999999, "anything") {
 		t.Skip("PID 99999999 неожиданно существует — пропускаем тест")
+	}
+}
+
+// --- тесты processAlive с comm-проверкой (Task B) ---
+
+// fakeCommReader позволяет подменить чтение /proc/<pid>/comm в тестах.
+type fakeCommReader struct {
+	comm string
+	err  error
+}
+
+func (f fakeCommReader) readComm(_ int) (string, error) {
+	return f.comm, f.err
+}
+
+func TestProcessAlive_LiveCorrectComm(t *testing.T) {
+	comm := selfComm(t)
+	pid := os.Getpid()
+	if !processAliveWith(pid, comm, fakeCommReader{comm: comm}) {
+		t.Error("processAlive должен вернуть true для живого процесса с правильным comm")
+	}
+}
+
+func TestProcessAlive_LiveWrongComm(t *testing.T) {
+	// симулируем PID-reuse: pid существует, но comm — чужой процесс
+	pid := os.Getpid()
+	if processAliveWith(pid, "sing-box", fakeCommReader{comm: "nginx"}) {
+		t.Error("processAlive должен вернуть false при несовпадении comm (PID-reuse)")
+	}
+}
+
+func TestProcessAlive_DeadCommReadError(t *testing.T) {
+	// /proc/<pid>/comm недоступен — процесс умер между шагами status и comm
+	pid := os.Getpid()
+	cr := fakeCommReader{err: os.ErrNotExist}
+	if processAliveWith(pid, "sing-box", cr) {
+		t.Error("processAlive должен вернуть false если /proc/<pid>/comm недоступен")
+	}
+}
+
+func TestProcessAlive_Truncated15ByteComm(t *testing.T) {
+	// ядро обрезает comm до 15 байт; "sing-box-extra-l" -> "sing-box-extra-"
+	pid := os.Getpid()
+	// expectedName длиннее 15 байт — обрезается одинаково с comm
+	longName := "sing-box-extra-long"
+	truncated := "sing-box-extra-" // 15 байт
+	cr := fakeCommReader{comm: truncated}
+	if !processAliveWith(pid, longName, cr) {
+		t.Error("processAlive должен совпадать по первым 15 байтам")
 	}
 }
 
@@ -141,7 +201,7 @@ func TestLifecycle_StartStop(t *testing.T) {
 	// даём процессу умереть
 	time.Sleep(200 * time.Millisecond)
 
-	if processAlive(pid) {
+	if processAlive(pid, "sleep") {
 		t.Errorf("процесс %d всё ещё жив после Stop", pid)
 	}
 }

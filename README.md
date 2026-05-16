@@ -356,6 +356,33 @@ internal/cli  (диспетчер команд)
 /opt/var/lock/sign-craze.lock             — эксклюзивная блокировка
 ```
 
+## Verifying the release
+
+Релизные артефакты подписаны через [Sigstore](https://sigstore.dev/) (keyless OIDC) и
+аттестованы через SLSA build provenance. Проверка не требует отдельного ключа.
+
+```bash
+# 1. Скачать артефакты нужной архитектуры
+gh release download v1.2.3 -p 'sign-craze-mipsle' -p 'sign-craze-mipsle.sig' \
+  -p 'sign-craze-mipsle.pem' -p 'sha256sums.txt'
+
+# 2. Проверить SHA-256 целостность
+sha256sum -c sha256sums.txt --ignore-missing
+
+# 3. Проверить cosign-подпись (подлинность через Sigstore OIDC)
+cosign verify-blob \
+  --certificate sign-craze-mipsle.pem \
+  --signature sign-craze-mipsle.sig \
+  --certificate-identity-regexp 'https://github\.com/kittylabassistant/sign-craze/\.github/workflows/release\.yml@.*' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  sign-craze-mipsle
+
+# 4. Проверить SLSA provenance
+gh attestation verify sign-craze-mipsle --repo kittylabassistant/sign-craze
+```
+
+Замените `mipsle` на нужную архитектуру: `arm64`, `arm7`, `mips`.
+
 ## Контакты
 
 - E-Mail: [kittylabassistant@protonmail.com](mailto:kittylabassistant@protonmail.com)

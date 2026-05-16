@@ -8,6 +8,24 @@ import (
 	"strings"
 )
 
+// embedCacheMiddleware ставит Cache-Control заголовки для статических ресурсов:
+//   - /assets/* и /_nuxt/* → "public, max-age=31536000, immutable" (хешированные бандлы)
+//   - /index.html (и SPA-fallback /) → "no-cache" (точка входа, всегда проверять)
+//
+// Прочие пути — без Cache-Control (браузерный default).
+func embedCacheMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := r.URL.Path
+		switch {
+		case strings.HasPrefix(p, "/assets/") || strings.HasPrefix(p, "/_nuxt/"):
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		case p == "/" || p == "/index.html":
+			w.Header().Set("Cache-Control", "no-cache")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // assets содержит встроенный Zashboard (git submodule).
 // Для инициализации submodule: git submodule update --init internal/web/assets/zashboard
 //
@@ -37,10 +55,11 @@ type spaHandler struct {
 
 func newSPAHandler() http.Handler {
 	fsys := zashboardFS()
-	return &spaHandler{
+	spa := &spaHandler{
 		fs:   fsys,
 		file: http.FileServer(http.FS(fsys)),
 	}
+	return embedCacheMiddleware(spa)
 }
 
 func (h *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {

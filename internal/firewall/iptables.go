@@ -11,6 +11,52 @@ import (
 	"github.com/kittylabassistant/sign-craze/internal/log"
 )
 
+// BatchBuilder собирает дамп в формате iptables-save для передачи в iptables-restore.
+// Методы возвращают *BatchBuilder для цепочек вызовов. Не потокобезопасен.
+type BatchBuilder struct {
+	buf bytes.Buffer
+}
+
+// Table начинает секцию таблицы (например "filter", "mangle", "nat").
+// Эквивалентно строке "*table" в формате iptables-save.
+func (b *BatchBuilder) Table(name string) *BatchBuilder {
+	fmt.Fprintf(&b.buf, "*%s\n", name)
+	return b
+}
+
+// Chain объявляет цепочку без политики по умолчанию (пользовательская цепочка).
+// Эквивалентно ":CHAIN - [0:0]".
+func (b *BatchBuilder) Chain(name string) *BatchBuilder {
+	fmt.Fprintf(&b.buf, ":%s - [0:0]\n", name)
+	return b
+}
+
+// Rule добавляет правило в цепочку.
+// Эквивалентно "-A chain args...".
+func (b *BatchBuilder) Rule(chain string, args ...string) *BatchBuilder {
+	fmt.Fprintf(&b.buf, "-A %s %s\n", chain, strings.Join(args, " "))
+	return b
+}
+
+// Flush добавляет команду сброса цепочки (-F chain).
+// Используется перед refill цепочки для идемпотентного Apply:
+// flush очищает предыдущие правила sign-craze не затрагивая другие цепочки.
+func (b *BatchBuilder) Flush(chain string) *BatchBuilder {
+	fmt.Fprintf(&b.buf, "-F %s\n", chain)
+	return b
+}
+
+// Commit завершает секцию таблицы строкой COMMIT.
+func (b *BatchBuilder) Commit() *BatchBuilder {
+	b.buf.WriteString("COMMIT\n")
+	return b
+}
+
+// Bytes возвращает собранный дамп.
+func (b *BatchBuilder) Bytes() []byte {
+	return b.buf.Bytes()
+}
+
 // maxIptablesOutputLine — лимит на одну строку iptables -S при сканировании.
 // Защита от raw-output > 256KB, который мог бы исчерпать RAM на 128MB роутере.
 const maxIptablesOutputLine = 256 * 1024
@@ -111,6 +157,31 @@ func (t *IPTables) FlushAndDeleteChain(ctx context.Context, table, chain string)
 	if _, err := t.runner.Run(ctx, "iptables", "-t", table, "-X", chain); err != nil {
 		return fmt.Errorf("firewall: удаление цепочки %s/%s: %w", table, chain, err)
 	}
+	return nil
+}
+
+// RestoreBatch выполняет iptables-restore --noflush с подготовленным дампом.
+// dump в формате iptables-save: *table / правила / COMMIT.
+// --noflush: существующие правила НЕ сбрасываются, только добавляются новые.
+// --wait 2: таймаут захвата xtables lock (busybox iptables может удерживать
+// lock дольше 1s при высокой нагрузке на slow MIPS softfloat).
+//
+// Аналогично IPSet.AtomicReplace: один subprocess вместо N forkexec.
+// На slow MIPS softfloat один iptables fork ≈ 20-50ms, batch из 12 правил
+// экономит ≈ 500ms на цикл Reconcile.
+//
+// Если runner не реализует StdinRunner — fallback с ошибкой (вызывающая
+// сторона обязана убедиться что runner поддерживает stdin, или использовать
+// поштучный EnsureRule).
+func (t *IPTables) RestoreBatch(ctx context.Context, dump []byte) error {
+	sr, ok := t.runner.(exectx.StdinRunner)
+	if !ok {
+		return fmt.Errorf("firewall: runner не поддерживает StdinRunner (RestoreBatch требует StdinRunner)")
+	}
+	if _, err := sr.RunWithStdin(ctx, bytes.NewReader(dump), "iptables-restore", "--noflush", "--wait", "2"); err != nil {
+		return fmt.Errorf("firewall: iptables-restore batch: %w", err)
+	}
+	log.L().Debug("firewall: iptables-restore batch выполнен", "bytes", len(dump))
 	return nil
 }
 

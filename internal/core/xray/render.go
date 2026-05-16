@@ -27,6 +27,11 @@ type ConfigParams struct {
 	// RuleSets с префиксом geosite-/geoip- переводятся в matchers,
 	// без префикса — игнорируются с warning.
 	RoutingConfig *types.RoutingConfig
+	// GeoAssetsDir — директория с geosite.dat и geoip.dat для xray.
+	// Если пустой — используется DefaultConfigDir + "/assets".
+	// При рендере rules с geosite:/geoip: matcher'ами проверяется наличие .dat файлов;
+	// при отсутствии Render возвращает ошибку с подсказкой --update-geo --core xray.
+	GeoAssetsDir string
 }
 
 // DefaultConfigParams возвращает параметры по умолчанию.
@@ -118,10 +123,17 @@ func Render(p ConfigParams) ([]byte, error) {
 	// Если Final пустой — добавляем fallback catch-all (xray без catch-all
 	// просто дропает не совпавший трафик; для tproxy режима это означает
 	// потерю трафика, поэтому всегда обеспечиваем default route).
+	// GeoAssetsDir пустой по умолчанию — отключает проверку наличия
+	// geosite.dat/geoip.dat. Production callers (cmd_lifecycle.doStart) обязаны
+	// проставлять его явно. Preview/Web Validator передают "" чтобы не падать
+	// в окружении без скачанных DAT-файлов.
 	var routingRules []any
 	finalSet := false
 	if p.RoutingConfig != nil && (len(p.RoutingConfig.Rules) > 0 || p.RoutingConfig.Final != "") {
-		translated, _ := renderXrayRoutingRules(p.RoutingConfig)
+		translated, _, err := renderXrayRoutingRules(p.RoutingConfig, p.GeoAssetsDir)
+		if err != nil {
+			return nil, err
+		}
 		for _, r := range translated {
 			routingRules = append(routingRules, r)
 		}
@@ -149,7 +161,9 @@ func Render(p ConfigParams) ([]byte, error) {
 		Routing:   routing,
 	}
 
-	data, err := json.MarshalIndent(cfg, "", "  ")
+	// json.Marshal (compact) вместо MarshalIndent: xray принимает compact JSON,
+	// экономия ~15-20% CPU на MIPS softfloat при рендере.
+	data, err := json.Marshal(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("xray render: %w", err)
 	}

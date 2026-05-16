@@ -3,6 +3,7 @@ package firewall
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 
@@ -19,6 +20,10 @@ func init() {
 // autoRunner записывает вызовы и возвращает разумные ответы по умолчанию.
 // -C → ошибка (правило не найдено), ipset list → ошибка (нет набора),
 // ip rule show / ip route show → пустой вывод, всё остальное → успех.
+//
+// Реализует StdinRunner: RunWithStdin парсит batch-дамп iptables-restore
+// и записывает эквивалентные вызовы в r.calls, чтобы тесты проверяли
+// содержимое batch так же, как раньше проверяли per-rule вызовы.
 //
 // override (опционально) перехватывает вызов до дефолтной логики:
 // возвращает (Result, true) для матчей, (_, false) для пропуска.
@@ -62,6 +67,57 @@ func (r *autoRunner) Run(ctx context.Context, name string, args ...string) (exec
 	default:
 		return exectx.Result{ExitCode: 0}, nil
 	}
+}
+
+// RunWithStdin реализует StdinRunner для тестов batch-режима.
+// Парсит дамп iptables-restore (формат iptables-save) и записывает
+// эквивалентные вызовы iptables в r.calls, сохраняя порядок строк.
+//
+// Преобразование:
+//   - "*table"       → нет вызова (только обновляет текущую таблицу)
+//   - ":chain - ..." → "iptables -t TABLE -N chain" (объявление цепочки)
+//   - "-F chain"     → "iptables -t TABLE -F chain"
+//   - "-A chain ..." → "iptables -t TABLE -A chain ..."
+//   - "COMMIT"       → нет вызова
+func (r *autoRunner) RunWithStdin(ctx context.Context, stdin io.Reader, name string, args ...string) (exectx.Result, error) {
+	data, err := io.ReadAll(stdin)
+	if err != nil {
+		return exectx.Result{ExitCode: 1}, err
+	}
+	currentTable := ""
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || line == "COMMIT" {
+			continue
+		}
+		if strings.HasPrefix(line, "*") {
+			currentTable = line[1:]
+			continue
+		}
+		if strings.HasPrefix(line, ":") {
+			// ":chain - [0:0]" → объявление цепочки
+			parts := strings.Fields(line[1:])
+			if len(parts) > 0 {
+				chainName := parts[0]
+				key := strings.TrimSpace("iptables -t " + currentTable + " -N " + chainName)
+				r.calls = append(r.calls, key)
+			}
+			continue
+		}
+		if strings.HasPrefix(line, "-F ") {
+			// "-F chainname" → flush
+			rest := line[3:]
+			key := strings.TrimSpace("iptables -t " + currentTable + " -F " + rest)
+			r.calls = append(r.calls, key)
+			continue
+		}
+		if strings.HasPrefix(line, "-A ") || strings.HasPrefix(line, "-I ") {
+			key := strings.TrimSpace("iptables -t " + currentTable + " " + line)
+			r.calls = append(r.calls, key)
+			continue
+		}
+	}
+	return exectx.Result{ExitCode: 0}, nil
 }
 
 func (r *autoRunner) hasCall(prefix string) bool {
@@ -267,6 +323,10 @@ func (s *seedRunner) Run(ctx context.Context, name string, args ...string) (exec
 	return s.autoRunner.Run(ctx, name, args...)
 }
 
+func (s *seedRunner) RunWithStdin(ctx context.Context, stdin io.Reader, name string, args ...string) (exectx.Result, error) {
+	return s.autoRunner.RunWithStdin(ctx, stdin, name, args...)
+}
+
 func TestApplier_Apply_Policy_LocalAndAdminBypass(t *testing.T) {
 	r := &autoRunner{}
 	cfg := DefaultConfig()
@@ -288,6 +348,67 @@ func TestApplier_Apply_Policy_LocalAndAdminBypass(t *testing.T) {
 	// Admin-port bypass для порта 22 TCP.
 	if !r.hasCall("iptables -t mangle -I signcraze_policy 1 -p tcp --dport 22 -j RETURN") {
 		t.Error("admin port 22 TCP bypass не вставлен в signcraze_policy")
+	}
+}
+
+// TestApplier_Apply_Policy_BypassBeforeTProxy — инвариант 2026-05-13:
+// LOCAL bypass (-d LAN_IP -j RETURN) и admin-port bypass (--dport N -j RETURN)
+// ОБЯЗАНЫ появляться в recorded calls ДО первого TPROXY- или REDIRECT-правила.
+// Нарушение: SSH-трафик с пометкой Keenetic-policy попадает в sing-box → SSH виснет.
+func TestApplier_Apply_Policy_BypassBeforeTProxy(t *testing.T) {
+	r := &autoRunner{}
+	cfg := DefaultConfig()
+	cfg.PolicyMark = 0xffffaab
+	cfg.AdminPorts = []uint16{22, 222, 80, 443}
+	cfg.LANAddrs = []string{"172.16.0.1"}
+	a := NewApplier(r, cfg)
+	if err := a.Apply(context.Background(), types.ModePolicy); err != nil {
+		t.Fatalf("Apply(policy): %v", err)
+	}
+
+	// Находим индекс первого вызова с -j RETURN (bypass) и
+	// первого с -j TPROXY / -j REDIRECT (перенаправление в sing-box).
+	firstReturnIdx := -1
+	firstTProxyOrRedirectIdx := -1
+	for i, call := range r.calls {
+		if strings.Contains(call, "-j RETURN") && firstReturnIdx == -1 {
+			firstReturnIdx = i
+		}
+		if (strings.Contains(call, "-j TPROXY") || strings.Contains(call, "-j REDIRECT")) &&
+			firstTProxyOrRedirectIdx == -1 {
+			firstTProxyOrRedirectIdx = i
+		}
+	}
+
+	if firstReturnIdx == -1 {
+		t.Fatal("ни одного -j RETURN вызова не зафиксировано — bypass не вставлен")
+	}
+	// Если TPROXY/REDIRECT тоже не появились — режим не добавляет их (TUN-mode),
+	// но bypass всё равно должен быть первее всех policy-forward правил.
+	if firstTProxyOrRedirectIdx != -1 && firstReturnIdx > firstTProxyOrRedirectIdx {
+		t.Errorf(
+			"bypass (-j RETURN, idx=%d) вставлен ПОСЛЕ -j TPROXY/REDIRECT (idx=%d): "+
+				"SSH-трафик попадёт в sing-box до RETURN-правила (инцидент 2026-05-13)",
+			firstReturnIdx, firstTProxyOrRedirectIdx,
+		)
+	}
+
+	// Дополнительно: обе категории bypass присутствуют.
+	hasLANBypass := false
+	hasAdminBypass := false
+	for _, call := range r.calls {
+		if strings.Contains(call, "-d 172.16.0.1") && strings.Contains(call, "-j RETURN") {
+			hasLANBypass = true
+		}
+		if strings.Contains(call, "--dport 22") && strings.Contains(call, "-j RETURN") {
+			hasAdminBypass = true
+		}
+	}
+	if !hasLANBypass {
+		t.Error("LOCAL bypass -d 172.16.0.1 -j RETURN отсутствует")
+	}
+	if !hasAdminBypass {
+		t.Error("admin-port bypass --dport 22 -j RETURN отсутствует")
 	}
 }
 

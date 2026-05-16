@@ -98,12 +98,13 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	registerAdminRoutes(adminMux, s)
 
 	s.admin = &http.Server{
-		Addr:           joinHostPort(cfg.ListenHost, "9091"),
-		Handler:        recoverMiddleware(securityHeadersAdmin(adminMux)),
-		ReadTimeout:    15 * time.Second,
-		WriteTimeout:   30 * time.Second,
-		IdleTimeout:    60 * time.Second,
-		MaxHeaderBytes: 8 * 1024,
+		Addr:              joinHostPort(cfg.ListenHost, "9091"),
+		Handler:           recoverMiddleware(securityHeadersAdmin(adminMux)),
+		ReadHeaderTimeout: 15 * time.Second, // защита от slowloris (симметрично zashboard)
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    8 * 1024,
 	}
 
 	if cfg.RoutingUIEnabled {

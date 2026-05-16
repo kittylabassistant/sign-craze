@@ -2,6 +2,8 @@ package xray
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -14,12 +16,25 @@ import (
 // fallback логики); xray.Render самостоятельно добавляет catch-all при пустом Final.
 func TranslateRoutingRules(rc *types.RoutingConfig, defaultTag string) ([]map[string]any, []string) {
 	_ = defaultTag // зарезервирован, см. комментарий
-	return renderXrayRoutingRules(rc)
+	// Validator в web layer: geo-check отключён (пустой geoAssetsDir).
+	// При geoAssetsDir="" renderXrayRoutingRules не делает os.Stat и всегда
+	// возвращает nil-ошибку — err обрабатываем для strictness.
+	rules, warnings, err := renderXrayRoutingRules(rc, "")
+	if err != nil {
+		// Не должно произойти при geoAssetsDir="": geo-check пропускается.
+		warnings = append(warnings, err.Error())
+	}
+	return rules, warnings
 }
 
 // renderXrayRoutingRules транслирует RoutingConfig.Rules в xray routing.rules.
 // Final → catch-all rule с inboundTag=tproxy-in в конце.
 // Catch-all fallback при пустом Final добавляется на уровне Render (не здесь).
+//
+// geoAssetsDir — директория с geosite.dat/geoip.dat. Если непустой и rule содержит
+// geosite:/geoip: matcher — проверяется наличие соответствующего .dat файла.
+// При отсутствии возвращается ошибка с подсказкой --update-geo --core xray.
+// Пустой geoAssetsDir отключает проверку (используется в web Validator).
 //
 // Translation map:
 //   - Domain/DomainSuffix/DomainKeyword/DomainRegex → domain[] с префиксами
@@ -39,11 +54,37 @@ func TranslateRoutingRules(rc *types.RoutingConfig, defaultTag string) ([]map[st
 //   - Action="sniff"/"resolve"/"hijack-dns"/"block" → пропускается с warning
 //     (xray делает sniff на уровне inbound, DNS — отдельный outbound type "dns")
 //
-// Возвращает: [rules, warnings]. Если rules пустой и Final пустой — caller должен
+// Возвращает: [rules, warnings, error]. Если rules пустой и Final пустой — caller должен
 // добавить fallback catch-all "tproxy-in → defaultTag" (так делает Render).
-func renderXrayRoutingRules(rc *types.RoutingConfig) ([]map[string]any, []string) {
+func renderXrayRoutingRules(rc *types.RoutingConfig, geoAssetsDir string) ([]map[string]any, []string, error) {
 	var rules []map[string]any
 	var warnings []string
+
+	// Проверяем наличие geo .dat файлов до генерации правил.
+	// Делается один раз для всей RoutingConfig, не per-rule.
+	if geoAssetsDir != "" {
+		needsGeosite, needsGeoip := false, false
+		for _, rr := range rc.Rules {
+			for _, tag := range rr.RuleSet {
+				if strings.HasPrefix(tag, "geosite-") {
+					needsGeosite = true
+				}
+				if strings.HasPrefix(tag, "geoip-") {
+					needsGeoip = true
+				}
+			}
+		}
+		if needsGeosite {
+			if _, statErr := os.Stat(filepath.Join(geoAssetsDir, "geosite.dat")); os.IsNotExist(statErr) {
+				return nil, nil, fmt.Errorf("geosite.dat отсутствует для xray; запустите --update-geo --core xray")
+			}
+		}
+		if needsGeoip {
+			if _, statErr := os.Stat(filepath.Join(geoAssetsDir, "geoip.dat")); os.IsNotExist(statErr) {
+				return nil, nil, fmt.Errorf("geoip.dat отсутствует для xray; запустите --update-geo --core xray")
+			}
+		}
+	}
 
 	for i, rr := range rc.Rules {
 		rendered, w := renderXrayRule(rr)
@@ -63,7 +104,7 @@ func renderXrayRoutingRules(rc *types.RoutingConfig) ([]map[string]any, []string
 		})
 	}
 
-	return rules, warnings
+	return rules, warnings, nil
 }
 
 // renderXrayRule транслирует одно правило. Возвращает map (или nil если правило

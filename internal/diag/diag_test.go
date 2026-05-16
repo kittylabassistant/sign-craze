@@ -1,7 +1,9 @@
 package diag
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -52,6 +54,40 @@ func TestCheckBinaryExecutable(t *testing.T) {
 	r = checkBinaryExecutable("test", notExe)(context.Background())
 	if r.Status != FAIL {
 		t.Errorf("Status = %s для не-исполняемого, ожидался FAIL", r.Status)
+	}
+}
+
+// TestResultJSON_ValidEncoding проверяет, что []Result корректно кодируется в JSON
+// и содержит ожидаемые поля name/status/detail (имитирует --diag --json).
+func TestResultJSON_ValidEncoding(t *testing.T) {
+	results := []Result{
+		{Name: "binary-self", Status: PASS, Detail: "/opt/sbin/sign-craze"},
+		{Name: "config-valid", Status: FAIL, Detail: "конфиг отсутствует"},
+	}
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(results); err != nil {
+		t.Fatalf("json.Encode: %v", err)
+	}
+
+	raw := buf.Bytes()
+	if !json.Valid(raw) {
+		t.Fatalf("невалидный JSON: %s", raw)
+	}
+
+	// Проверяем schema: хотя бы одна запись с полями name/status/detail
+	var decoded []map[string]string
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+	if len(decoded) == 0 {
+		t.Fatal("пустой массив в JSON")
+	}
+	first := decoded[0]
+	for _, field := range []string{"name", "status", "detail"} {
+		if _, ok := first[field]; !ok {
+			t.Errorf("поле %q отсутствует в JSON-записи: %v", field, first)
+		}
 	}
 }
 
