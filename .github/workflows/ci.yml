@@ -31,6 +31,10 @@ jobs:
   lint:
     name: lint
     runs-on: ubuntu-latest
+    env:
+      # Глушим внутренние Node.js DeprecationWarning'и (DEP0040 punycode,
+      # DEP0169 url.parse) из кода golangci-lint-action — не наш код.
+      NODE_OPTIONS: --no-deprecation
     steps:
       - uses: actions/checkout@v6
         with:
