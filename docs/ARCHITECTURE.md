@@ -37,6 +37,8 @@ singbox         dpi             firewall
 | Пакет | Роль |
 | ----- | ---- |
 | `internal/singbox` | загрузка, установка, генерация конфига, версия sing-box |
+| `internal/naiveproxy` | adapter naiveproxy: download/extract/install/lifecycle (supervised peer) |
+| `internal/peer` | supervised-peer scaffolding + mieru core + port allocator |
 | `internal/core` | registry + абстрактный интерфейс `Core`; регистрирует ядра: sing-box, xray, mihomo |
 | `internal/core/xray` | адаптер ядра xray; translation `RouteRule → xray rules[]`; `RuleSet` с префиксом `geosite-`/`geoip-` → matcher |
 | `internal/core/mihomo` | адаптер ядра mihomo; translation `RouteRule → TYPE,VALUE,ACTION`; `RuleSets` с `.mrs` URL → `rule-providers:` |
@@ -326,6 +328,68 @@ configParamsFromState(state):
 Миграция идемпотентна: повторный вызов ничего не меняет, если TUN-inbound уже удалён.
 
 Файл: `internal/cli/deps.go`
+
+## DPI chain в FORWARD (v1.1.0)
+
+NFQUEUE-цепочка `signcraze_dpi_fwd` живёт в `mangle FORWARD`, а не в `mangle POSTROUTING -o $WAN` как до v1.1.0. Это покрывает все LAN-устройства, а не только sing-box → VPS:
+
+- Jump из `FORWARD`: `-o $WAN_IFACE -m mark ! --mark 0x53 -j signcraze_dpi_fwd`
+- LAN policy-устройства перехватываются TPROXY до FORWARD → не попадают в DPI (трафик уже идёт через sing-box к VPS, desync ему не нужен).
+- LAN не-policy (TV, гости, IoT) идут через FORWARD → DPI → nfqws2 hostlist desync.
+- Self-traffic sing-box (`SO_MARK=0x53`) отсекается mark-фильтром.
+- Legacy `signcraze_policy_dpi` сохранён в коде только для cleanup при апгрейде с v1.0.x.
+
+Связанные файлы: `internal/firewall/modes/policy.go::DPIForwardChainName`, `applier.go::applyPolicyMode`, тесты `policy_dpi_test.go`.
+
+## SSH/admin bypass + NDM debounce (v1.1.1)
+
+Проблема: при policy с 10+ устройств Keenetic метил mark и пакетам с `dst=<LAN_IP>:222` — SSH к роутеру попадал в TPROXY, sing-box пытался дозвониться до LAN_IP как до remote, коннект виснул.
+
+Реализация:
+
+- **`LocalBypassRules`** + `ensureLANBypass`: правило `-d <LAN_IP> -j RETURN` на pos=1 в `signcraze_policy` (mangle TPROXY-real, nat REDIRECT, mangle TUN). LAN_IP автодетект через `netif.DetectLANAddr`.
+- **`AdminPortsBypassRulesForChain`**: defense-in-depth — bypass для портов 22/222 TCP+UDP. `AdminPortsBypassRules` → back-compat обёртка.
+- **`ndm.GetHostsWithPolicy`** + **`UnsetHostPolicy`**: `doUninstall` сначала отвязывает все хосты от policy через RCI, потом `DeletePolicy`. Reboot после `--uninstall` восстанавливает доступ без factory reset.
+- **netfilter.d hook**: `flock -x -n` + pending-маркер + trailing debounce. Пачка из 10 NDM-событий = 2 reapply (один сразу, один в конце пачки) вместо 10 параллельных fork/exec.
+
+## Supervised peers: naive/mieru (v1.3.0)
+
+Naive (`klzgrad/naiveproxy`) и mieru (`enfein/mieru`) — protocol-specific прокси, которые не нативны ни одному из встроенных ядер. Sign-craze запускает их как daemon, sing-box подключается через socks5-outbound:
+
+```
+LAN client → iptables (TPROXY/REDIRECT) → sing-box (socks5 outbound)
+                                              ↓
+                                         127.0.0.1:NaiveListenPort
+                                              ↓
+                                         naive daemon → upstream HTTPS
+```
+
+- URL-форматы: `naive+https://user:pass@host:port`, `naive+quic://...`, `mieru://`, `mierus://`.
+- Поддерживаемые архитектуры naive: arm64, arm7, mipsle (klzgrad публикует только LE; mips BE отклоняется при `--install`).
+- Mieru cross-build встроен в Makefile под все 4 архитектуры (`make mieru-mipsle` etc).
+- xray и mihomo явно reject naive+mieru с понятной ошибкой (см. `internal/core/{xray,mihomo}/validate.go`).
+- Жизненный цикл peer'ов привязан к sign-craze: `doStart` поднимает naive до sing-box, `doStop` опускает после; `internal/diag` включает health-check.
+
+Связанные файлы: `internal/naiveproxy/`, `internal/peer/`, ADR-0020-supervised-peer, ADR-0021-naiveproxy-process-chain.
+
+## Hardening (v1.4.0)
+
+Пост-аудитный hardening по 3 параллельным Explore-аудитам (firewall, cores, build/CI):
+
+- **iptables-restore batching**: `BatchBuilder` + `RestoreBatch` + `Flush` — собирает правила в один blob и применяет через `iptables-restore --noflush`. Сокращение fork/exec 24 → 3 на slow MIPS при `applyPolicy`/`applyFull`.
+- **WAN cache**: `WANIface` кэшируется, `InvalidateWANCache` при изменении сети. Watchdog tick больше не fork-ит `ip route` каждые 30s.
+- **Watchdog coverage**: REDIRECT (nat PREROUTING) и DPI FORWARD chain помимо TPROXY mangle.
+- **Reproducible builds**: `-buildid=` + `-trimpath` + `SOURCE_DATE_EPOCH` в release.yml. Артефакт байт-в-байт одинаковый при идентичном входе.
+- **Cosign keyless OIDC**: `.sig` + `.pem` рядом с каждым артефактом, идентичность подтверждается через GitHub OIDC issuer + workflow path.
+- **SLSA build provenance**: `actions/attest-build-provenance@v4` (после v1.4.1) — проверка через `gh attestation verify`.
+- **`bcrypt cost`**: build-tagged `auth_cost_lowmem.go` cost=10 для `GOARCH=mips/mipsle`; default cost=12. Login admin UI на slow MIPS: 6 c → 2 c.
+- **PID-файлы**: `atomicfs.WriteFileAtomic` + `processAlive` с match `/proc/<pid>/comm` (15-байтовый truncation учтён) → PID-reuse guard.
+- **`--diag --json`**: machine-parseable вывод для скриптов и мониторинга.
+- **WebSocket keepalive**: ping 30s (RFC 6455 §5.5.2) — соединения за NAT/UPnP не падают.
+- **Embed assets**: `Cache-Control: immutable` для статики, `no-cache` для index.html.
+- **xray geo guard**: early-check `geoip.dat`/`geosite.dat` с подсказкой `--update-geo --core xray`; `GeoAssetsDir=""` = skip для preview/Validator.
+- **SHA256 streaming в geo/srs**: OOM-guard для 30–100 MB `.srs`.
+- **Регрессии** (из `tasks/lessons.md`): `TestApplier_Apply_Policy_BypassBeforeTProxy`, `TestService_DefaultShimPath_IsS99`, `TestRender_Geosite_NoDat_ReturnsError`, `FuzzMieruWireProto`.
 
 ## Идентификаторы
 

@@ -24,7 +24,7 @@
 |-----------------------------|:----:|:-----------:|:------:|:------------:|-------------------------------------------------------------------------------------------------------------|
 | `internal/atomicfs`         | ✅   | ❌          | ❌      | ❌            | `atomicfs/atomicfs_test.go`                                                                                 |
 | `internal/backup`           | ✅   | ❌          | ❌      | ✅            | `backup/backup_test.go`, `backup/helper_test.go`                                                            |
-| `internal/cli`              | ✅   | ❌          | ❌      | ✅            | `cli/smoke_test.go`, `cli/dispatch_test.go`, `cli/cmd_reapply_test.go`                                      |
+| `internal/cli`              | ✅   | ❌          | ❌      | ✅            | `cli/smoke_test.go`, `cli/dispatch_test.go`, `cli/cmd_reapply_test.go`, `cli/color_test.go`                 |
 | `internal/diag`             | ✅   | ❌          | ⚠️      | ✅            | `diag/diag_test.go`                                                                                         |
 | `internal/dpi`              | ✅   | ❌          | ⚠️      | ✅            | `dpi/config_test.go`, `dpi/lifecycle_test.go`, `dpi/nfqueue_test.go`, `dpi/download_test.go`, `dpi/install_test.go`, `dpi/update_test.go` |
 | `internal/errors`           | ✅   | ❌          | ❌      | ❌            | `errors/errors_test.go`                                                                                     |
@@ -42,6 +42,8 @@
 | `internal/singbox`          | ✅   | ❌          | ⚠️      | ✅            | `singbox/{config,download,install,version}_test.go`                                                         |
 | `internal/state`            | ✅   | ❌          | ❌      | ❌            | `state/state_test.go`, `state/managers_test.go`, `state/cores_sync_test.go`                                 |
 | `internal/version`          | ✅   | ❌          | ❌      | ❌            | `version/version_test.go`                                                                                   |
+| `internal/naiveproxy`       | ✅   | ❌          | ⚠️      | ✅            | `naiveproxy/{config,download,extract,lifecycle,install}_test.go`                                            |
+| `internal/peer`             | ✅   | ❌          | ⚠️      | ✅            | `peer/{mieru_config,mieru_peer,portalloc}_test.go`                                                          |
 | `internal/web`              | ✅   | ❌          | ⚠️      | ✅            | `web/{api,auth,clash,server,ws}_test.go`, `web/routingui_multicore_test.go`                                 |
 
 **Легенда:** ✅ покрыто / ❌ не покрыто / ⚠️ частично (сценарий в test-roadmap, не автоматизирован)
@@ -175,6 +177,37 @@ go test -tags=integration -v -timeout 60s ./internal/firewall/...
 
 ---
 
+## 4г. Unit-тесты naive/peer (v1.3.0)
+
+**Файл:** `internal/naiveproxy/*_test.go`, `internal/peer/*_test.go`
+
+| Тест                                    | Что проверяет                                                               |
+|-----------------------------------------|-----------------------------------------------------------------------------|
+| `TestParseNaiveURL`                     | Парсинг proxy-URL naiveproxy: scheme, user:pass, host:port, edge cases      |
+| `TestPortAllocator_Reserve`             | port allocator резервирует уникальный порт, не выдаёт дубли                 |
+| `TestNaiveLifecycle_StartStop`          | Start запускает subprocess, Stop завершает его без утечки goroutine          |
+| `TestNaiveConfigRender`                 | Рендер конфига naiveproxy из шаблона: поля listen, proxy, log               |
+| `TestMieruConfigRender`                 | Рендер конфига mieru из шаблона: portBindings, protocol, encryption         |
+| `FuzzMieruWireProto`                    | Fuzz-тест wire-протокола mieru: 3 файла corpus в `internal/peer/testdata/fuzz/` |
+
+---
+
+## 4д. Регрессии и hardening-тесты (v1.4.0)
+
+**Файл:** `internal/firewall/applier_test.go`, `internal/service/lifecycle_test.go`, `internal/core/xray/render_test.go`
+
+| Тест                                             | Что проверяет                                                                                    |
+|--------------------------------------------------|--------------------------------------------------------------------------------------------------|
+| `TestApplier_Apply_Policy_BypassBeforeTProxy`    | Регрессия SSH hang 2026-05-13: bypass-правило (LAN_IP RETURN) стоит до TPROXY-jump в `signcraze_policy` |
+| `TestService_DefaultShimPath_IsS99`              | Путь init.d shim = `/opt/etc/init.d/S99signcraze` (расположен после S51dropbear)                |
+| `TestRender_Geosite_NoDat_ReturnsError`          | xray без `geosite.dat` возвращает ошибку с подсказкой `--update-geo --core xray`               |
+| `TestRender_Geoip_NoDat_ReturnsError`            | xray без `geoip.dat` возвращает ошибку с подсказкой `--update-geo --core xray`                 |
+| `TestRender_GeoAssets_DatPresent_OK`             | Успешный путь: оба dat-файла присутствуют → рендер без ошибок                                  |
+| `TestFilterUnreferencedRuleSets`                 | (skipped — fix отложен) фильтрация неиспользуемых rule-set из routing.json                     |
+| `FuzzMieruWireProto`                             | Fuzz-корпус: 3 файла в `internal/peer/testdata/fuzz/` — см. §4г                                |
+
+---
+
 ## 5. E2E на железе (Phase 9.8 — открыт)
 
 **Устройство:** Keenetic KN-1810, mipsle, GOMIPS=softfloat.
@@ -229,6 +262,16 @@ go test -tags=integration -v -timeout 60s ./internal/firewall/...
 - E2E на железе (Keenetic KN-1810): `scripts/e2e/run.sh` — оркестрованный прогон на устройстве
 - UPX-сжатие (только в `make release` / `release.yml` по тегу)
 
+### Release workflow (.github/workflows/release.yml)
+
+Запускается по тегу `v*`. Содержит этапы, не входящие в CI:
+
+| Этап                          | Инструмент / действие                                               | Описание                                                                        |
+|-------------------------------|---------------------------------------------------------------------|---------------------------------------------------------------------------------|
+| `cosign-sign`                 | `sigstore/cosign-installer` + keyless OIDC через GH Actions OIDC  | Подписывает бинари без долгоживущих ключей; верификация через `cosign verify`   |
+| `attest-build-provenance`     | `actions/attest-build-provenance@v4`                               | SLSA provenance attestation для каждого артефакта                               |
+| Reproducible builds           | `SOURCE_DATE_EPOCH`, `-buildid=`, `-trimpath`                       | Идентичный бинарь при повторной сборке из того же коммита                       |
+
 ---
 
 ## 7. Покрытие по фазам
@@ -247,6 +290,11 @@ go test -tags=integration -v -timeout 60s ./internal/firewall/...
 | Phase 9 — policy mode | 🚧 | `ndm/policy_test.go`, `ndm/wan_test.go` — unit. **E2E hardware: ❌** |
 | v0.8.0 — DPI update + policy-DPI rules + reapply throttle | ✅ | `dpi/update_test.go` (5 unit), `firewall/modes/policy_dpi_test.go` (5 unit), `cli/cmd_reapply_test.go` (4 unit) — все pass |
 | v1.0.0 — unified multi-core routing | ✅ | `web/routingui_multicore_test.go` (e2e), `state/cores_sync_test.go` (unit) — см. §4в |
+| v1.1.0 — DPI FORWARD chain + routing UI presets AS-IS/TO-BE | ✅ | `firewall/modes/policy_dpi_test.go` (переписан под FORWARD + `! --mark`), `web/routingui_handlers_test.go` (+12 backend-тестов: preview+commit) |
+| v1.1.1 — SSH/admin bypass + NDM debounce | ✅ | `firewall/modes/excludes_test.go` (LAN-bypass + admin-ports), `firewall/applier_test.go` (bypass order regression) |
+| v1.2.0 — ANSI color | ✅ | `cli/color_test.go` (~10 unit-тестов: opt-out priority, no-op при выкл, semantic helpers) |
+| v1.3.0 — naive/mieru supervised peers | ✅ | `naiveproxy/*_test.go` + `peer/*_test.go`, mihomo/xray reject-тесты — см. §4г |
+| v1.4.0 — hardening (iptables batch, watchdog REDIRECT/DPI, repro builds, cosign, SLSA, regressions) | ✅ | см. §4д + `firewall/batch_test.go` |
 
 ---
 

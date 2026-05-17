@@ -1,6 +1,6 @@
 # RISK_REGISTER.md — sign-craze
 
-> Версия: 2026-05-09 (v0.8.3)
+> Версия: 2026-05-17 (v1.4.2)
 > Методология: Severity × Likelihood.
 > Содержит только **активные** риски (open / mitigated / accepted / partial).
 > Закрытые (DONE) риски — в §5 с отсылкой на `tasks/safety-fixes.md`.
@@ -64,6 +64,7 @@
 | R022 | Сеть / Auto-update | `resilientResolver` использует фиксированный список `{1.1.1.1, 9.9.9.9, 8.8.8.8}`. На некоторых ISP (особенно cellular в РФ) Cloudflare 1.1.1.1 блокируется/throttle'ится; в редких случаях все три могут быть недоступны. | LOW      | L          | Auto-update hostlist не может зарезолвить URL → SourcesFailed > 0, hostlist устаревает | Список из 3 серверов даёт redundancy. При полном fail — пользователь явно задаёт DPITargets через `--dpi-targets`. Long-term: сделать список настраиваемым через state | open      | `internal/dpi/update.go`; v0.8.1                                         |
 | R023 | Зависимость от upstream | `internal/dpi/update.go::DefaultUpdateURLs` ссылается на конкретные пути в Flowseal/zapret-discord-youtube (list-general.txt, list-google.txt). Upstream может переименовать файлы или сменить layout (как было с list-discord.txt → list-general.txt). | HIGH     | M          | Свежие установки получают 404 на дефолтных URL → пустой hostlist → selective-DPI не работает до явной настройки `--dpi-update-urls` | При изменении upstream — патч + новый релиз. Smoke-тест `--dpi-update-now` в CI                                 | open      | `internal/dpi/update.go`; v0.8.2                                         |
 | R024 | Состояние / Конфигурация | Если пользователь параллельно редактирует `routing.json` руками, а sign-craze запускает migration (фильтрация TUN-inbound + Save), edit пользователя теряется.                                                     | MED      | L          | Manual customization routing.json (custom outbounds, route_rules) пропадает | Save идёт через atomic temp+rename (durable). Сообщение в WARN-логе при удалении TUN. Long-term: бэкап routing.json в `routing.json.pre-migration` перед перезаписью | open      | `internal/cli/deps.go::configParamsFromState`; v0.8.3                                     |
+| R035 | DPI / supply chain | Naiveproxy/mieru бинарь скачивается из `klzgrad/naiveproxy` и `enfein/mieru` GitHub releases. SHA256 не верифицируется sign-craze (только TLS + cosign публикуется upstream выборочно). | MED | L | Подменённый бинарь маскирует трафик некорректно или ведёт исходящий dial | TLS 1.2 минимум, путь через `internal/naiveproxy/download.go` валидирует HTTP 2xx; пользователь явно opt-in `--with-naive` | open | `internal/naiveproxy/download.go`; v1.3.0 |
 
 ---
 
@@ -86,6 +87,16 @@
 | Issue #15  | WebSocket `/traffic` без idle timeout                     | MED      |
 | Issue #16  | `--install` не идемпотентен (overwrite state.json)        | MED      |
 | Issue #17  | ipset signcraze_ipv4/ipv6 создавались пустыми → no proxy  | CRIT     |
+| R025-SSH-bypass | SSH/admin lockout при policy с привязкой 10+ устройств: трафик `dst=LAN_IP:222` ловился TPROXY → коннект виснул. Mitigated в v1.1.1 (`LocalBypassRules` + `AdminPortsBypassRulesForChain` в `signcraze_policy` pos=1) | HIGH |
+| R026-uninstall-bind | `--uninstall` не отвязывал host-policy в startup-config Keenetic → обычный reboot не восстанавливал доступ, требовался factory reset. Mitigated в v1.1.1 (`ndm.UnsetHostPolicy` для всех привязанных хостов до `DeletePolicy`) | CRIT |
+| R027-DPI-LAN-coverage | DPI NFQUEUE-цепочка в `mangle POSTROUTING -o $WAN` ловила только sing-box→VPS трафик; LAN не-policy устройства (TV, гости) шли мимо desync. Mitigated в v1.1.0 (`signcraze_dpi_fwd` в `mangle FORWARD` с `-o WAN -m mark ! --mark 0x53`) | MED |
+| R028-NDM-rebuild-storm | Пачка из 10+ NDM-событий приводила к 10 параллельным `--reapply` fork/exec, CPU-шторм на slow MIPS. Mitigated в v1.1.1 (netfilter.d hook с `flock -x -n` + pending-маркер + trailing debounce → 2 reapply) | HIGH |
+| R029-bcrypt-MIPS-DoS | bcrypt cost=12 на MIPS softfloat: login admin UI 6 c — окно для timing/DoS атак. Mitigated в v1.4.0 (build-tagged `auth_cost_lowmem.go` cost=10 для `GOARCH=mips/mipsle`; login 6 c → 2 c) | LOW |
+| R030-PID-reuse | PID-файл мог указывать на чужой процесс после OOM/kill+reuse. Mitigated в v1.4.0 (atomic write + `processAlive` + match `/proc/<pid>/comm` с учётом 15-байт truncation) | MED |
+| R031-slow-loris-admin | Admin server (9091) без `ReadHeaderTimeout` уязвим к slow-loris. Mitigated в v1.4.0 (`ReadHeaderTimeout: 15s`) | LOW |
+| R032-WS-idle-drop | WebSocket `/api/traffic` соединения за NAT/UPnP падали по idle. Mitigated в v1.4.0 (keepalive ping каждые 30s, RFC 6455 §5.5.2) | LOW |
+| R033-xray-geo-silent-fail | xray без `geoip.dat`/`geosite.dat` падал с криптичной ошибкой `failed to load geosite`. Mitigated в v1.4.0 (early-check с подсказкой `--update-geo --core xray`; `GeoAssetsDir=""` контракт = skip для preview/Validator) | MED |
+| R034-reproducibility | Build без `-buildid=` и `SOURCE_DATE_EPOCH` → разные хеши при одинаковом коде, нет supply-chain verification. Mitigated в v1.4.0 (reproducible builds + cosign keyless OIDC + SLSA provenance attestation) | MED |
 
 Полные описания, affected files и статусы: `tasks/safety-fixes.md`.
 
@@ -107,3 +118,4 @@
 - **При добавлении подсистемы**: новый пакет `internal/X` или новая CLI-команда → обязательная секция «риски» в PR-описании + запись в регистр, даже если статус сразу `mitigated`.
 - **При vendor-событии**: новый major KeeneticOS / sing-box / nfqws2 release → проверить R013, R004, R005 на актуальность.
 - **Owner**: автор изменения, затрагивающего риск, несёт ответственность за обновление строки.
+- **v1.3.0+ peer-protocols**: при появлении нового supervised peer (naive/mieru/etc) — новая запись в R035 group с указанием upstream-репозитория, asset-pattern и архитектурного ограничения (LE/BE).

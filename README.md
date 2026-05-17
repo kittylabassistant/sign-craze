@@ -4,7 +4,7 @@
 
 Go-утилита для управления межсетевым экраном на роутерах Keenetic.
 
-Поддерживает три прокси-ядра с единым управлением через Web UI: **sing-box**, **xray** и **mihomo** — ядро определяется автоматически по URL outbound при `--install`, переключается командой `--core`. Опционально [nfqws2](https://github.com/nfqws/nfqws2-keenetic) для DPI-обхода.
+Поддерживает три прокси-ядра с единым управлением через Web UI: **sing-box**, **xray** и **mihomo** — ядро определяется автоматически по URL outbound при `--install`, переключается командой `--core`. Дополнительно — supervised peers **naiveproxy** и **mieru** (process chain через sing-box socks5-outbound). Опционально [nfqws2](https://github.com/nfqws/nfqws2-keenetic) для DPI-обхода.
 
 > [!WARNING]
 > Данный материал подготовлен в научно‑технических целях. Sign-Craze предназначен для управления межсетевым экраном роутера Keenetic, защищающим домашнюю сеть. Разработчик не несёт ответственности за иное использование утилиты. Перед применением убедитесь, что ваши действия соответствуют законодательству вашей страны.
@@ -28,16 +28,24 @@ Go-утилита для управления межсетевым экрано�
 ## Возможности
 
 - **Мульти-ядерность (v1.0.0)**: поддержка sing-box, xray и mihomo с автодетектом ядра по URL outbound при `--install`. Переключение — `--core <name>`, список — `--core-list`, загрузка — `--core-install <name>`.
+- **Supervised peers (v1.3.0)**: naiveproxy и mieru подключаются как daemon на 127.0.0.1, sing-box заворачивает в socks5-outbound (process chain). URL: `naive+https://...`, `mierus://...`. CLI: `--with-naive`, `--update-naive`.
 - **Унифицированный Routing Editor (v1.0.0)**: Web UI на `:9092` принимает inbound / outbound / rules / rule_sets и presets для любого активного ядра. Apply регенерирует конфиг нужного ядра без перезапуска процесса UI.
+- **Routing UI: пресеты AS-IS/TO-BE + клиентский буфер (v1.1.0)**: «+ Добавить» (аддитивно) и «⟳ Заменить» (очистка Rules + force-set Final). Изменения буферизуются в браузере; Action-bar Сохранить/Отмена. Apply при unsaved → confirm.
+- **Светлая тема Routing UI (v1.1.2)**: переключатель ☀/☾, persist через localStorage, дефолт по `prefers-color-scheme`.
 - **Per-core presets**: при применении пресета URL rule_sets подбираются автоматически под ядро — `.srs` для sing-box (SagerNet), `.mrs` для mihomo (MetaCubeX), geosite:/geoip: matcher для xray (встроенный `.dat`).
-- **Протоколы по ядрам**:
-  - Все три ядра: VLESS Reality, VLESS Vision (TCP/TLS), Trojan, Shadowsocks
-  - Mihomo: Hysteria2, TUIC v5, WireGuard
-  - Xray: XHTTP, Vision UDP443, PQ (post-quantum)
-- Управление sing-box / xray / mihomo: установка, запуск, остановка, обновление, откат
+- **Протоколы по ядрам** (актуально для sing-box 1.13+, xray 25.x, mihomo 1.18+; полная таблица — ниже):
+  - Все три ядра: VLESS Reality, VMess, Trojan, Shadowsocks legacy + 2022, XHTTP basic, транспорты WS/gRPC/QUIC/h2, uTLS-фингерпринт
+  - sing-box + mihomo: Hysteria 2 (obfs-salamander, brutal CC), TUIC v5, WireGuard, AnyTLS
+  - xray only: Vision UDP443 (`flow=*-udp443`), PQ-VLESS (`mlkem768x25519plus`), XHTTP `stream-up`/`stream-one`/`packet-up`
+  - sing-box only через peer-chain: naiveproxy, mieru
+- Управление sing-box / xray / mihomo / naive / mieru: установка, запуск, остановка, обновление, откат
 - Два режима маршрутизации: `policy` — выборочная маркировка (default), `full` — весь LAN-трафик через прокси. DPI работает в обоих режимах через nfqws2 + NFQUEUE.
+- **DPI в mangle FORWARD (v1.1.0)**: `signcraze_dpi_fwd` ловит трафик ВСЕХ LAN-устройств (не только policy), desync YouTube/Discord работает для TV/гостей/IoT.
+- **Защита SSH/admin при policy (v1.1.1)**: LAN-bypass `-d <LAN_IP> -j RETURN` на pos=1 + admin-ports (22/222) bypass; `--uninstall` отвязывает host-policy в startup-config (factory reset больше не нужен).
+- **ANSI-цветной CLI и логи (v1.2.0)**: `--status`/`--diag`/`--core-list`/`--install`/`--help` раскрашены; opt-out: `--no-color`, `NO_COLOR`, `TERM=dumb`. Кастомный `colorTextHandler` для slog stderr (файловый JSON не меняется).
+- **Hardening (v1.4.0)**: `iptables-restore --noflush` batching (24 fork → 3), WAN cache, watchdog покрывает REDIRECT + DPI FORWARD, reproducible builds (`-buildid=` + `SOURCE_DATE_EPOCH`), cosign keyless OIDC + SLSA provenance, `--diag --json`, WebSocket keepalive 30s, bcrypt cost=10 для MIPS (login 6s → 2s).
 - Атомарное применение правил iptables/ipset с гарантированным откатом
-- Гео-фильтрация через SRS rule-set (выборочная загрузка по SHA256)
+- Гео-фильтрация через SRS rule-set (выборочная загрузка по SHA256, streaming)
 - Встроенный Web UI (только из LAN): Zashboard `:9090`, admin API `:9091`, Routing Editor `:9092` (vanilla Preact + htm SPA)
 - Selective DPI: desync только для выбранных доменов/SNI через `--dpi-targets`
 - WAN-фильтр в DPI-правилах: NFQUEUE захватывает только ISP-трафик (`-o $WAN_IFACE`), не трогая LAN-bridge и TUN
@@ -46,7 +54,7 @@ Go-утилита для управления межсетевым экрано�
 - Firewall watchdog: автовосстановление iptables-правил каждые 30 с при работающем `--ui on`
 - Управление портами и исключениями без перезапуска
 - Резервное копирование и восстановление конфигурации
-- Диагностический режим (`--diag`)
+- Диагностический режим (`--diag`, опционально `--diag --json`)
 
 ## Поддерживаемые архитектуры
 
@@ -166,17 +174,36 @@ sign-craze --restart
 
 ### Поддерживаемые протоколы
 
-| Протокол | sing-box | xray | mihomo |
-|----------|----------|------|--------|
-| VLESS Reality | + | + | + |
-| VLESS Vision (TCP/TLS) | + | + | + |
-| Trojan | + | + | + |
-| Shadowsocks | + | + | + |
-| Hysteria2 | + | — | + |
-| TUIC v5 | + | — | + |
-| WireGuard | + | — | + |
-| XHTTP | — | + | — |
-| Vision UDP443 | — | + | — |
+Актуально для sing-box 1.13+, xray-core 25.x, mihomo 1.18+. Полная матрица с разбивкой по транспортам, uTLS, ECH, sniffing — в [`docs/COMPATIBILITY_MATRIX.md`](docs/COMPATIBILITY_MATRIX.md) (раздел «Матрица протокол × ядро»).
+
+| Протокол / режим | sing-box | xray | mihomo |
+|------------------|:--------:|:----:|:------:|
+| VLESS Reality (PublicKey + ShortID)   | ✓ | ✓ | ✓ |
+| VLESS Vision (`xtls-rprx-vision`, TCP/TLS) | ⚠ | ✓ | ✓ |
+| VLESS Vision UDP443 (`*-udp443`)      | ✗ | ✓ | ✗ |
+| VLESS XHTTP (basic, без `mode`)       | ✓ | ✓ | ✓ |
+| VLESS XHTTP `stream-up` / `stream-one` / `packet-up` | ✗ | ✓ | ✓ |
+| PQ-VLESS (`mlkem768x25519plus`)       | ⚠ | ✓ | ✗ |
+| VMess (AEAD)                          | ✓ | ✓ | ✓ |
+| Trojan                                | ✓ | ✓ | ✓ |
+| Shadowsocks legacy (AEAD)             | ✓ | ✓ | ✓ |
+| Shadowsocks 2022 (`2022-blake3-*`)    | ✓ | ✓ | ✓ |
+| Hysteria 2 (obfs-salamander, brutal CC) | ✓ | ✗ | ✓ |
+| TUIC v5 (unified)                     | ✓ | ✗ | ✓ |
+| WireGuard outbound                    | ✓ | ✗ | ✓ |
+| AnyTLS                                | ✓ | ✗ | ✓ |
+| Transport WebSocket / gRPC / QUIC / h2 | ✓ | ✓ | ✓ |
+| uTLS fingerprint (chrome/firefox/safari/ios/random) | ✓ | ✓ | ✓ |
+| ECH (Encrypted ClientHello)           | ⚠ | ⚠ | ⚠ |
+| Socks5 / HTTP CONNECT                 | ✓ | ✓ | ✓ |
+| naiveproxy (supervised peer)          | ✓ ¹ | ✗ | ✗ |
+| mieru (supervised peer)               | ✓ ¹ | ✗ | ✗ |
+
+> ✓ — полная поддержка · ⚠ — частичная / экспериментальная (см. примечания в COMPATIBILITY_MATRIX) · ✗ — не поддерживается, `Validate` отвергнет конфиг.
+>
+> ¹ naive/mieru = supervised peer (process chain). sign-craze запускает daemon на `127.0.0.1`, sing-box подключается через socks5-outbound. xray/mihomo явно отклоняют такие конфиги с подсказкой `--core sing-box`. mips (big-endian) для naive не поддерживается — klzgrad публикует только linux-mipsel (LE).
+>
+> **Ограничения mihomo** (источник: `internal/core/mihomo/validate.go`): Vision UDP443 и PQ-VLESS отклоняются с подсказкой `--core xray`. **Ограничения xray** (источник: `internal/core/xray/validate.go`): TUIC v5, WireGuard, Hysteria 2 отклоняются с подсказкой `--core sing-box` / `--core mihomo`.
 
 ### Унифицированный Routing Editor
 
@@ -251,13 +278,15 @@ sign-craze --status  / -s       Показать состояние сервис
 
 sign-craze --update  / -u       Обновить sign-craze
 sign-craze --update-geo / -g    Обновить гео-файлы (SRS rule-set)
-sign-craze --update-core        Обновить бинарь sing-box
+sign-craze --update-core        Обновить бинарь активного ядра (sing-box/xray/mihomo)
+sign-craze --update-naive       Обновить бинарь naiveproxy (v1.3.0+)
 sign-craze --dpi-update         Переустановить актуальную версию nfqws2
 sign-craze --reinstall          Переустановить sign-craze поверх существующей (сохраняет state.json)
 
 sign-craze --core-list          Список зарегистрированных ядер (sing-box/xray/mihomo) и активное
 sign-craze --core <name>        Переключить активное ядро; routing.json сохраняется, конфиг пересобирается (требует --restart)
 sign-craze --core-install <name> Скачать и установить указанное ядро (sing-box/xray/mihomo)
+sign-craze --install --with-naive  Установка + развёртывание naiveproxy daemon (v1.3.0+)
 
 sign-craze --config-backup      Создать архив state.json в /opt/var/lib/sign-craze
 sign-craze --config-restore <путь> Восстановить конфиг из архива
@@ -287,6 +316,8 @@ sign-craze --ui on|off          Включить / выключить Web UI (п
 sign-craze --backup  / -b       Создать резервную копию конфигурации
 sign-craze --restore <путь>     Восстановить из резервной копии
 sign-craze --diag    / -D       Диагностика (PASS/WARN/FAIL по каждому пункту)
+sign-craze --diag --json        Machine-parseable JSON для скриптов/мониторинга (v1.4.0+)
+sign-craze --no-color           Отключить ANSI-цвет (также NO_COLOR=1 / TERM=dumb)
 sign-craze --uninstall          Полное удаление: sing-box, конфиги, логи, бинарь sign-craze
 sign-craze --version / -v       Показать версии sign-craze и sing-box
 ```
@@ -324,18 +355,20 @@ podman run --rm -v $(pwd):/workspace:z -w /workspace \
 ```plain
 cmd/sign-craze/main.go
         │
-internal/cli  (диспетчер команд)
+internal/cli  (диспетчер команд, ANSI-цвет, --no-color)
    ├── internal/core      (registry: sing-box / xray / mihomo)
    │      ├── internal/singbox   (адаптер: конфиг, RenderConfig, CheckConfig)
    │      ├── internal/core/xray  (адаптер: render_rules, translation geosite:/geoip:)
    │      └── internal/core/mihomo (адаптер: rule-providers, YAML-рендер)
-   ├── internal/dpi       (nfqws2: загрузка, конфиг, NFQUEUE)
-   ├── internal/firewall  (iptables/ipset: tproxy / redirect / hybrid)
-   ├── internal/service   (init.d shim, lifecycle, PID-файлы)
-   ├── internal/geo       (SRS rule-set, ipset-конвертация)
-   ├── internal/state     (state.json: ValidCores, Mode, Inbound, Outbounds)
+   ├── internal/naiveproxy (supervised peer: download/extract/install/lifecycle)
+   ├── internal/peer       (supervised-peer scaffolding + mieru core + portalloc)
+   ├── internal/dpi       (nfqws2: загрузка, NFQUEUE в mangle FORWARD)
+   ├── internal/firewall  (iptables/ipset: tproxy / redirect / hybrid, restore --noflush batch)
+   ├── internal/service   (init.d shim S99, lifecycle, PID-файлы через atomicfs)
+   ├── internal/geo       (SRS rule-set, ipset-конвертация, SHA256 streaming)
+   ├── internal/state     (state.json: ValidCores, Mode, Inbound, Outbounds, NaiveEnabled)
    ├── pkg/types          (RoutingConfig, CoreRenderParams — core-agnostic)
-   └── internal/web       (HTTP: admin API + Routing Editor :9092)
+   └── internal/web       (HTTP: admin API :9091 + Routing Editor :9092 + Zashboard :9090)
 ```
 
 Подробная диаграмма потоков данных — в [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
@@ -343,16 +376,22 @@ internal/cli  (диспетчер команд)
 ## Структура файлов на роутере
 
 ```plain
-/opt/sbin/sing-box                        — бинарь sing-box
+/opt/sbin/sing-box                        — бинарь активного ядра (или xray/mihomo при --core)
 /opt/sbin/sign-craze                      — этот бинарь
-/opt/etc/sign-craze/config.json           — конфигурация sing-box
+/opt/sbin/naive                           — naiveproxy daemon (если --with-naive / v1.3.0+)
+/opt/sbin/mieru                           — mieru daemon (если выбран peer mieru)
+/opt/etc/sign-craze/config.json           — конфигурация sing-box (или xray/mihomo путь)
+/opt/etc/sign-craze/routing.json          — core-agnostic правила маршрутизации
 /opt/etc/sign-craze/nfqws2.conf           — конфигурация nfqws2 (если DPI включён)
 /opt/etc/sign-craze/dpi-hostlist.txt      — список SNI-целей для Selective DPI (если задан)
-/opt/etc/init.d/S99signcraze              — init.d shim (автозапуск)
-/opt/var/lib/sign-craze/                  — состояние (гео-файлы, бэкапы)
-/opt/var/log/sign-craze/                  — логи с ротацией
-/opt/var/run/sign-craze-singbox.pid       — PID sing-box
+/opt/etc/init.d/S99signcraze              — init.d shim (автозапуск, после S51dropbear)
+/opt/etc/ndm/netfilter.d/50-sign-craze    — NDM hook (reapply с flock+debounce)
+/opt/var/lib/sign-craze/                  — состояние (гео-файлы, бэкапы, cache.db)
+/opt/var/log/sign-craze/                  — логи с ротацией (JSON file + цветной stderr)
+/opt/var/run/sign-craze-singbox.pid       — PID sing-box (atomic write)
 /opt/var/run/sign-craze-nfqws2.pid        — PID nfqws2
+/opt/var/run/sign-craze-naive.pid         — PID naiveproxy peer (если включён)
+/opt/var/run/sign-craze-reapply.last      — mtime-throttle маркер NDM hook
 /opt/var/lock/sign-craze.lock             — эксклюзивная блокировка
 ```
 

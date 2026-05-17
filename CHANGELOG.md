@@ -5,6 +5,129 @@
 
 ---
 
+## [1.4.2] — 2026-05-16
+
+### Fixed
+- **CI lint+publish**: `NODE_OPTIONS=--no-deprecation` для подавления Node.js 24 warnings в jobs lint, release-publish, attest. Устраняет шум в CI без правки самих actions.
+
+---
+
+## [1.4.1] — 2026-05-16
+
+### Fixed
+- **`actions/attest-build-provenance` v2 → v4**: переход на Node.js 24-совместимую версию action. Релизные artefacts продолжают получать SLSA provenance attestation.
+- **`golangci-lint-action` pin v9 + golangci-lint v2.12.2**: action v9 не поддерживает golangci-lint v1.x; зафиксирована конкретная v2.12.2 на runner. CI lint job снова зелёный.
+
+---
+
+## [1.4.0] — 2026-05-16
+
+### Added (пост-аудитный hardening)
+- **Firewall — iptables-restore batching**: `BatchBuilder` + `RestoreBatch` + `Flush` в `internal/firewall`. `applyPolicy`/`applyFull` собирают пакет правил и применяют через `iptables-restore --noflush` одним вызовом. Сокращение fork/exec 24 → 3 на slow MIPS.
+- **WAN cache**: `WANIface` кэшируется, `InvalidateWANCache` при изменении сети. Watchdog tick больше не делает fork на каждое срабатывание.
+- **Watchdog REDIRECT/DPI-FORWARD coverage**: проверка восстанавливает не только TPROXY (mangle), но и nat PREROUTING REDIRECT-цепочку и FORWARD DPI-цепочку из v1.1.0.
+- **Reproducible builds**: `-buildid=` + `-trimpath` + `SOURCE_DATE_EPOCH` в release.yml.
+- **Cosign sign-blob keyless через GitHub OIDC**: `.sig` + `.pem` рядом с каждым артефактом. Раздел [«Verifying the release»](README.md#verifying-the-release) в README.
+- **SLSA build provenance**: `actions/attest-build-provenance@v2` → проверка через `gh attestation verify`.
+- **`--diag --json`**: machine-parseable output для скриптов и мониторинга. Структурированный JSON по каждому чек-пункту.
+- **WebSocket keepalive ping 30s** (RFC 6455 §5.5.2) в `/api/traffic`. Соединения за NAT/UPnP не падают по idle.
+- **Cache-Control `immutable`** для embed assets Routing UI / Zashboard; `no-cache` для index.html. Меньше нагрузки на HTTP-сервер.
+
+### Changed
+- **bcrypt cost build-tagged**: `auth_cost_lowmem.go` (cost=10) для `GOARCH=mips/mipsle` vs `auth_cost_default.go` (cost=12). Логин в admin UI на slow MIPS: 6 с → 2 с.
+- **xray `json.Marshal compact`**: −15% CPU при генерации конфига на MIPS softfloat.
+- **sing-box rule-set format**: для URL `sign-craze-dat` ставится `format: "source"` (workflow в апстриме генерит JSON, не binary). Закрывает Known issue v1.0.2.
+- **xray geo.dat early-check**: при `--core xray --restart` без `geoip.dat`/`geosite.dat` чёткая ошибка с подсказкой `--update-geo --core xray`. Контракт `GeoAssetsDir=""` = skip для preview/web Validator.
+- **PID-файлы через `atomicfs.WriteFileAtomic`**: `processAlive` + match `/proc/<pid>/comm` (PID-reuse guard, учёт 15-байтового truncation).
+- **Admin server (9091) `ReadHeaderTimeout` 15s**: защита от slow-loris.
+- **hybrid mode**: убран `-m comment` (Keenetic busybox без `xt_comment`).
+
+### Added (тесты, регрессии)
+- `TestApplier_Apply_Policy_BypassBeforeTProxy` — регрессия SSH hang от 2026-05-13 (lessons.md).
+- `TestService_DefaultShimPath_IsS99` — boot order S99 после S51dropbear.
+- `TestRender_Geosite_NoDat_ReturnsError` + `Geoip` + `DatPresent_OK` — xray geo guard.
+- `TestFilterUnreferencedRuleSets` (skip) — фикс отложен.
+- `FuzzMieruWireProto` — 3 файла corpus.
+- **E2E**: `StrictHostKeyChecking=accept-new` (MITM-защита в CI); `trap cleanup INT/TERM` в `scripts/e2e/run.sh` (`sign-craze --stop` при прерывании).
+
+### Geo / DPI
+- **SHA256 streaming в geo/srs**: OOM-guard для 30–100 MB `.srs`.
+- **IPK + lua streaming**: `atomicfs.WriteFileAtomicFromReader` без полной буферизации.
+
+---
+
+## [1.3.0] — 2026-05-14
+
+### Added
+- **naiveproxy integration (klzgrad/naiveproxy)**: supervised peer через process chain. `sign-craze` качает бинарь naive, запускает как daemon на `127.0.0.1:18443`, sing-box подключается socks5-outbound. URL: `naive+https://user:pass@host:port`. См. ADR-0021-naiveproxy-process-chain.
+- **Поддерживаемые архитектуры naive**: arm64, arm7, mipsle. mips (big-endian) reject — klzgrad публикует только LE.
+- **Supervised-peer scaffolding**: пакет `internal/peer/` (peer interface + mieru core + port allocator). Shared архитектура для process-chain протоколов.
+- **`pkg/types`**: `ProtocolNaive` + `NaiveOpts` (5 полей); `ProtocolMieru` + `MieruUsername`/`MieruPassword`/`MieruPort`/`MieruProtocol`/`MieruMultiplexing`/`MieruLocalPort`.
+- **`internal/proxyparse`**: схемы `naive+https://`, `naive+quic://`, `mieru://`, `mierus://`.
+- **`internal/state`**: `NaiveEnabled` + multi-naive guard + BE-MIPS validation; mieru port range validation.
+- **`internal/naiveproxy`**: новый пакет (Download/Extract/Install/Params/Lifecycle) + unit-тесты.
+- **`internal/singbox`**: `renderNaive` → socks к `127.0.0.1:NaiveListenPort`; поле `naive_port`.
+- **CLI**: `--with-naive` (install + start daemon), `--update-naive` (обновить бинарь). `doStart`/`doStop` хуки. Wizard поддерживает `naive+https://` URL.
+- **`internal/core/{xray,mihomo}`**: явный reject naive+mieru с понятной ошибкой (поддерживается только sing-box).
+- **`internal/diag`**: peer health check (naive/mieru).
+- **`Makefile`**: mieru cross-compile targets под все 4 архитектуры.
+- **`go.mod`**: `github.com/ulikunitz/xz` (pure-Go xz decoder для naive tarball).
+
+### Docs
+- BEHAVIOR_SPEC §8 (naive), COMPATIBILITY_MATRIX §5.1, TROUBLESHOOTING, CONSTRAINTS обновлены.
+
+### Test status
+- 28/28 пакетов PASS, vet clean, gofmt clean, cross-compile arm64/arm7/mipsle/mips OK.
+
+---
+
+## [1.2.0] — 2026-05-13
+
+### Added
+- **ANSI-цветной вывод CLI**: собственный мини-врапер в `internal/cli/color.go` без сторонних либ (go.mod остался на 3 пакетах). Семантические хелперы `OK`/`Warn`/`Err`/`Info`/`Hint`/`Header`/`Key` + низкоуровневые `Red`/`Green`/`Yellow`/`Bold`. No-op при выключенном цвете.
+- **Полный opt-out** с приоритетами: `--no-color` > `NO_COLOR` > `FORCE_COLOR` > `TERM=dumb` > авто-детект `term.IsTerminal`. Раздельные состояния для stdout/stderr — pipe stdout без цвета, stderr (TTY) со цветом slog логов.
+- **Кастомный `colorTextHandler`** в `internal/log/log.go`: DEBUG dim / INFO cyan / WARN yellow / ERROR red+bold. Файловый JSON-лог остался без изменений.
+- **Раскрашены команды**: `--status` (running/stopped), `--diag` (PASS/WARN/FAIL), `--core-list` (`*` активного ядра), `--install` (прогресс + ВНИМАНИЕ), `--uninstall` (`printRemoved`), `--start`/`--stop`, `--update`/`--update-geo`/`--update-core`, `--help` (заголовок + ключи + секция глобальных опций).
+
+---
+
+## [1.1.2] — 2026-05-13
+
+### Added
+- **Routing UI: светлая тема + переключатель ☀/☾**: CSS variables, persist через localStorage. По умолчанию подхватывается `prefers-color-scheme`.
+
+---
+
+## [1.1.1] — 2026-05-13
+
+### Fixed (защита SSH/admin при policy с 10+ устройствами)
+- **Корень**: `applyPolicyMode` не имел bypass для трафика к самому роутеру. Keenetic метит mark всех policy-устройств включая `dst=LAN_IP` — без RETURN пакеты SSH:222 уходили в TPROXY/sing-box, коннект виснул. `doUninstall` не отвязывал host-policy привязки в startup-config → обычный reboot не помогал, требовался factory reset.
+- **`LocalBypassRules` + `ensureLANBypass`**: `-d <LAN_IP> -j RETURN` на pos=1 в `signcraze_policy` для TPROXY-real (mangle), REDIRECT (nat), TUN (mangle). LAN-IP автодетект через `netif.DetectLANAddr`.
+- **`AdminPortsBypassRulesForChain`**: defense-in-depth для портов 22/222 TCP+UDP в policy chain. `AdminPortsBypassRules` → back-compat обёртка.
+- **`ndm.Client`**: `GetHostsWithPolicy` + `UnsetHostPolicy`; `doUninstall` теперь отвязывает все хосты ДО `DeletePolicy` — factory reset больше не нужен.
+- **netfilter.d hook**: `flock -x -n` + pending-маркер + trailing debounce. Пачка из 10 NDM-событий = 2 reapply вместо 10 параллельных fork/exec, нет CPU-шторма на slow MIPS.
+- **Docs**: BEHAVIOR_SPEC §3a (порядок правил `signcraze_policy`) и §4 (uninstall отвязка хостов).
+
+---
+
+## [1.1.0] — 2026-05-12
+
+### Refactored (DPI chain в FORWARD)
+- **Архитектурный fix**: NFQUEUE-цепочка `signcraze_policy_dpi` висела в `mangle POSTROUTING -o $WAN` и ловила только исходящий трафик sing-box к VPS. LAN не-policy устройства (TV, гости, IoT) шли напрямую через ISP без DPI-обхода — YouTube/Discord на них не работали.
+- **Новая архитектура**: `DPIForwardChainName "signcraze_dpi_fwd"` в `mangle FORWARD`. Jump из FORWARD `-o $WAN_IFACE -m mark ! --mark 0x53`. LAN policy-устройства перехватываются TPROXY до FORWARD (не попадают в DPI). LAN не-policy идут через FORWARD → DPI → nfqws2 hostlist desync. Self-traffic sing-box (`SO_MARK=0x53`) отсекается mark-фильтром.
+- **Cleanup legacy**: `LegacyPolicyDPIChainName` сохранён для cleanup при апгрейде; `applier.Remove` чистит и новый FORWARD jump и legacy POSTROUTING.
+- **Tests**: `policy_dpi_test.go` переписаны (FORWARD, `! --mark`, port coverage); `applier_test.go` — 2 новых теста (FORWARD chain + legacy cleanup).
+- **E2E на KN-1810**: TV открыл YouTube через nfqws2 desync.
+
+### Added (Routing UI)
+- **Пресеты получили два режима**: `+ Добавить` (AS-IS, аддитивно) и `⟳ Заменить` (TO-BE, очистить Rules + force-set Final; RuleSets сохраняются по решению пользователя).
+- **Клиентский буфер**: изменения routing (Rules/RuleSets/Final) буферизуются в браузере. Action-bar `Сохранить`/`Отмена` под таблицей при `isDirty`.
+- **Новые endpoints**: `POST /api/presets/{name}/preview` (на диск не пишет), `PUT /api/routing` (атомарная замена routing-секции; Inbounds/Outbounds сохраняются нетронутыми), `PUT /api/final`.
+- **Apply при unsaved** → confirm + оранжевая подсветка + dirty-dot. `beforeunload` предупреждение при закрытии вкладки с черновиком.
+- **+12 backend-тестов**: preview (add/replace/notfound/412/no-disk-write) + commit (write/preserve/validation).
+
+---
+
 ## [1.0.2] — 2026-05-12
 
 ### Added

@@ -2,7 +2,7 @@
 
 Этот документ является единым справочником по поддерживаемым архитектурам, прошивкам, устройствам, kernel-модулям и внешним зависимостям. Он заменяет разрозненные упоминания в README. Актуален для sign-craze v0.3.x+ (TUN-режим, без TPROXY как dependency на ядро).
 
-Последнее обновление: v1.0.0.
+Последнее обновление: v1.4.2 (2026-05-17).
 
 ---
 
@@ -84,8 +84,10 @@
 
 | Бинарь      | Мин. версия | GitHub-репозиторий                          | Путь установки          | Загружается при              |
 |-------------|-------------|---------------------------------------------|-------------------------|------------------------------|
-| `sing-box`  | **1.13.0**  | `github.com/SagerNet/sing-box`              | `/opt/sbin/sing-box`    | `--install`, `--update-core` |
-| `nfqws2`    | latest      | `github.com/nfqws/nfqws2-keenetic`          | `/opt/sbin/nfqws2`      | `--dpi on`                   |
+| `sing-box`     | **1.13.0**  | `github.com/SagerNet/sing-box`              | `/opt/sbin/sing-box`    | `--install`, `--update-core`              |
+| `nfqws2`       | latest      | `github.com/nfqws/nfqws2-keenetic`          | `/opt/sbin/nfqws2`      | `--dpi on`                                |
+| `naiveproxy`   | latest      | `github.com/klzgrad/naiveproxy`             | `/opt/sbin/naive`       | `--with-naive`, `--install --with-naive`  |
+| `mieru`        | latest      | `github.com/enfein/mieru`                   | `/opt/sbin/mieru`       | supervised peer при подключении mieru     |
 
 **sing-box 1.13** — минимальная версия: начиная с 1.13 DNS-сервер использует тип `local` (системный resolver); тип `udp` с `detour: direct` запрещён. Генератор конфига в `internal/singbox/config.go` опирается на это поведение.
 
@@ -120,6 +122,23 @@
 
 Версия pin: latest GitHub release (v148.0.7778.96-5 на момент интеграции).
 Формат tarball: tar.xz (требует `github.com/ulikunitz/xz` decoder).
+
+Путь установки: `/opt/sbin/naive`. Загружается при `--with-naive` / `--install --with-naive`. Источник: `internal/naiveproxy/`.
+
+---
+
+## 5.2. mieru (enfein/mieru)
+
+| Arch     | Поддержка | Asset                          | Причина / Replacement                              |
+|----------|-----------|--------------------------------|----------------------------------------------------|
+| arm64    | Да        | tar.gz                         |                                                    |
+| armv7    | Да        | tar.gz                         |                                                    |
+| mipsle   | Да        | tar.gz                         |                                                    |
+| mips BE  | **Нет**   | (отсутствует)                  | enfein публикует только little-endian MIPS         |
+
+Версия pin: latest GitHub release. Формат tarball: tar.gz. Источник кросс-сборки: `Makefile` mieru targets (v1.3.0 changelog).
+
+Путь установки: `/opt/sbin/mieru`. Supervised peer: sign-craze запускает daemon, sing-box подключается через socks5-outbound. Источник: `internal/peer/`.
 
 ---
 
@@ -229,6 +248,22 @@ Sign-craze поддерживает три взаимозаменяемых пр
 
 **Обратная совместимость**: `state.json` без новых полей (`dpi_exclude_ips`, `dpi_update_urls`, `dpi_update_interval`) мигрирует автоматически при первом старте v0.8.0 — отсутствующие поля инициализируются нулевыми значениями, данные существующей конфигурации не теряются.
 
+### 7.3 Naive/Mieru (v1.3.0+)
+
+| Команда            | Где применяется             | Описание                                                                                   |
+|--------------------|-----------------------------|--------------------------------------------------------------------------------------------|
+| `--with-naive`     | флаг для `--install*`       | Установить naiveproxy daemon и sing-box socks5-outbound на него.                           |
+| `--update-naive`   | самостоятельная команда     | Обновить бинарь naiveproxy (`/opt/sbin/naive`) до latest GitHub release.                  |
+
+**Совместимость ядер:** `xray` и `mihomo` отклоняют naive/mieru с понятной ошибкой. Supervised peers поддерживаются только при активном ядре `sing-box`.
+
+### 7.4 Hardening flags (v1.4.0+)
+
+| Команда / флаг     | Описание                                                                                   |
+|--------------------|--------------------------------------------------------------------------------------------|
+| `--diag --json`    | Машинно-читаемый JSON-вывод диагностики (sign-craze doctor).                              |
+| `--no-color`       | Отключить ANSI-цвет в выводе. Альтернативы: переменная `NO_COLOR`, `TERM=dumb`.           |
+
 ### 7.2 Артефакты релиза v0.8.0
 
 | Архитектура | Суффикс артефакта       | Сжатие (UPX)  |
@@ -251,6 +286,14 @@ Sign-craze поддерживает три взаимозаменяемых пр
 | **v0.8.2** | Применение hostlist без `DPITargets` — `--dpi on` не требует заранее заданных хостов.               |
 | **v0.8.3** | Миграция `routing.json`: TUN → TPROXY. При старте на конфиге с TUN-inbound автоматически переводит routing.json в TPROXY-схему. |
 | **v1.0.0** | Unified multi-core routing: Web UI `:9092` и Apply работают с любым активным ядром. routing.json core-agnostic. Presets per-core с автотрансляцией URL. Несовместимости (TUN/xray, .srs/xray, .dat/sing-box) surfaced как warnings в `/api/validate`. `state.ValidCores` — канонический список ядер. |
+| **v1.1.0** | Routing UI: пресеты AS-IS («+Добавить») и TO-BE («Заменить») + клиентский буфер изменений (Save/Cancel + dirty-confirm). DPI NFQUEUE-цепочка переехала из mangle POSTROUTING в mangle FORWARD (`signcraze_dpi_fwd`) — desync покрывает все LAN-устройства. |
+| **v1.1.1** | Защита SSH/admin при режиме policy: LAN-bypass `-d <LAN_IP> -j RETURN` на pos=1 в `signcraze_policy`; admin-ports 22/222 bypass; `--uninstall` отвязывает host-policy через RCI `UnsetHostPolicy`. netfilter.d hook с flock+debounce: пачка 10 NDM-событий генерирует 2 reapply вместо 10. |
+| **v1.1.2** | Routing UI: светлая тема + переключатель (persist в localStorage, дефолт по `prefers-color-scheme`). |
+| **v1.2.0** | ANSI-цвет CLI и логов (`internal/cli/color.go` без внешних зависимостей; `colorTextHandler` для slog stderr). Opt-out: `--no-color` > `NO_COLOR` > `FORCE_COLOR` > `TERM=dumb`. |
+| **v1.3.0** | naiveproxy (klzgrad) + mieru (enfein) supervised peers через process chain: sign-craze запускает daemon, sing-box подключается через socks5. `--with-naive`, `--update-naive`. arm64/arm7/mipsle поддерживаются; mips BE отклоняется. xray/mihomo отклоняют naive/mieru с понятной ошибкой. |
+| **v1.4.0** | Hardening: `iptables-restore --noflush` batch (24 fork → 3), WAN cache, watchdog покрывает REDIRECT/DPI-FORWARD, reproducible builds, cosign keyless OIDC + SLSA, `--diag --json`, WebSocket keepalive 30s, bcrypt cost=10 для MIPS, SHA256 streaming geo, IPK streaming. Регрессионные тесты: SSH-bypass, S99-shim, geosite no-dat, FuzzMieruWireProto. |
+| **v1.4.1** | CI fix: `actions/attest-build-provenance` v2 → v4, `golangci-lint-action v9` + golangci-lint v2.12.2. |
+| **v1.4.2** | CI: `NODE_OPTIONS=--no-deprecation` (подавление предупреждений Node 24 в lint+publish jobs). |
 
 ---
 
