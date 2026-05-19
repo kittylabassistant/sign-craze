@@ -4,6 +4,7 @@ sign-craze.wiki/
 docs/adr
 .git-staging/
 contexts
+dist/
 
 # Личные планы и заметки
 tasks/

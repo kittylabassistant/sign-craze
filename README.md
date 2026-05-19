@@ -425,3 +425,8 @@ gh attestation verify sign-craze-mipsle --repo kittylabassistant/sign-craze
 ## Контакты
 
 - E-Mail: [kittylabassistant@protonmail.com](mailto:kittylabassistant@protonmail.com)
+
+## Поддержка проекта
+
+- USDT ERC-20: 0x8aEDDa62aE3fd33696585632b6FB213f76599659
+- USDT TRC-20: TCM77F2AYZPWTPzMefq6dGr9zzTx7oxGrk
