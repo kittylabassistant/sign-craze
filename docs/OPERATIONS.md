@@ -1,5 +1,7 @@
 # OPERATIONS.md — Runbook оператора sign-craze
 
+> Версия: 2026-05-20.
+
 ## 1. Обзор и предусловия
 
 **sign-craze** — Go single-binary менеджер межсетевого экрана для Keenetic. Управляет sing-box (прокси-ядро), iptables/ipset, DPI-обходом (nfqws2) и интеграцией с Keenetic IP Policy через RCI.
@@ -97,7 +99,7 @@ sign-craze --status
 # sing-box:  запущен  (pid 1234)
 # nfqws2:    остановлен
 # режим:     policy
-# версия:    sign-craze v0.x.x / sing-box v1.x.x
+# версия:    sign-craze v1.4.2 / sing-box v1.13.x
 ```
 
 ---
@@ -202,6 +204,14 @@ sign-craze --core-install mihomo
 | `--core-install <name>` | Скачать и установить ядро для текущей архитектуры |
 
 > Смена ядра не пересоздаёт конфиг автоматически — конфиг генерируется заново при следующем `--restart`.
+
+### Установка с mieru (enfein/mieru)
+
+`sign-craze --install --with-mieru` — скачивает и устанавливает бинарь mieru параллельно с sing-box. После установки выбрать outbound: `--proxy mierus://<server>:<port>?username=<user>&password=<pass>` или редактирование `routing.json` через UI.
+
+### Установка с naive (klzgrad/naiveproxy)
+
+`sign-craze --install --with-naive` — скачивает и устанавливает бинарь naive параллельно с sing-box. После установки выбрать outbound: `--proxy naive+https://<user>:<pass>@<server>:<port>` или редактирование `routing.json` через UI.
 
 ---
 

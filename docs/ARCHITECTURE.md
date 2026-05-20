@@ -1,5 +1,7 @@
 # sign-craze: Архитектура
 
+> Версия: 2026-05-20. Архитектура v1.4.2.
+
 ## Диаграмма слоёв
 
 ```plain
@@ -11,6 +13,8 @@
 │  internal/cli  (диспетчер + обработчики подкоманд)  │
 │  install · update · service · ports · geo           │
 │  backup · ui · diag · dpi-targets                   │
+│  excludes · reapply · service-watchdog              │
+│  core (multi) · peers (mieru, naive)                │
 └──┬────────────────┬────────────────┬────────────────┘
    │                │                │
    ▼                ▼                ▼
@@ -200,7 +204,7 @@ Legacy-имена `proxy`, `dpi`, `hybrid` принимаются для обр�
 
 Цепочка `signcraze_policy_dpi` устанавливается в `mangle:POSTROUTING` (только policy+DPI).
 
-## Packet path: режим policy (TPROXY/REDIRECT) — v0.8.0
+## Packet path: режим policy (TPROXY/REDIRECT) — v0.8.0 (историческое, закрыто в v1.0.0+)
 
 WAN-интерфейс определяется автоматически через `ip route show default` в `applyInternal()` до выбора режима.
 
@@ -227,7 +231,7 @@ mangle:POSTROUTING  -o $WAN_IFACE  (signcraze_policy_dpi):
 Решение: `state.DPIExcludeIPs` + best-effort резолв первого `outbound.Server`.
 Перед каждым блоком NFQUEUE-портов добавляются RETURN-правила для каждого IP из этого списка.
 
-## Auto-update hostlist (v0.8.0)
+## Auto-update hostlist (v0.8.0) (историческое, закрыто в v1.0.0+)
 
 Подсистема периодического обновления DPI-листа запускается горутиной внутри `--service-watchdog`
 (`cmd_service_watchdog.go`):
@@ -247,7 +251,7 @@ watchdog loop (горутина):
 Ограничения: HTTP timeout 30s учитывает медленный TLS-хендшейк на MIPS; body cap 2MB
 защищает от OOM на роутерах с 128MB RAM.
 
-## Reapply throttle (v0.8.0)
+## Reapply throttle (v0.8.0) (историческое, закрыто в v1.0.0+)
 
 Путь `--reapply` защищён маркером `/opt/var/run/sign-craze-reapply.last` (mtime):
 
@@ -257,7 +261,7 @@ watchdog loop (горутина):
 - Это исключает каскадный reapply при одновременных внешних событиях (перезапуск
   init.d shim, watchdog-тик).
 
-## DNS fallback chain (v0.8.1)
+## DNS fallback chain (v0.8.1) (историческое, закрыто в v1.0.0+)
 
 Применяется **только** к HTTP-клиенту в `dpi.UpdateHostlist` — не затрагивает DNS,
 используемый sing-box или другими подсистемами sign-craze.
@@ -283,7 +287,7 @@ resilientResolver.LookupHost(host):
 
 Файл: `internal/dpi/update.go`
 
-## Hostlist apply rule (v0.8.2)
+## Hostlist apply rule (v0.8.2) (историческое, закрыто в v1.0.0+)
 
 `internal/cli/deps.go::hostlistShouldApply()` — предикат, определяющий, нужно ли
 передавать `--hostlist=<path>` в аргументы запуска nfqws2.
@@ -303,7 +307,7 @@ hostlistShouldApply(state, path) bool:
 
 Файл: `internal/cli/deps.go`
 
-## Routing config migration (v0.8.3)
+## Routing config migration (v0.8.3) (историческое, закрыто в v1.0.0+)
 
 `internal/cli/deps.go::configParamsFromState()` выполняет однократную миграцию
 `/opt/etc/sign-craze/routing.json` при обнаружении устаревшей конфигурации.

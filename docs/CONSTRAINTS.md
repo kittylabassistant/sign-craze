@@ -1,5 +1,7 @@
 # CONSTRAINTS.md — Технические ограничения sign-craze
 
+> Версия: 2026-05-20.
+
 Single source of truth для инвариантов, нарушение которых недопустимо. Изменение любого пункта требует: ADR + правка этого файла + прохождение CI matrix.
 
 ---
@@ -22,6 +24,10 @@ Single source of truth для инвариантов, нарушение кот�
 При включении naive outbound добавляется отдельный процесс `naive` с RSS ~30–50 МБ
 (Chrome network stack). На роутерах с 128 МБ RAM проверяйте свободную память перед
 включением. Суммарный RSS sign-craze + sing-box + nfqws2 + naive может превысить 80 МБ.
+
+### mieru daemon
+
+- mieru: ~30 МБ RSS (отдельный процесс, supervised peer). Сумма naive+mieru не должна превышать 80 МБ для бюджета 128 МБ роутера.
 
 ---
 
@@ -74,6 +80,7 @@ Single source of truth для инвариантов, нарушение кот�
 | Многобуквенные короткие флаги — **запрещены** | `--install-auto` | `-ia` | Неоднозначность; `CLAUDE.md:27` |
 | `--help` и `--version` — обязательны | `sign-craze --help` | отсутствие справки | Стандарт |
 | Read-only команды (`--status`, `--diag`) — **никаких side-effects** | только чтение | `--status` с auto-repair | Безопасность диагностики |
+| `--no-color` — отключить ANSI-цвета в выводе CLI и slog handler (`internal/log/log.go`, v1.3.0+). Mandatory для скриптовой обработки. | `sign-craze --status --no-color` | отсутствие флага в скриптах | Автоматизация |
 
 ---
 

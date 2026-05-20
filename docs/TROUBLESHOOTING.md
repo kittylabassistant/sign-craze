@@ -1,5 +1,7 @@
 # TROUBLESHOOTING
 
+> Версия: 2026-05-20.
+
 > Symptom → diagnosis → fix.
 > Это не install-guide — он в `wiki/Installation.md`.
 > Здесь только «вижу X, делаю Y, получаю Z».
@@ -101,7 +103,7 @@ sign-craze --diag            # 2. PASS/WARN/FAIL по 12 проверкам
 
 | Симптом | Вероятная причина | Команда проверки | Fix |
 | --------- | ------------------- | ----------------- | ----- |
-| `--update-geo` падает с OOM или роутер ребутится | **Исправлено в v0.4.x** (safety-fixes #14 — streaming write). Старые версии читали .srs (10–30 МБ) в RAM | `sign-craze --version` | Обновить до `>=v0.4.x`. Временно: ночью; убедиться что swap активен: `free -m` |
+| `--update-geo` падает с OOM или роутер ребутится | **Исправлено** (safety-fixes #14 — streaming write). Старые версии читали .srs (10–30 МБ) в RAM | `sign-craze --version` | Mitigation: используйте build с tagged `auth_cost_lowmem.go` (применяется автоматически для GOARCH=mips/mipsle). Временно: запускать ночью; убедиться что swap активен: `free -m` |
 | `--diag` → `geo-files WARN` | `--update-geo` не запускался > 7 дней | `ls -la /opt/var/lib/sign-craze/geo/*.srs` | `sign-craze --update-geo && sign-craze --restart` |
 | `--update-geo` падает на скачивании | GitHub недоступен или rate-limit | `curl -s -o /dev/null -w "%{http_code}" https://github.com` | Retry; или скопировать .srs вручную в `/opt/var/lib/sign-craze/geo/` |
 
@@ -144,6 +146,33 @@ sign-craze --diag            # 2. PASS/WARN/FAIL по 12 проверкам
 **Симптом:** `--install --proxy naive+https://...` падает с "naiveproxy: архитектура mips (big-endian) не поддерживается".
 
 **Причина:** klzgrad/naiveproxy не публикует big-endian MIPS бинари (только linux-mipsel = little-endian). Решение: использовать другой протокол (VLESS+Reality, Trojan).
+
+### mieru daemon не стартует
+
+**Симптом:** `--start` сообщает "mieru: процесс упал сразу после старта".
+
+**Диагностика:**
+1. Прочитай stderr-лог: `cat /opt/var/log/sign-craze/mieru.stderr.log`
+2. Типичные причины:
+   - Некорректный URL (опечатка в user/password/port) — mieru напишет "authentication failed".
+   - Порт занят другим процессом — `netstat -tlnp | grep <mieru-port>`.
+   - Бинарь не ELF либо повреждён — `file /opt/sbin/mieru`.
+
+**Симптом:** `--install --proxy mierus://...` завершается успешно, но при `--start` mieru не появляется в `--status`.
+
+**Причина:** mieru требует отдельного шага инициализации конфига через `mieru start` (внутренний). Sign-craze управляет lifecycle автоматически — проверьте `sign-craze --diag` на предмет FAIL по строке `service-mieru`.
+
+### xray не стартует: "запустите --update-geo --core xray"
+
+**Симптом:** после `--core-install xray` команда `--start --core xray` падает с ошибкой `geosite.dat не найден`.
+
+**Причина:** `--core-install xray` устанавливает только бинарь xray. Geo-данные (`geosite.dat`/`geoip.dat`) загружаются отдельно через `--update-geo --core xray` (источник: `internal/core/xray/render_rules.go:78-84`, lessons.md 2026-05-12).
+
+**Решение:**
+```sh
+sign-craze --update-geo --core xray
+sign-craze --start --core xray
+```
 
 ### Переключение ядра (multi-core, v1.0.0+)
 

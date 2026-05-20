@@ -64,7 +64,7 @@ sign-craze --restart
 
 ```sh
 # с десктопа
-curl -fsSLO https://raw.githubusercontent.com/kittylabassistant/sign-craze/v0.6.4/dist/sign-craze-mipsle
+curl -fsSLO https://raw.githubusercontent.com/kittylabassistant/sign-craze/v1.4.2/dist/sign-craze-mipsle
 curl -fsSLO https://github.com/SagerNet/sing-box/releases/download/v1.13.11/sing-box-1.13.11-linux-mipsle-softfloat.tar.gz
 curl -fsSLO https://github.com/nfqws/nfqws2-keenetic/releases/download/v1.1.5/nfqws2-keenetic_1.1.5_mipsel-3.4.ipk
 

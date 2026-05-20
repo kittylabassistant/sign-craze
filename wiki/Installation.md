@@ -321,7 +321,7 @@ sign-craze --version
 Ожидаемый вывод:
 
 ```
-sign-craze v0.5.16 (commit abc1234, built 2026-04-29)
+sign-craze v1.4.2 (commit <актуальный>, built 2026-05-20)
 sing-box: not installed
 ```
 
@@ -335,7 +335,7 @@ sign-craze поддерживает три прокси-ядра. По умол�
 
 ```sh
 # Установка с явным указанием ядра
-sign-craze --install --core sing-box   # по умолчанию, TUN-mode
+sign-craze --install --core sing-box   # по умолчанию, TPROXY-mode (default с v0.7.1; TUN — только при явном --inbound tun)
 sign-craze --install --core xray       # PQ-VLESS, Vision, xhttp packet-up
 sign-craze --install --core mihomo     # Hysteria2, TUIC, WireGuard
 
@@ -385,7 +385,7 @@ sign-craze --restart
 - Скачается `sing-box` с GitHub Releases SagerNet → `/opt/sbin/sing-box`
 - Сгенерируется `/opt/etc/sign-craze/config.json` (TUN inbound `signbox-tun`, fwmark `0x53` для loop-prevention)
 - В режиме `policy` — будет создана IP Policy `sign-craze` через RCI Keenetic
-- При включении DPI (`--dpi on`) — скачается `nfqws2` и сгенерируется `/opt/etc/sign-craze/nfqws2.conf`
+- При включении DPI (`--dpi on`) — скачается `nfqws2` и сгенерируется `/opt/etc/sign-craze/nfqws2.conf`; DPI chain перенесена в FORWARD (signcraze_dpi_fwd) с v1.1.0 для применения ко всем LAN-устройствам
 - Создастся init.d shim `/opt/etc/init.d/S99signcraze` (автозапуск sing-box + firewall watchdog)
 - Создастся NDM netfilter.d hook `/opt/etc/ndm/netfilter.d/50-sign-craze` (реапплай правил после rebuild)
 
@@ -466,7 +466,7 @@ sign-craze --status
 sing-box: running (PID 12345)
 nfqws2: running (PID 12346)
 режим: policy
-версия: 0.5.16
+версия: v1.4.2
 ```
 
 ---

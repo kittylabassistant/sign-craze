@@ -1,5 +1,7 @@
 # BEHAVIOR_SPEC.md
 
+> Версия: 2026-05-20. Спецификация v1.4.2.
+
 Функциональная спецификация sign-craze, написанная в режиме clean-room.
 Исходники XKeen не читались. Только публичные источники.
 
@@ -57,6 +59,8 @@
 
 Аналог `--install`, но читает бинарь из локального пути, переданного аргументом. Сетевая загрузка пропускается.
 
+- `[--with-naive]` — опт-ин на скачивание и установку бинаря klzgrad/naiveproxy при `--install` без явного `--proxy naive+...`. См. §8 "Supervised peers — naiveproxy" и ADR-0021.
+
 ---
 
 ### `--start`
@@ -106,11 +110,13 @@
 **Вывод** (stdout):
 
 ```plain
-sing-box:  запущен  (pid 1234)
-nfqws2:    остановлен
-режим:     policy
-версия:    sign-craze v0.1.0 / sing-box v1.13.x
+<active_core>:  запущен  (pid 1234)
+nfqws2:         остановлен
+режим:          policy
+версия:         sign-craze v1.4.2 / <core> v<core-version>
 ```
+
+Метка ядра соответствует активному core (`sing-box`, `xray`, `mihomo`) из `--core <name>`.
 
 Состояние системы не изменяется.
 
@@ -325,6 +331,8 @@ resolver без override — пользовательский DNSCrypt/DoH со�
 
 Скачивает и устанавливает указанное ядро в `/opt/sbin/`. Сервис **не перезапускает**.
 
+**Примечание для xray**: после `--core-install xray` обязательно выполнить `--update-geo --core xray` для загрузки `geosite.dat`/`geoip.dat` — иначе `--start --core xray` упадёт с явной ошибкой "запустите --update-geo --core xray" (см. `internal/core/xray/render_rules.go`, инцидент 2026-05-12).
+
 ---
 
 ### Унифицированный routing для всех ядер (v1.0.0+)
@@ -380,6 +388,8 @@ Legacy-имена (`proxy`, `dpi`, `hybrid`) принимаются для об�
 
 Минимальная структура TUN inbound (из `internal/singbox/templates/tun.json.tmpl`):
 
+<!-- MTU=1280 — минимум IPv6, защита от PMTUD black holes на VPN. См. `internal/singbox/config.go::DefaultTUNMTU`. -->
+
 ```json
 {
   "log": { "level": "info", "output": "/opt/var/log/sign-craze/sing-box.log", "timestamp": true },
@@ -389,7 +399,7 @@ Legacy-имена (`proxy`, `dpi`, `hybrid`) принимаются для об�
       "tag": "tun-in",
       "interface_name": "signbox-tun",
       "address": ["172.19.0.1/30"],
-      "mtu": 9000,
+      "mtu": 1280,
       "auto_route": false,
       "stack": "gvisor"
     }
@@ -750,8 +760,7 @@ Shim делегирует в `sign-craze --service-start` (внутренняя 
 
 ### Мониторинг процессов
 
-sign-craze не демонизирует sing-box через watchdog-петлю (вне scope v0.1).
-Восстановление после краша — через перезапуск init.d или вызов `--restart`.
+Process watchdog реализован через `--service-watchdog` (см. ниже). Демон запускается init.d shim `S99signcraze` и автоматически восстанавливает firewall-правила при их пропаже. Восстановление после краша sing-box — через перезапуск init.d или вызов `--restart`.
 
 ### Firewall watchdog (`--service-watchdog`)
 
@@ -830,6 +839,9 @@ SIGHUP-перезагрузки нет. Изменения конфига тре
         ├── sign-craze/
         │   └── mieru-<tag>.pid     # PID-файл supervised peer mieru
         └── sign-craze-reapply.last   # mtime-маркер throttle --reapply (v0.8.0)
+/opt/share/sign-craze/
+└── ipset.dump        # snapshot ipset для reboot-survival (см. internal/firewall/ipset_persist.go)
+/opt/var/lib/sign-craze/cache.db   # кеш SRS rule-set (sing-box experimental.cache_file)
 ```
 
 ---
@@ -876,8 +888,8 @@ POST   /api/dpi/presets/{name}/apply — применить пресет по и
   "singbox":  {"running": true,  "pid": 1234},
   "nfqws2":   {"running": false, "pid": 0},
   "mode":     "policy",
-  "core":     "sing-box",
-  "version":  {"sign_craze": "v0.1.0", "sing_box": "v1.13.x"},
+  "core":     "<active_core>",
+  "version":  {"sign_craze": "v1.4.2", "core": "v<core-version>"},
   "uptime_s": 3600
 }
 ```
@@ -1034,3 +1046,20 @@ outbound. См. ADR-0021-naiveproxy-process-chain.
 
 **Ограничения MVP:** ровно один naive outbound в state. Множественные naive
 outbounds — Phase 2 (требует port allocator).
+
+### 8.4 Lifecycle naive (порядок старт/стоп)
+
+**Старт** (`--start`, после `core.Start`):
+1. `core.Start` — поднять sing-box/xray/mihomo с outbound `naive` (process chain).
+2. `naive.Start` — запустить бинарь `/opt/sbin/naive` с конфигом `/opt/etc/sign-craze/naive/config.json`, PID в `/opt/var/run/sign-craze-naive.pid`.
+3. Проверка: TCP `127.0.0.1:<local_port>` отвечает в течение 5 с — иначе откат.
+
+**Стоп** (`--stop`, обратный порядок):
+1. `naive.Stop` — SIGTERM → ждать 5 с → SIGKILL → удалить PID-файл.
+2. `core.Stop` — стандартный lifecycle ядра.
+
+**Инвариант Inv-Naive-Order**: naive всегда стартует ПОСЛЕ ядра и стопится ДО ядра (process chain dependency). Нарушение → coredump в naive или зависшие соединения.
+
+**Watchdog (Phase 2 из ADR-0021, pending)**: автоматический рестарт naive при крахе через `--service-watchdog`. Текущий статус — отслеживается в `tasks/todo.md` Phase 16.
+
+**Логи**: stderr-лог `/opt/var/log/sign-craze/naive.stderr.log`. PID watchdog (после Phase 2): `/opt/var/run/sign-craze-naive-watchdog.pid`.

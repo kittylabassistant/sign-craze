@@ -1,6 +1,6 @@
 # OWNERSHIP.md — System-state ownership sign-craze
 
-> Версия: 2026-05-03. Автор: @kittylabassistant.
+> Версия: 2026-05-20. Автор: @kittylabassistant.
 
 ---
 
@@ -125,6 +125,27 @@ Sign-craze устанавливает jump-правила только в `mangl
 | `/opt/sbin/sign-craze`  | sign-craze            | `--uninstall`         | —                                                                     | `service/shim.go:18`                  |
 | `/opt/sbin/sing-box`    | sign-craze (managed)  | `--uninstall`         | **CAUTION:** XKeen может использовать тот же путь. Не удалять при detected XKeen | `singbox/install.go:23` |
 | `/opt/sbin/nfqws2`      | sign-craze (managed)  | `--uninstall`         | **CAUTION:** nfqws2-keenetic может быть установлен независимо         | `dpi/install.go:16`                   |
+| `/opt/sbin/xray`        | sign-craze (managed, опционально) | `--uninstall` | Устанавливается только при `--core-install xray`                  | `internal/core/xray/install.go`       |
+| `/opt/sbin/mihomo`      | sign-craze (managed, опционально) | `--uninstall` | Устанавливается только при `--core-install mihomo`                | `internal/core/mihomo/install.go`     |
+| `/opt/sbin/naive`       | sign-craze (managed, опционально) | `--uninstall` | Устанавливается только при `--with-naive` или `--proxy naive+...` | `internal/naiveproxy/install.go`      |
+| `/opt/sbin/mieru`       | sign-craze (managed, опционально) | `--uninstall` | Устанавливается только при `--with-mieru` или `--proxy mierus://...` | `internal/peer/mieru/install.go`   |
+
+### 6.4 Директории конфигурации ядер (опциональные)
+
+Создаются только при установке соответствующего ядра, удаляются при `--uninstall`.
+
+| Путь                              | Условие создания          |
+|-----------------------------------|---------------------------|
+| `/opt/etc/sign-craze/xray/`       | `--core-install xray`     |
+| `/opt/etc/sign-craze/mihomo/`     | `--core-install mihomo`   |
+| `/opt/etc/sign-craze/naive/`      | `--with-naive`            |
+
+### 6.5 Volatile PID-файлы supervised peers
+
+| Путь                                       | Содержимое                 | Удаляется при                 |
+|--------------------------------------------|----------------------------|-------------------------------|
+| `/opt/var/run/sign-craze-naive.pid`        | PID процесса naive daemon   | stop, uninstall, stale cleanup |
+| `/opt/var/run/sign-craze-mieru.pid`        | PID процесса mieru daemon   | stop, uninstall, stale cleanup |
 
 ---
 
