@@ -26,10 +26,10 @@ import (
 const minFreeBytes = 30 * 1024 * 1024
 
 func init() {
-	Register(Cmd{Short: "-i", Long: "--install", Help: "установка с интерактивной настройкой outbound [--core <ядро>] [--proxy <URL>]", Handler: handleInstall})
-	Register(Cmd{Long: "--install-auto", Help: "установка без интерактива (stub direct outbound) [--core <ядро>] [--proxy <URL>]", Handler: handleInstallAuto})
-	Register(Cmd{Long: "--install-offline", Help: "установка из локального tarball <путь> [--core <ядро>] [--proxy <URL>]", Handler: handleInstallOffline})
-	Register(Cmd{Long: "--reinstall", Help: "переустановка поверх существующей [--proxy <URL>]", Handler: handleReinstall})
+	Register(Cmd{Short: "-i", Long: "--install", Help: "установка с интерактивной настройкой outbound [--core <ядро>] [--proxy <URL>] [--preset <name>]", Handler: handleInstall})
+	Register(Cmd{Long: "--install-auto", Help: "установка без интерактива (stub direct outbound) [--core <ядро>] [--proxy <URL>] [--preset <name>]", Handler: handleInstallAuto})
+	Register(Cmd{Long: "--install-offline", Help: "установка из локального tarball <путь> [--core <ядро>] [--proxy <URL>] [--preset <name>]", Handler: handleInstallOffline})
+	Register(Cmd{Long: "--reinstall", Help: "переустановка поверх существующей [--proxy <URL>] [--preset <name>]", Handler: handleReinstall})
 }
 
 type installMode int
@@ -131,14 +131,34 @@ func parseProxyFlag(args []string) (proxyURL string, rest []string) {
 	return
 }
 
+// parsePresetFlag вытягивает --preset <name> / --preset=<name> из args.
+// Имя пресета валидируется в applyInstallPreset через preset.Find.
+func parsePresetFlag(args []string) (presetName string, rest []string) {
+	rest = make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--preset" && i+1 < len(args) {
+			presetName = args[i+1]
+			i++
+			continue
+		}
+		if after, ok := strings.CutPrefix(args[i], "--preset="); ok {
+			presetName = after
+			continue
+		}
+		rest = append(rest, args[i])
+	}
+	return
+}
+
 func handleInstall(ctx context.Context, args []string) error {
 	coreName, rest := parseInstallCoreFlag(args)
 	proxyURL, rest := parseProxyFlag(rest)
 	withDPI, rest := parseWithDPIFlag(rest)
 	withNaive, rest := parseWithNaiveFlag(rest)
+	presetName, rest := parsePresetFlag(rest)
 	inbound, _ := parseInboundFlag(rest)
 	return withLock(ctx, func() error {
-		return doInstall(ctx, installInteractive, "", false, coreName, proxyURL, withDPI, withNaive, inbound)
+		return doInstall(ctx, installInteractive, "", false, coreName, proxyURL, withDPI, withNaive, inbound, presetName)
 	})
 }
 
@@ -147,9 +167,10 @@ func handleInstallAuto(ctx context.Context, args []string) error {
 	proxyURL, rest := parseProxyFlag(rest)
 	withDPI, rest := parseWithDPIFlag(rest)
 	withNaive, rest := parseWithNaiveFlag(rest)
+	presetName, rest := parsePresetFlag(rest)
 	inbound, _ := parseInboundFlag(rest)
 	return withLock(ctx, func() error {
-		return doInstall(ctx, installAuto, "", false, coreName, proxyURL, withDPI, withNaive, inbound)
+		return doInstall(ctx, installAuto, "", false, coreName, proxyURL, withDPI, withNaive, inbound, presetName)
 	})
 }
 
@@ -158,6 +179,7 @@ func handleInstallOffline(ctx context.Context, args []string) error {
 	proxyURL, rest := parseProxyFlag(rest)
 	withDPI, rest := parseWithDPIFlag(rest)
 	withNaive, rest := parseWithNaiveFlag(rest)
+	presetName, rest := parsePresetFlag(rest)
 	inbound, rest := parseInboundFlag(rest)
 	if len(rest) == 0 {
 		return fmt.Errorf("--install-offline: требуется путь к tarball")
@@ -166,7 +188,7 @@ func handleInstallOffline(ctx context.Context, args []string) error {
 	// установки (например, валидация конфига упала), пользователь явно
 	// указывает локальный tarball — переустановка поверх ожидаемое поведение.
 	return withLock(ctx, func() error {
-		return doInstall(ctx, installOffline, rest[0], true, coreName, proxyURL, withDPI, withNaive, inbound)
+		return doInstall(ctx, installOffline, rest[0], true, coreName, proxyURL, withDPI, withNaive, inbound, presetName)
 	})
 }
 
@@ -175,17 +197,18 @@ func handleReinstall(ctx context.Context, args []string) error {
 	proxyURL, rest := parseProxyFlag(rest)
 	withDPI, rest := parseWithDPIFlag(rest)
 	withNaive, rest := parseWithNaiveFlag(rest)
+	presetName, rest := parsePresetFlag(rest)
 	inbound, _ := parseInboundFlag(rest)
 	mode := installAuto
 	if proxyURL != "" {
 		mode = installInteractive
 	}
 	return withLock(ctx, func() error {
-		return doInstall(ctx, mode, "", true, "", proxyURL, withDPI, withNaive, inbound)
+		return doInstall(ctx, mode, "", true, "", proxyURL, withDPI, withNaive, inbound, presetName)
 	})
 }
 
-func doInstall(ctx context.Context, mode installMode, offlineTar string, force bool, coreName string, proxyURL string, withDPI bool, withNaive bool, inboundMode string) error {
+func doInstall(ctx context.Context, mode installMode, offlineTar string, force bool, coreName string, proxyURL string, withDPI bool, withNaive bool, inboundMode string, presetName string) error {
 	// Auto-detect ядра по proxy URL если --core явно не указан.
 	// Multi-match → sing-box default + info-print. Конфликт явного --core с
 	// несовместимым URL обрабатывается ниже (после core.Get).
@@ -412,6 +435,13 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string, force b
 	if withNaive || naiveInOutbounds {
 		if err := setupNaiveDefault(ctx, st); err != nil {
 			return fmt.Errorf("--install --with-naive: %w", err)
+		}
+	}
+
+	// 7.7 Опционально: применить routing-preset поверх routing.json.
+	if presetName != "" {
+		if err := applyInstallPreset(ctx, presetName, activeC, st); err != nil {
+			return fmt.Errorf("--install --preset: %w", err)
 		}
 	}
 

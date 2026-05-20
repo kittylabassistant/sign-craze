@@ -5,6 +5,18 @@
 
 ---
 
+## [Unreleased]
+
+### Added
+- **CLI `--preset <name>` для `--install`**: применяет один из 8 встроенных routing-пресетов прямо при установке. Раньше пресеты были доступны только через web UI на :9092. Имена: `sign-craze-default`, `block-ads`, `ru-direct`, `ru-direct-rest-vpn`, `blocked-vpn`, `discord-vpn`, `torrents-direct`, `block-bogon-udp`. Apply mode = replace (полностью перезаписывает Rules/Final).
+- **CLI `--preset-list`**: показывает имена, описания и источники всех встроенных пресетов. Пресеты с placeholder `{vpn}` помечены как требующие VPN-outbound.
+- **Пакет `internal/preset`**: выделен из `internal/web/routingui_presets.go`. Публичный API (`preset.BuiltinPresets`, `preset.Find`, `preset.ApplyToConfig`, `preset.ResolveRuleSetURL`, `preset.UsesVPN`) используется и web UI, и CLI — один источник истины.
+
+### Changed
+- **`internal/web/routingui_presets.go`**: рефакторинг — сокращён с 429 до 142 строк. HTTP-handlers остались на месте, preset-логика делегирована в `internal/preset`. API endpoints (`GET /api/presets`, `POST /api/presets/{name}/apply`, `POST /api/presets/{name}/preview`) не изменены.
+
+---
+
 ## [1.4.2] — 2026-05-16
 
 ### Fixed

@@ -89,6 +89,9 @@ sign-craze --install
 # Или без вопросов — автоопределение из конфигурации роутера
 sign-craze --install-auto
 
+# Установка с прокси, DPI и routing-пресетом одной командой:
+sign-craze --install --proxy vless://server:443?...#tag --with-dpi --preset sign-craze-default
+
 # Запустить
 sign-craze --start
 ```
@@ -144,6 +147,8 @@ sign-craze --ui on
 URL rule_sets в пресете подбираются автоматически под активное ядро: `.srs` (sing-box), `.mrs` (mihomo), matcher через geosite:/geoip: (xray).
 
 После любых правок — нажать **Apply**, затем `sign-craze --restart`.
+
+> CLI-альтернатива: `sign-craze --install --preset <name>` (см. `--preset-list`).
 
 ### Документация
 
@@ -270,6 +275,8 @@ sign-craze --install            Установить sing-box + правила i
 sign-craze --install-auto       Установить без интерактивных подсказок
 sign-craze --install-offline <путь>  Установить из локального бинаря
 sign-craze --install --with-dpi      Установить + включить nfqws2 с preset discord-youtube
+sign-craze --install --preset <name>      Установить + применить routing-preset (см. --preset-list)
+sign-craze --preset-list                  Показать встроенные routing-пресеты (8 шт.)
 
 sign-craze --start              Применить правила + запустить sing-box
 sign-craze --stop               Остановить + убрать правила iptables
