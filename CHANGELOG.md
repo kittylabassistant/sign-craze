@@ -5,7 +5,7 @@
 
 ---
 
-## [Unreleased]
+## [1.5.0] — 2026-05-21
 
 ### Added
 - **CLI `--preset <name>` для `--install`**: применяет один из 8 встроенных routing-пресетов прямо при установке. Раньше пресеты были доступны только через web UI на :9092. Имена: `sign-craze-default`, `block-ads`, `ru-direct`, `ru-direct-rest-vpn`, `blocked-vpn`, `discord-vpn`, `torrents-direct`, `block-bogon-udp`. Apply mode = replace (полностью перезаписывает Rules/Final).
