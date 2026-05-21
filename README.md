@@ -4,10 +4,10 @@
 
 Go-утилита для управления межсетевым экраном на роутерах Keenetic.
 
-Поддерживает три прокси-ядра с единым управлением через Web UI: **sing-box**, **xray** и **mihomo** — ядро определяется автоматически по URL outbound при `--install`, переключается командой `--core`. Дополнительно — supervised peers **naiveproxy** и **mieru** (process chain через sing-box socks5-outbound). Опционально [nfqws2](https://github.com/nfqws/nfqws2-keenetic) для DPI-обхода.
+Поддерживает три прокси-ядра с единым управлением через Web UI: **sing-box**, **xray** и **mihomo**. Ядро определяется автоматически по URL outbound при `--install`, переключается командой `--core`. Дополнительно - supervised peers **naiveproxy** и **mieru** (process chain через sing-box socks5-outbound). Опционально [nfqws2](https://github.com/nfqws/nfqws2-keenetic) для DPI-обхода.
 
 > [!WARNING]
-> Данный материал подготовлен в научно‑технических целях. Sign-Craze предназначен для управления межсетевым экраном роутера Keenetic, защищающим домашнюю сеть. Разработчик не несёт ответственности за иное использование утилиты. Перед применением убедитесь, что ваши действия соответствуют законодательству вашей страны.
+> Данный материал подготовлен в научно-технических целях. Sign-Craze предназначен для управления межсетевым экраном роутера Keenetic, защищающим домашнюю сеть. Разработчик не несёт ответственности за иное использование утилиты. Перед применением убедитесь, что ваши действия соответствуют законодательству вашей страны.
 
 ---
 
@@ -15,7 +15,7 @@ Go-утилита для управления межсетевым экрано�
 > **Юридические условия использования:**
 >
 > - **Лицензия.** Проект распространяется на условиях [BSD 3-Clause](LICENSE). Юридически обязывающим является только англоязычный текст в файле `LICENSE`; русский перевод предоставлен исключительно для удобства ознакомления.
-> - **Отказ от гарантий.** Программное обеспечение предоставляется «КАК ЕСТЬ» (AS IS), без каких‑либо явных или подразумеваемых гарантий.
+> - **Отказ от гарантий.** Программное обеспечение предоставляется «КАК ЕСТЬ» (AS IS), без каких-либо явных или подразумеваемых гарантий.
 > - **Ограничение ответственности.** Автор и участники не несут ответственности за любой прямой, косвенный, случайный или последующий ущерб, включая нарушение работы сети, потерю данных или утрату доступа к оборудованию.
 > - **Зона ответственности пользователя.** Применять утилиту допустимо только на оборудовании и в сетях, которыми вы владеете либо имеете явное письменное разрешение владельца.
 > - **Соответствие законодательству.** Пользователь самостоятельно отвечает за соответствие своих действий законодательству страны пребывания.
@@ -27,30 +27,30 @@ Go-утилита для управления межсетевым экрано�
 
 ## Возможности
 
-- **Мульти-ядерность (v1.0.0)**: поддержка sing-box, xray и mihomo с автодетектом ядра по URL outbound при `--install`. Переключение — `--core <name>`, список — `--core-list`, загрузка — `--core-install <name>`.
+- **Мульти-ядерность (v1.0.0)**: поддержка sing-box, xray и mihomo с автодетектом ядра по URL outbound при `--install`. Переключение: `--core <name>`, список: `--core-list`, загрузка: `--core-install <name>`.
 - **Supervised peers (v1.3.0)**: naiveproxy и mieru подключаются как daemon на 127.0.0.1, sing-box заворачивает в socks5-outbound (process chain). URL: `naive+https://...`, `mierus://...`. CLI: `--with-naive`, `--update-naive`.
 - **Унифицированный Routing Editor (v1.0.0)**: Web UI на `:9092` принимает inbound / outbound / rules / rule_sets и presets для любого активного ядра. Apply регенерирует конфиг нужного ядра без перезапуска процесса UI.
-- **Routing UI: пресеты AS-IS/TO-BE + клиентский буфер (v1.1.0)**: «+ Добавить» (аддитивно) и «⟳ Заменить» (очистка Rules + force-set Final). Изменения буферизуются в браузере; Action-bar Сохранить/Отмена. Apply при unsaved → confirm.
+- **Routing UI: пресеты AS-IS/TO-BE + клиентский буфер (v1.1.0)**: «+ Добавить» (аддитивно) и «⟳ Заменить» (очистка Rules + force-set Final). Изменения буферизуются в браузере; Action-bar Сохранить/Отмена. Apply при unsaved требует подтверждения.
 - **Светлая тема Routing UI (v1.1.2)**: переключатель ☀/☾, persist через localStorage, дефолт по `prefers-color-scheme`.
-- **Per-core presets**: при применении пресета URL rule_sets подбираются автоматически под ядро — `.srs` для sing-box (SagerNet), `.mrs` для mihomo (MetaCubeX), geosite:/geoip: matcher для xray (встроенный `.dat`).
-- **Протоколы по ядрам** (актуально для sing-box 1.13+, xray 25.x, mihomo 1.18+; полная таблица — ниже):
+- **Per-core presets**: при применении пресета URL rule_sets подбираются автоматически под ядро: `.srs` для sing-box (SagerNet), `.mrs` для mihomo (MetaCubeX), geosite:/geoip: matcher для xray (встроенный `.dat`).
+- **Протоколы по ядрам** (актуально для sing-box 1.13+, xray 25.x, mihomo 1.18+; полная таблица ниже):
   - Все три ядра: VLESS Reality, VMess, Trojan, Shadowsocks legacy + 2022, XHTTP basic, транспорты WS/gRPC/QUIC/h2, uTLS-фингерпринт
   - sing-box + mihomo: Hysteria 2 (obfs-salamander, brutal CC), TUIC v5, WireGuard, AnyTLS
   - xray only: Vision UDP443 (`flow=*-udp443`), PQ-VLESS (`mlkem768x25519plus`), XHTTP `stream-up`/`stream-one`/`packet-up`
   - sing-box only через peer-chain: naiveproxy, mieru
 - Управление sing-box / xray / mihomo / naive / mieru: установка, запуск, остановка, обновление, откат
-- Два режима маршрутизации: `policy` — выборочная маркировка (default), `full` — весь LAN-трафик через прокси. DPI работает в обоих режимах через nfqws2 + NFQUEUE.
-- **DPI в mangle FORWARD (v1.1.0)**: `signcraze_dpi_fwd` ловит трафик ВСЕХ LAN-устройств (не только policy), desync YouTube/Discord работает для TV/гостей/IoT.
+- Два режима маршрутизации: `policy` - выборочная маркировка (default), `full` - весь LAN-трафик через прокси. DPI работает в обоих режимах через nfqws2 + NFQUEUE.
+- **DPI в mangle FORWARD (v1.1.0)**: `signcraze_dpi_fwd` ловит трафик всех LAN-устройств (не только policy), desync YouTube/Discord работает для TV/гостей/IoT.
 - **Защита SSH/admin при policy (v1.1.1)**: LAN-bypass `-d <LAN_IP> -j RETURN` на pos=1 + admin-ports (22/222) bypass; `--uninstall` отвязывает host-policy в startup-config (factory reset больше не нужен).
 - **ANSI-цветной CLI и логи (v1.2.0)**: `--status`/`--diag`/`--core-list`/`--install`/`--help` раскрашены; opt-out: `--no-color`, `NO_COLOR`, `TERM=dumb`. Кастомный `colorTextHandler` для slog stderr (файловый JSON не меняется).
-- **Hardening (v1.4.0)**: `iptables-restore --noflush` batching (24 fork → 3), WAN cache, watchdog покрывает REDIRECT + DPI FORWARD, reproducible builds (`-buildid=` + `SOURCE_DATE_EPOCH`), cosign keyless OIDC + SLSA provenance, `--diag --json`, WebSocket keepalive 30s, bcrypt cost=10 для MIPS (login 6s → 2s).
+- **Hardening (v1.4.0)**: `iptables-restore --noflush` batching (24 fork до 3), WAN cache, watchdog покрывает REDIRECT + DPI FORWARD, reproducible builds (`-buildid=` + `SOURCE_DATE_EPOCH`), cosign keyless OIDC + SLSA provenance, `--diag --json`, WebSocket keepalive 30s, bcrypt cost=10 для MIPS (login 6s до 2s).
 - Атомарное применение правил iptables/ipset с гарантированным откатом
 - Гео-фильтрация через SRS rule-set (выборочная загрузка по SHA256, streaming)
 - Встроенный Web UI (только из LAN): Zashboard `:9090`, admin API `:9091`, Routing Editor `:9092` (vanilla Preact + htm SPA)
 - Selective DPI: desync только для выбранных доменов/SNI через `--dpi-targets`
 - WAN-фильтр в DPI-правилах: NFQUEUE захватывает только ISP-трафик (`-o $WAN_IFACE`), не трогая LAN-bridge и TUN
-- VPN-exclude (`--dpi-exclude-ips`): RETURN перед NFQUEUE для заданных IP — сохраняет TLS-маскировку Reality-handshake к собственному серверу и downstream-VPN-клиентов на том же эндпоинте
-- Auto-update hostlist (`--dpi-update-interval 24`): автообновление списка DPI-доменов раз в 24 ч из upstream-источников (zapret, Flowseal discord/youtube); `--dpi-update-now` — принудительный запуск
+- VPN-exclude (`--dpi-exclude-ips`): RETURN перед NFQUEUE для заданных IP - сохраняет TLS-маскировку Reality-handshake к собственному серверу и downstream-VPN-клиентов на том же эндпоинте
+- Auto-update hostlist (`--dpi-update-interval 24`): автообновление списка DPI-доменов раз в 24 ч из upstream-источников (zapret, Flowseal discord/youtube); `--dpi-update-now` - принудительный запуск
 - Firewall watchdog: автовосстановление iptables-правил каждые 30 с при работающем `--ui on`
 - Управление портами и исключениями без перезапуска
 - Резервное копирование и восстановление конфигурации
@@ -73,20 +73,20 @@ Go-утилита для управления межсетевым экрано�
 
 ## Установка
 
-> BusyBox `wget` на Keenetic без SSL — нужен `curl` (или `wget-ssl` из Entware): `opkg install curl`.
+> BusyBox `wget` на Keenetic без SSL - нужен `curl` (или `wget-ssl` из Entware): `opkg install curl`.
 
 ```sh
 # Определить архитектуру автоматически и установить последний релиз
 curl -fsSL https://github.com/kittylabassistant/sign-craze/releases/latest/download/install.sh | sh
 
-# Альтернатива: скрипт напрямую с raw.githubusercontent.com (другой CDN —
+# Альтернатива: скрипт напрямую с raw.githubusercontent.com (другой CDN,
 # может пройти, если releases-домен заблокирован у провайдера или DNS).
 curl -fsSL https://raw.githubusercontent.com/kittylabassistant/sign-craze/refs/heads/main/scripts/install.sh | sh
 
 # Запустить установку (интерактивно: запросит URL прокси / outbound)
 sign-craze --install
 
-# Или без вопросов — автоопределение из конфигурации роутера
+# Или без вопросов: автоопределение из конфигурации роутера
 sign-craze --install-auto
 
 # Установка с прокси, DPI и routing-пресетом одной командой:
@@ -98,13 +98,13 @@ sign-craze --start
 
 > [!NOTE]
 > `sing-box` загружается с GitHub Releases во время `--install` и **не входит** в sign-craze.
-> `nfqws2` загружается **только при первом `sign-craze --dpi on`** или при `sign-craze --install --with-dpi` — DPI-обход отключён по умолчанию (opt-in). Флаг `--with-dpi` устанавливает nfqws2 + blob-файлы и сразу включает DPI с preset `discord-youtube` (out-of-box работа YouTube + Discord). См. [wiki/FAQ → «Работает ли DPI/nfqws2 из коробки»](https://github.com/kittylabassistant/sign-craze/wiki/FAQ#работает-ли-dpinfqws2-из-коробки).
+> `nfqws2` загружается **только при первом `sign-craze --dpi on`** или при `sign-craze --install --with-dpi`. DPI-обход отключён по умолчанию (opt-in). Флаг `--with-dpi` устанавливает nfqws2 + blob-файлы и сразу включает DPI с preset `discord-youtube` (out-of-box работа YouTube + Discord). См. [wiki/FAQ → «Работает ли DPI/nfqws2 из коробки»](https://github.com/kittylabassistant/sign-craze/wiki/FAQ#работает-ли-dpinfqws2-из-коробки).
 
 ### Offline-установка (роутер без доступа к GitHub)
 
-Если на роутере нет интернета — скачать bundle на машине с интернетом, перенести по `scp` и запустить локально.
+Если на роутере нет интернета: скачайте bundle на машине с интернетом, перенесите по `scp` и запустите локально.
 
-На машине с интернетом (укажите arch — `arm64`, `arm7`, `mipsle` или `mips`):
+На машине с интернетом (укажите arch: `arm64`, `arm7`, `mipsle` или `mips`):
 
 ```sh
 ARCH=mipsle
@@ -119,11 +119,11 @@ cd /tmp && tar xzf signcraze-mipsle.tar.gz
 cd signcraze-mipsle-bundle && ./install-offline.sh
 ```
 
-> Только сам бинарь sign-craze ставится offline. `sign-craze --install` всё равно тянет sing-box с GitHub. Для полностью изолированной установки — скачайте sing-box tarball отдельно и используйте `sign-craze --install-offline /tmp/sing-box-*.tar.gz`.
+> Только сам бинарь sign-craze ставится offline. `sign-craze --install` всё равно тянет sing-box с GitHub. Для полностью изолированной установки скачайте sing-box tarball отдельно и используйте `sign-craze --install-offline /tmp/sing-box-*.tar.gz`.
 
 ## Quick Routing
 
-sign-craze управляет маршрутизацией через файл `/opt/etc/sign-craze/routing.json`. Файл core-agnostic: одни и те же правила работают на sing-box, xray и mihomo — каждое ядро транслирует их в свой натив-формат. Редактирование — через встроенный Web UI на порту 9092 либо через REST API.
+sign-craze управляет маршрутизацией через файл `/opt/etc/sign-craze/routing.json`. Файл core-agnostic: одни и те же правила работают на sing-box, xray и mihomo - каждое ядро транслирует их в свой натив-формат. Редактирование - через встроенный Web UI на порту 9092 либо через REST API.
 
 ### Порты управления
 
@@ -146,16 +146,16 @@ sign-craze --ui on
 
 URL rule_sets в пресете подбираются автоматически под активное ядро: `.srs` (sing-box), `.mrs` (mihomo), matcher через geosite:/geoip: (xray).
 
-После любых правок — нажать **Apply**, затем `sign-craze --restart`.
+После любых правок нажмите **Apply**, затем выполните `sign-craze --restart`.
 
 > CLI-альтернатива: `sign-craze --install --preset <name>` (см. `--preset-list`).
 
 ### Документация
 
-- [wiki/Routing.md](wiki/Routing.md) — обзор routing pipeline
-- [wiki/Routing-Reference.md](wiki/Routing-Reference.md) — полная инструкция по routing.json и API
-- [wiki/Recipe-RU-Direct.md](wiki/Recipe-RU-Direct.md) — рецепт "РФ direct, остальное VPN"
-- [wiki/Recipes.md](wiki/Recipes.md) — индекс всех рецептов
+- [wiki/Routing.md](wiki/Routing.md) - обзор routing pipeline
+- [wiki/Routing-Reference.md](wiki/Routing-Reference.md) - полная инструкция по routing.json и API
+- [wiki/Recipe-RU-Direct.md](wiki/Recipe-RU-Direct.md) - рецепт "РФ direct, остальное VPN"
+- [wiki/Recipes.md](wiki/Recipes.md) - индекс всех рецептов
 
 ## Мульти-ядерность (v1.0.0)
 
@@ -179,7 +179,7 @@ sign-craze --restart
 
 ### Поддерживаемые протоколы
 
-Актуально для sing-box 1.13+, xray-core 25.x, mihomo 1.18+. Полная матрица с разбивкой по транспортам, uTLS, ECH, sniffing — в [`docs/COMPATIBILITY_MATRIX.md`](docs/COMPATIBILITY_MATRIX.md) (раздел «Матрица протокол × ядро»).
+Актуально для sing-box 1.13+, xray-core 25.x, mihomo 1.18+. Полная матрица с разбивкой по транспортам, uTLS, ECH, sniffing: [`docs/COMPATIBILITY_MATRIX.md`](docs/COMPATIBILITY_MATRIX.md) (раздел «Матрица протокол × ядро»).
 
 | Протокол / режим | sing-box | xray | mihomo |
 |------------------|:--------:|:----:|:------:|
@@ -204,9 +204,9 @@ sign-craze --restart
 | naiveproxy (supervised peer)          | ✓ ¹ | ✗ | ✗ |
 | mieru (supervised peer)               | ✓ ¹ | ✗ | ✗ |
 
-> ✓ — полная поддержка · ⚠ — частичная / экспериментальная (см. примечания в COMPATIBILITY_MATRIX) · ✗ — не поддерживается, `Validate` отвергнет конфиг.
+> ✓ - полная поддержка · ⚠ - частичная / экспериментальная (см. примечания в COMPATIBILITY_MATRIX) · ✗ - не поддерживается, `Validate` отвергнет конфиг.
 >
-> ¹ naive/mieru = supervised peer (process chain). sign-craze запускает daemon на `127.0.0.1`, sing-box подключается через socks5-outbound. xray/mihomo явно отклоняют такие конфиги с подсказкой `--core sing-box`. mips (big-endian) для naive не поддерживается — klzgrad публикует только linux-mipsel (LE).
+> ¹ naive/mieru - supervised peer (process chain). sign-craze запускает daemon на `127.0.0.1`, sing-box подключается через socks5-outbound. xray/mihomo явно отклоняют такие конфиги с подсказкой `--core sing-box`. mips (big-endian) для naive не поддерживается: klzgrad публикует только linux-mipsel (LE).
 >
 > **Ограничения mihomo** (источник: `internal/core/mihomo/validate.go`): Vision UDP443 и PQ-VLESS отклоняются с подсказкой `--core xray`. **Ограничения xray** (источник: `internal/core/xray/validate.go`): TUIC v5, WireGuard, Hysteria 2 отклоняются с подсказкой `--core sing-box` / `--core mihomo`.
 
@@ -218,7 +218,7 @@ sign-craze --restart
 - xray → `/opt/etc/sign-craze/xray/config.json`
 - mihomo → `/opt/etc/sign-craze/mihomo/config.yaml`
 
-Несовместимые конструкции (например `.srs` URL при активном mihomo) отображаются как предупреждения в `apiValidate` — не блокируют Apply, но видны в UI.
+Несовместимые конструкции (например `.srs` URL при активном mihomo) отображаются как предупреждения в `apiValidate`, но не блокируют Apply и видны в UI.
 
 ## DPI: auto-update hostlist и VPN-исключения (v0.8.0)
 
@@ -243,7 +243,7 @@ sign-craze --dpi-update-now
 ### VPN-exclude (Reality/VLESS)
 
 Защита TLS-маскировки Reality-handshake: NFQUEUE не трогает трафик к указанным IP.
-Нужно, если sing-box подключается к собственному Reality-серверу или downstream-клиенты на роутере используют тот же VPN-эндпоинт.
+Применяется, если sing-box подключается к собственному Reality-серверу или downstream-клиенты на роутере используют тот же VPN-эндпоинт.
 
 ```bash
 # Добавить IP VPN-сервера в исключения
@@ -260,11 +260,11 @@ sign-craze --restart
 
 **Web UI** (только из LAN):
 
-- **9090** — Zashboard (управление прокси, мониторинг трафика, Clash-совместимый API). Откройте `http://<ROUTER_LAN_IP>:9090/` в браузере.
-- **9091** — admin REST API sign-craze (статус, конфиг, порты, исключения, DPI targets).
-- **9092** — Routing Editor SPA (визуальный редактор правил маршрутизации).
+- **9090** - Zashboard (управление прокси, мониторинг трафика, Clash-совместимый API). Откройте `http://<ROUTER_LAN_IP>:9090/` в браузере.
+- **9091** - admin REST API sign-craze (статус, конфиг, порты, исключения, DPI targets).
+- **9092** - Routing Editor SPA (визуальный редактор правил маршрутизации).
 
-Порты 9090/9091/9092 слушают на `0.0.0.0`; правила в `filter/INPUT` (owner-comment + префикс) для блокировки Zashboard :9090 с WAN-интерфейса. Из локальной сети доступ открыт без аутентификации.
+Порты 9090/9091/9092 слушают на `0.0.0.0`; правила в `filter/INPUT` (owner-comment + префикс) блокируют Zashboard :9090 с WAN-интерфейса. Из локальной сети доступ открыт без аутентификации.
 
 Запуск: `sign-craze --ui on`.
 
@@ -302,12 +302,12 @@ sign-craze --mode policy|full        Переключить режим марш�
                                      (Legacy-имена `proxy`/`dpi`/`hybrid` мигрируются в `policy` с предупреждением.)
 sign-craze --dpi on|off              Включить / выключить DPI-обход (по умолчанию off; первый `on` качает nfqws2)
 sign-craze --dpi-strategy <пресет>   Установить стратегию DPI
-sign-craze --dpi-targets <домены>    Selective DPI: desync только для указанных SNI (через запятую; clear — сбросить)
+sign-craze --dpi-targets <домены>    Selective DPI: desync только для указанных SNI (через запятую; clear - сбросить)
 sign-craze --dpi-targets-list        Показать текущий список DPI-целей
-sign-craze --dpi-exclude-ips <IP>    IP/IPv6-адреса, исключённые из NFQUEUE (Reality VPN-эндпоинты); clear — сбросить
+sign-craze --dpi-exclude-ips <IP>    IP/IPv6-адреса, исключённые из NFQUEUE (Reality VPN-эндпоинты); clear - сбросить
 sign-craze --dpi-exclude-ips-list    Показать список IP-исключений DPI
-sign-craze --dpi-update-urls <URL>   Источники для auto-update hostlist (через запятую; clear — отключить)
-sign-craze --dpi-update-interval <ч> Период авто-обновления hostlist в часах (0 — выкл, рекомендуется 24)
+sign-craze --dpi-update-urls <URL>   Источники для auto-update hostlist (через запятую; clear - отключить)
+sign-craze --dpi-update-interval <ч> Период авто-обновления hostlist в часах (0 - выкл, рекомендуется 24)
 sign-craze --dpi-update-now         Принудительно обновить hostlist из dpi-update-urls прямо сейчас
 
 sign-craze --port-add <порт>    Добавить порт в проксируемый набор
@@ -329,11 +329,11 @@ sign-craze --uninstall          Полное удаление: sing-box, кон�
 sign-craze --version / -v       Показать версии sign-craze и sing-box
 ```
 
-Полное описание каждой команды, инварианты iptables и форматы конфигов — в [`BEHAVIOR_SPEC.md`](BEHAVIOR_SPEC.md).
+Полное описание каждой команды, инварианты iptables и форматы конфигов: [`BEHAVIOR_SPEC.md`](BEHAVIOR_SPEC.md).
 
 ## Сборка из исходников
 
-Go не требуется на хосте — сборка выполняется в контейнере.
+Go не требуется на хосте: сборка выполняется в контейнере.
 
 ```sh
 # Все архитектуры + UPX
@@ -374,32 +374,32 @@ internal/cli  (диспетчер команд, ANSI-цвет, --no-color)
    ├── internal/service   (init.d shim S99, lifecycle, PID-файлы через atomicfs)
    ├── internal/geo       (SRS rule-set, ipset-конвертация, SHA256 streaming)
    ├── internal/state     (state.json: ValidCores, Mode, Inbound, Outbounds, NaiveEnabled)
-   ├── pkg/types          (RoutingConfig, CoreRenderParams — core-agnostic)
+   ├── pkg/types          (RoutingConfig, CoreRenderParams, core-agnostic)
    └── internal/web       (HTTP: admin API :9091 + Routing Editor :9092 + Zashboard :9090)
 ```
 
-Подробная диаграмма потоков данных — в [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+Подробная диаграмма потоков данных: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Структура файлов на роутере
 
 ```plain
-/opt/sbin/sing-box                        — бинарь активного ядра (или xray/mihomo при --core)
-/opt/sbin/sign-craze                      — этот бинарь
-/opt/sbin/naive                           — naiveproxy daemon (если --with-naive / v1.3.0+)
-/opt/sbin/mieru                           — mieru daemon (если выбран peer mieru)
-/opt/etc/sign-craze/config.json           — конфигурация sing-box (или xray/mihomo путь)
-/opt/etc/sign-craze/routing.json          — core-agnostic правила маршрутизации
-/opt/etc/sign-craze/nfqws2.conf           — конфигурация nfqws2 (если DPI включён)
-/opt/etc/sign-craze/dpi-hostlist.txt      — список SNI-целей для Selective DPI (если задан)
-/opt/etc/init.d/S99signcraze              — init.d shim (автозапуск, после S51dropbear)
-/opt/etc/ndm/netfilter.d/50-sign-craze    — NDM hook (reapply с flock+debounce)
-/opt/var/lib/sign-craze/                  — состояние (гео-файлы, бэкапы, cache.db)
-/opt/var/log/sign-craze/                  — логи с ротацией (JSON file + цветной stderr)
-/opt/var/run/sign-craze-singbox.pid       — PID sing-box (atomic write)
-/opt/var/run/sign-craze-nfqws2.pid        — PID nfqws2
-/opt/var/run/sign-craze-naive.pid         — PID naiveproxy peer (если включён)
-/opt/var/run/sign-craze-reapply.last      — mtime-throttle маркер NDM hook
-/opt/var/lock/sign-craze.lock             — эксклюзивная блокировка
+/opt/sbin/sing-box                        # бинарь активного ядра (или xray/mihomo при --core)
+/opt/sbin/sign-craze                      # этот бинарь
+/opt/sbin/naive                           # naiveproxy daemon (если --with-naive / v1.3.0+)
+/opt/sbin/mieru                           # mieru daemon (если выбран peer mieru)
+/opt/etc/sign-craze/config.json           # конфигурация sing-box (или xray/mihomo путь)
+/opt/etc/sign-craze/routing.json          # core-agnostic правила маршрутизации
+/opt/etc/sign-craze/nfqws2.conf           # конфигурация nfqws2 (если DPI включён)
+/opt/etc/sign-craze/dpi-hostlist.txt      # список SNI-целей для Selective DPI (если задан)
+/opt/etc/init.d/S99signcraze              # init.d shim (автозапуск, после S51dropbear)
+/opt/etc/ndm/netfilter.d/50-sign-craze    # NDM hook (reapply с flock+debounce)
+/opt/var/lib/sign-craze/                  # состояние (гео-файлы, бэкапы, cache.db)
+/opt/var/log/sign-craze/                  # логи с ротацией (JSON file + цветной stderr)
+/opt/var/run/sign-craze-singbox.pid       # PID sing-box (atomic write)
+/opt/var/run/sign-craze-nfqws2.pid        # PID nfqws2
+/opt/var/run/sign-craze-naive.pid         # PID naiveproxy peer (если включён)
+/opt/var/run/sign-craze-reapply.last      # mtime-throttle маркер NDM hook
+/opt/var/lock/sign-craze.lock             # эксклюзивная блокировка
 ```
 
 ## Verifying the release
