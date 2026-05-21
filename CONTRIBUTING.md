@@ -50,7 +50,8 @@ Keenetic поверх Entware: установка sing-box / xray / mihomo, оп
 - Добавление нового ядра требует обновления **четырёх** мест одновременно:
   регистрация в `internal/cli/cores.go`, адаптер `internal/core/<name>/coreadapter.go`,
   обновление `state.ValidCores` в `internal/state/state.go` и добавление
-  entry в `internal/web/routingui_presets.go` (ruleSetSources).
+  entry в `internal/preset/preset.go` (`RuleSetSources` — определяет URL
+  для SRS/MRS/DAT под формат geo-данных нового ядра).
   Тест `cores_sync_test.go` ловит drift между `ValidCores` и registry.
 
 ## Чем можно помочь
