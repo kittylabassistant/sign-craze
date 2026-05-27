@@ -29,6 +29,14 @@ jobs:
           ref: main
           path: main-repo
 
+      # ── 1a. Сохранение scripts/ и packaging/ перед переключением веток ──────
+      - name: Stash main branch tools
+        run: |
+          mkdir -p /tmp/main-tools
+          cp -r main-repo/scripts /tmp/main-tools/
+          cp -r main-repo/packaging /tmp/main-tools/
+          ls -la /tmp/main-tools/scripts/ /tmp/main-tools/packaging/opkg/
+
       # ── 2. Checkout или создание ветки gh-pages ──────────────────────────────
       - name: Setup gh-pages branch
         run: |
@@ -114,20 +122,20 @@ jobs:
       - name: Generate opkg feed
         run: |
           cd main-repo
-          # Скрипт использует USIGN_KEY из env
-          bash scripts/build-opkg-feed.sh _release_assets/ entware/
+          # Скрипт хранится в main, но main-repo сейчас на gh-pages.
+          # Используем stash из /tmp/main-tools/ (см. шаг 1a).
+          bash /tmp/main-tools/scripts/build-opkg-feed.sh _release_assets/ entware/
 
       # ── 8. Копирование публичного ключа в корень feed ─────────────────────────
       - name: Copy public key to feed root
         run: |
           cd main-repo
-          # packaging/opkg/sign-craze-feed.pub хранится в main branch
-          # Копируем из main-repo (который сейчас на gh-pages) через git show
-          git show main:packaging/opkg/sign-craze-feed.pub > entware/sign-craze-feed.pub \
-            2>/dev/null || {
-              echo "Предупреждение: публичный ключ не найден в main ветке" >&2
-              echo "Файл entware/sign-craze-feed.pub не создан" >&2
-            }
+          if [ -f /tmp/main-tools/packaging/opkg/sign-craze-feed.pub ]; then
+            cp /tmp/main-tools/packaging/opkg/sign-craze-feed.pub entware/sign-craze-feed.pub
+            echo "Публичный ключ скопирован в entware/sign-craze-feed.pub"
+          else
+            echo "Предупреждение: публичный ключ не найден в stash" >&2
+          fi
 
       # ── 9. Commit и push в gh-pages ──────────────────────────────────────────
       - name: Commit and push feed to gh-pages
