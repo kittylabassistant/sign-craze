@@ -105,6 +105,20 @@ jobs:
           tar czf "signcraze-${{ matrix.suffix }}.tar.gz" "$BUNDLE"
           rm -rf "$BUNDLE"
 
+      - name: build IPK
+        run: |
+          sh scripts/build-ipk.sh ${{ matrix.suffix }} ${{ github.ref_name }}
+
+      - name: IPK arch suffix
+        id: ipk_arch
+        run: |
+          case "${{ matrix.suffix }}" in
+            arm64)  echo "arch=aarch64-3.10" >> "$GITHUB_OUTPUT" ;;
+            arm7)   echo "arch=armv7-3.2"   >> "$GITHUB_OUTPUT" ;;
+            mipsle) echo "arch=mipsel-3.4"  >> "$GITHUB_OUTPUT" ;;
+            mips)   echo "arch=mips-3.4"    >> "$GITHUB_OUTPUT" ;;
+          esac
+
       - uses: actions/upload-artifact@v7
         with:
           name: sign-craze-${{ matrix.suffix }}
@@ -113,6 +127,8 @@ jobs:
             dist/sign-craze-${{ matrix.suffix }}
             dist/sign-craze-${{ matrix.suffix }}.sha256
             dist/signcraze-${{ matrix.suffix }}.tar.gz
+            dist/sign-craze_*_${{ steps.ipk_arch.outputs.arch }}.ipk
+            dist/sign-craze_*_${{ steps.ipk_arch.outputs.arch }}.ipk.sha256
 
   publish:
     name: publish release
@@ -138,7 +154,7 @@ jobs:
         run: cp scripts/install.sh dist/install.sh
 
       - name: sha256sums.txt (aggregate)
-        run: cd dist && sha256sum sign-craze-* > sha256sums.txt
+        run: cd dist && sha256sum sign-craze-* sign-craze_*.ipk > sha256sums.txt
 
       - uses: sigstore/cosign-installer@v3
         with:
@@ -146,8 +162,11 @@ jobs:
 
       - name: Sign release artifacts (keyless OIDC)
         run: |
-          for f in dist/sign-craze-*; do
+          for f in dist/sign-craze-* dist/sign-craze_*.ipk; do
             [ -f "$f" ] || continue
+            case "$f" in
+              *.sig|*.pem|*.sha256) continue ;;
+            esac
             cosign sign-blob --yes "$f" \
               --output-signature "$f.sig" \
               --output-certificate "$f.pem"
@@ -155,13 +174,17 @@ jobs:
 
       - uses: actions/attest-build-provenance@v4
         with:
-          subject-path: 'dist/sign-craze-*'
+          subject-path: |
+            dist/sign-craze-*
+            dist/sign-craze_*.ipk
 
       - name: create release
         uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/sign-craze-*
+            dist/sign-craze_*.ipk
+            dist/sign-craze_*.ipk.sha256
             dist/signcraze-*.tar.gz
             dist/sha256sums.txt
             dist/install.sh

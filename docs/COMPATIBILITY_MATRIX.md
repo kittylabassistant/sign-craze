@@ -347,3 +347,37 @@ Sign-craze поддерживает три взаимозаменяемых пр
 | `protocol` (http/tls/bittorrent) | ✅ | ✅ | ⚠️ частично |
 | `port` / `port_range` | ✅ | ✅ | ✅ |
 | `network` (tcp/udp) | ✅ | ✅ | ✅ |
+
+---
+
+## 10. Entware IPK arch suffix mapping
+
+При публикации opkg-пакета архитектура указывается в имени файла
+по соглашению Entware (отличается от sign-craze internal suffix).
+
+| sign-craze suffix | Entware Architecture | IPK filename example | Типичные роутеры |
+|---|---|---|---|
+| `arm64` | `aarch64-3.10` | `sign-craze_1.6.0_aarch64-3.10.ipk` | Keenetic Hero 4G+, новые ARM64 |
+| `arm7` | `armv7-3.2` | `sign-craze_1.6.0_armv7-3.2.ipk` | Keenetic KN-1011, ARM Cortex-A7 |
+| `mipsle` | `mipsel-3.4` | `sign-craze_1.6.0_mipsel-3.4.ipk` | Keenetic Giga/Ultra/Hopper (MT7621) |
+| `mips` | `mips-3.4` | `sign-craze_1.6.0_mips-3.4.ipk` | Старые big-endian MIPS-роутеры |
+
+Определить архитектуру роутера: `opkg print-architecture | grep -v all`.
+
+## 11. Автоматические зависимости через opkg Depends
+
+Если sign-craze установлен через opkg (feed или offline .ipk),
+opkg автоматически разрешит и установит следующие пакеты:
+
+| Пакет | Назначение |
+|---|---|
+| `ipset` | ipset signcraze_ipv4/ipv6 в режиме full |
+| `iptables` | основа firewall |
+| `iptables-mod-conntrack-extra` | CONNMARK match в mangle chains |
+| `iptables-mod-tproxy` | xt_TPROXY kernel module для -j TPROXY |
+| `kmod-nfnetlink-queue` | -j NFQUEUE для DPI через nfqws2 |
+| `curl` | скачивание sing-box и других ядер при --install |
+
+Не входят в Depends (sign-craze управляет сам): sing-box, xray, mihomo,
+nfqws2, naiveproxy, mieru. На Keenetic `xt_set` встроен в стоковое
+ядро, поэтому `iptables-mod-ipset` не указан в Depends.

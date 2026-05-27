@@ -102,6 +102,14 @@ jobs:
             -o dist/sign-craze-${{ matrix.suffix }} \
             ./cmd/sign-craze
 
+  ipk-structure:
+    name: IPK structure smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: run IPK structure test
+        run: bash scripts/test-ipk-structure.sh
+
   firewall-integration:
     name: Firewall integration tests (privileged)
     runs-on: ubuntu-latest

@@ -1,0 +1,27 @@
+#!/bin/sh
+
+case "$1" in
+    remove)
+        echo ""
+        echo "sign-craze удалён. Конфигурация сохранена в /opt/etc/sign-craze/"
+        echo ""
+        echo "Для полной очистки (включая конфиги, логи и хуки) выполните:"
+        echo "  opkg remove --force-remove sign-craze  # если пакет ещё числится"
+        echo "  rm -rf /opt/etc/sign-craze /opt/var/lib/sign-craze /opt/var/log/sign-craze"
+        echo "  rm -f /opt/etc/init.d/S99signcraze /opt/etc/ndm/netfilter.d/50-sign-craze"
+        echo ""
+        ;;
+    purge)
+        rm -rf /opt/etc/sign-craze
+        rm -rf /opt/var/lib/sign-craze
+        rm -rf /opt/var/log/sign-craze
+        rm -f /opt/etc/init.d/S99signcraze
+        rm -f /opt/etc/ndm/netfilter.d/50-sign-craze
+        echo "sign-craze: все данные и конфигурация удалены"
+        ;;
+    abort-install|upgrade|failed-upgrade)
+        exit 0
+        ;;
+esac
+
+exit 0

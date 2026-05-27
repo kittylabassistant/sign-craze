@@ -287,6 +287,21 @@ ipset list 2>&1 | head -50 >> /tmp/diag.txt
 
 ---
 
+## Установка через opkg
+
+| Симптом | Причина | Решение |
+|---|---|---|
+| `opkg install`: file already exists `/opt/sbin/sign-craze` | sign-craze установлен через install.sh, preinst не сработал | `mv /opt/sbin/sign-craze /opt/sbin/sign-craze.bak; opkg install <pkg>.ipk` вручную |
+| `opkg install`: cannot satisfy dependencies (ipset) | Базовый пакет не установлен | `opkg update && opkg install ipset` затем повторить |
+| Нет .ipk для нужной архитектуры в feed | Phase 2 feed не содержит данную arch | Использовать offline install с GitHub Releases напрямую |
+| `postinst: sign-craze --status: state.json not found` | Первая установка, нет state.json | Это нормально - выполнить `sign-craze --install` |
+| После `opkg remove` конфиги в `/opt/etc/sign-craze/` остались | Ожидаемое поведение | Удалить вручную: `rm -rf /opt/etc/sign-craze /opt/var/lib/sign-craze /opt/var/log/sign-craze` |
+| `opkg update`: signature verification failed | Публичный ключ не в `/opt/etc/opkg/keys/` или ключ устарел | Скачать актуальный: `curl -fsSL .../sign-craze-feed.pub > /opt/etc/opkg/keys/sign-craze-feed.pub` |
+| `opkg upgrade`: postinst не вызвал restart | Сервис не был запущен до upgrade | Запустить вручную: `sign-craze --start` |
+| После opkg install sign-craze --version выдает старую версию | Старый бинарь в PATH перед /opt/sbin/ | Проверить `which sign-craze`, переустановить через `opkg install --force-reinstall sign-craze` |
+
+---
+
 ## Получение помощи
 
 **GitHub Issues**: <https://github.com/kittylabassistant/sign-craze/issues>

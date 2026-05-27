@@ -1050,16 +1050,62 @@ outbounds — Phase 2 (требует port allocator).
 ### 8.4 Lifecycle naive (порядок старт/стоп)
 
 **Старт** (`--start`, после `core.Start`):
-1. `core.Start` — поднять sing-box/xray/mihomo с outbound `naive` (process chain).
-2. `naive.Start` — запустить бинарь `/opt/sbin/naive` с конфигом `/opt/etc/sign-craze/naive/config.json`, PID в `/opt/var/run/sign-craze-naive.pid`.
-3. Проверка: TCP `127.0.0.1:<local_port>` отвечает в течение 5 с — иначе откат.
+1. `core.Start` - поднять sing-box/xray/mihomo с outbound `naive` (process chain).
+2. `naive.Start` - запустить бинарь `/opt/sbin/naive` с конфигом `/opt/etc/sign-craze/naive/config.json`, PID в `/opt/var/run/sign-craze-naive.pid`.
+3. Проверка: TCP `127.0.0.1:<local_port>` отвечает в течение 5 с - иначе откат.
 
 **Стоп** (`--stop`, обратный порядок):
-1. `naive.Stop` — SIGTERM → ждать 5 с → SIGKILL → удалить PID-файл.
-2. `core.Stop` — стандартный lifecycle ядра.
+1. `naive.Stop` - SIGTERM → ждать 5 с → SIGKILL → удалить PID-файл.
+2. `core.Stop` - стандартный lifecycle ядра.
 
 **Инвариант Inv-Naive-Order**: naive всегда стартует ПОСЛЕ ядра и стопится ДО ядра (process chain dependency). Нарушение → coredump в naive или зависшие соединения.
 
-**Watchdog (Phase 2 из ADR-0021, pending)**: автоматический рестарт naive при крахе через `--service-watchdog`. Текущий статус — отслеживается в `tasks/todo.md` Phase 16.
+**Watchdog (Phase 2 из ADR-0021, pending)**: автоматический рестарт naive при крахе через `--service-watchdog`. Текущий статус - отслеживается в `tasks/todo.md` Phase 16.
 
 **Логи**: stderr-лог `/opt/var/log/sign-craze/naive.stderr.log`. PID watchdog (после Phase 2): `/opt/var/run/sign-craze-naive-watchdog.pid`.
+
+---
+
+## §10. opkg lifecycle
+
+Все 4 hook-скрипта (preinst/postinst/prerm/postrm) - POSIX sh,
+никаких bash-isms. Запускаются opkg на роутере с busybox sh.
+
+### preinst (install | upgrade)
+
+- При install и при существовании `/opt/sbin/sign-craze` не из opkg-пакета:
+  `mv /opt/sbin/sign-craze /opt/sbin/sign-craze.pre-opkg`.
+- Никогда не блокирует установку (всегда `exit 0`).
+- При upgrade ничего не делает.
+
+### postinst (install | upgrade | configure)
+
+- Если `/opt/etc/sign-craze/state.json` существует (upgrade path):
+  - Если сервис запущен (`--status` показывает running) - `sign-craze --restart`.
+  - Иначе пропускает restart.
+- Иначе (fresh install path):
+  - Печатает многострочную подсказку с командами `sign-craze --install` (interactive) и `--install-auto` (без вопросов).
+- НИКОГДА не вызывает `--install-auto` или `--start` автоматически.
+
+Обоснование: `--install` требует пользовательских решений (proxy URL,
+preset, core). `--service-start` на cold boot не идемпотентен (см.
+инцидент 2026-05-07 в `tasks/lessons.md`).
+
+### prerm (remove | upgrade | failed-upgrade)
+
+- При upgrade: `exit 0` (postinst новой версии сделает restart).
+- При remove: если state.json существует и бинарь существует -
+  `sign-craze --stop || true`.
+
+### postrm (remove | purge | upgrade | failed-upgrade | abort-install)
+
+- remove: печатает что конфиги сохранены, инструкция для полной очистки.
+- purge: `rm -rf /opt/etc/sign-craze /opt/var/lib/sign-craze /opt/var/log/sign-craze`
+  и `rm -f /opt/etc/init.d/S99signcraze /opt/etc/ndm/netfilter.d/50-sign-craze`.
+
+### Инварианты opkg-пакета
+
+- IPK содержит ТОЛЬКО `/opt/sbin/sign-craze` (бинарь).
+- `Conffiles:` пустой - конфиги генерируются `sign-craze --install`, opkg не задаёт вопросов при upgrade.
+- init.d shim (`S99signcraze`), NDM hook (`50-sign-craze`), state.json, config.json, routing.json - создаются ТОЛЬКО самим бинарём через `--install`.
+- Бинари ядер (sing-box, xray, mihomo) скачиваются sign-craze отдельно при `--install`.

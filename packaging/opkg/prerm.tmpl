@@ -1,0 +1,19 @@
+#!/bin/sh
+
+BIN=/opt/sbin/sign-craze
+STATE=/opt/etc/sign-craze/state.json
+
+case "$1" in
+    upgrade|failed-upgrade)
+        # При upgrade postinst новой версии выполнит restart — ничего не делаем.
+        exit 0
+        ;;
+    remove)
+        if [ -f "$STATE" ] && [ -f "$BIN" ]; then
+            "$BIN" --stop || true
+            echo "sign-craze: сервис остановлен перед удалением"
+        fi
+        ;;
+esac
+
+exit 0

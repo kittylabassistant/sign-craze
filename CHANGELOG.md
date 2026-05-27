@@ -5,6 +5,43 @@
 
 ---
 
+## [1.6.0] - (unreleased)
+
+### Added
+
+- **opkg/IPK packaging**: sign-craze теперь публикуется как IPK-пакет для Entware.
+  Поддерживает `opkg install ./sign-craze_<ver>_<arch>.ipk` (offline) и установку
+  через custom opkg feed на gh-pages. IPK assets для всех 4 архитектур
+  (aarch64-3.10, armv7-3.2, mipsel-3.4, mips-3.4) публикуются в GitHub Releases.
+  Подписаны cosign keyless OIDC. Подробности: `docs/adr/0022-opkg-distribution.md`.
+
+- **opkg feed на gh-pages**: автоматическая публикация feed после каждого
+  релиза через `.github/workflows/opkg-feed.yml`. Packages.gz подписан
+  usign. Пользователи подключают через
+  `echo "src/gz signcraze https://kittylabassistant.github.io/sign-craze/entware/<arch>" >> /opt/etc/opkg.conf`.
+
+- `Depends` поле IPK автоматически устанавливает зависимости: ipset,
+  iptables, iptables-mod-conntrack-extra, iptables-mod-tproxy,
+  kmod-nfnetlink-queue, curl. Ранее пользователь устанавливал вручную.
+
+### Documentation
+
+- Раздел "Установка" в `README.md` реструктурирован: opkg как Способ 1
+  (рекомендуется), `curl | sh` и offline bundle как альтернативы.
+- Новый раздел "§10. opkg lifecycle" в `docs/BEHAVIOR_SPEC.md`.
+- Новые разделы в `docs/COMPATIBILITY_MATRIX.md` (arch suffix mapping,
+  IPK Depends).
+- ADR-0022 - обоснование выбора opkg как канала дистрибуции.
+
+### Migration
+
+Существующие пользователи (установка через `install.sh`) могут перейти
+на opkg: `preinst` автоматически сохранит старый бинарь как
+`/opt/sbin/sign-craze.pre-opkg`. Конфиги в `/opt/etc/sign-craze/`
+не трогаются.
+
+---
+
 ## [1.5.0] - 2026-05-21
 
 ### Added

@@ -1,0 +1,15 @@
+Package: sign-craze
+Version: {{VERSION}}
+Architecture: {{ARCH}}
+Maintainer: kittylabassistant <noreply@github.com>
+Section: net
+Priority: optional
+License: BSD-3-Clause
+Source: https://github.com/kittylabassistant/sign-craze
+Depends: ipset, iptables, iptables-mod-conntrack-extra, iptables-mod-tproxy, kmod-nfnetlink-queue, curl
+Installed-Size: {{INSTALLED_SIZE}}
+Description: Keenetic firewall manager (sing-box / xray / mihomo)
+ Управляет iptables/ipset-правилами для обхода DPI через nfqws2,
+ интегрируется с Keenetic IP Policy и поддерживает несколько прокси-ядер
+ (sing-box, xray, mihomo). Единый бинарь без внешних зависимостей при runtime.
+

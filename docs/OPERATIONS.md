@@ -31,6 +31,48 @@
 
 > Если sign-craze уже установлен (существует `state.json` или `/opt/sbin/sing-box`), `--install` завершится ошибкой. Используйте `--reinstall` для переустановки поверх.
 
+### 2.0 Установка через opkg (рекомендуется)
+
+opkg обеспечивает: feed-based upgrade (`opkg update && opkg upgrade sign-craze`), dependency tracking (автоустановка ipset, iptables-mod-tproxy и других зависимостей), атомарный rollback при конфликте файлов.
+
+**Через feed:**
+
+```sh
+# Скачать публичный ключ feed
+mkdir -p /opt/etc/opkg/keys
+curl -fsSL https://kittylabassistant.github.io/sign-craze/entware/sign-craze-feed.pub \
+  > /opt/etc/opkg/keys/sign-craze-feed.pub
+
+# Добавить feed (выбрать архитектуру: aarch64-3.10 / armv7-3.2 / mipsel-3.4 / mips-3.4)
+ARCH=mipsel-3.4
+echo "src/gz signcraze https://kittylabassistant.github.io/sign-craze/entware/${ARCH}" \
+  >> /opt/etc/opkg.conf
+echo "option signed_packages 'sign-craze-feed'" >> /opt/etc/opkg.conf
+
+opkg update
+opkg install sign-craze
+sign-craze --install
+```
+
+**Offline install (без feed):**
+
+```sh
+# Скачать .ipk из GitHub Releases
+ARCH=mipsel-3.4
+VER=1.6.0
+wget "https://github.com/kittylabassistant/sign-craze/releases/download/v${VER}/sign-craze_${VER}_${ARCH}.ipk"
+sha256sum -c "sign-craze_${VER}_${ARCH}.ipk.sha256"
+opkg install ./sign-craze_${VER}_${ARCH}.ipk
+sign-craze --install
+```
+
+**Проверка после установки:**
+
+```sh
+sign-craze --version
+opkg list-installed | grep sign-craze
+```
+
 ### 2.1 Интерактивная установка
 
 ```sh
@@ -138,13 +180,30 @@ ip rule show | grep 0x53     # fwmark-правило маршрутизации
 
 ## 5. Обновление
 
+### 5.0 opkg upgrade
+
+Если sign-craze установлен через opkg (feed или offline .ipk):
+
+```sh
+opkg update
+opkg upgrade sign-craze
+```
+
+При upgrade:
+1. opkg вызывает `prerm upgrade` - sign-craze не останавливается (postinst новой версии сделает restart).
+2. Старый бинарь удаляется, распаковывается новый.
+3. opkg вызывает `postinst upgrade` - проверяет наличие state.json:
+   - Если есть и сервис был запущен - `sign-craze --restart`.
+   - Если нет - никаких действий (пользователь сам вызовет `--install`).
+4. state.json, config.json, routing.json не трогаются.
+
 ### 5.1 Обновить sign-craze (self-update)
 
 ```sh
 sign-craze --update
 ```
 
-Скачивает последний GitHub Release для текущей архитектуры, проверяет SHA256, атомарно заменяет `/opt/sbin/sign-craze`. Сервис **не перезапускается** автоматически — `--restart` после.
+Скачивает последний GitHub Release для текущей архитектуры, проверяет SHA256, атомарно заменяет `/opt/sbin/sign-craze`. Сервис **не перезапускается** автоматически - `--restart` после.
 
 ### 5.2 Обновить geo-файлы (SRS rule-set)
 
@@ -515,7 +574,7 @@ iptables -t mangle -L signcraze_policy -n
 sign-craze --uninstall
 ```
 
-Удаляет: sing-box бинарь, init.d shim, NDM hook, конфиги (`/opt/etc/sign-craze/`), state/cache/geo/backups (`/opt/var/lib/sign-craze/`), PID-файлы, бинарь sign-craze, логи (`/opt/var/log/sign-craze/`). В режиме `policy` — удаляет IP-policy через RCI и `system configuration save`.
+Удаляет: sing-box бинарь, init.d shim, NDM hook, конфиги (`/opt/etc/sign-craze/`), state/cache/geo/backups (`/opt/var/lib/sign-craze/`), PID-файлы, бинарь sign-craze, логи (`/opt/var/log/sign-craze/`). В режиме `policy` - удаляет IP-policy через RCI и `system configuration save`.
 
 **Проверка:**
 
@@ -524,6 +583,19 @@ ls /opt/sbin/sing-box 2>/dev/null
 ls /opt/sbin/sign-craze 2>/dev/null
 iptables -t mangle -L signcraze_policy 2>&1   # No chain/target
 ```
+
+### 11.2 Удаление через opkg
+
+```sh
+# Удалить пакет (конфиги в /opt/etc/sign-craze/ сохраняются)
+opkg remove sign-craze
+
+# Опционально: полная очистка конфигов и логов
+rm -rf /opt/etc/sign-craze /opt/var/lib/sign-craze /opt/var/log/sign-craze
+rm -f /opt/etc/init.d/S99signcraze /opt/etc/ndm/netfilter.d/50-sign-craze
+```
+
+Альтернатива: вызвать `sign-craze --uninstall` ДО `opkg remove` - это выполнит более чистое удаление (стоп сервиса, отвязка policy от хостов Keenetic через RCI), затем `opkg remove` уже только снимет бинарь.
 
 ---
 
