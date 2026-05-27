@@ -84,7 +84,9 @@ for ARCH in $ARCHES; do
         CONTROL_CONTENT=""
 
         # .ipk — это ar-архив: debian-binary, control.tar.gz, data.tar.gz
-        (cd "$TMPDIR_EXTRACT" && ar x "$IPK_DEST") 2>/dev/null || {
+        # ar x резолвит путь относительно CWD после cd, нужен абсолютный.
+        IPK_ABS="$(cd "$(dirname "$IPK_DEST")" && pwd)/$(basename "$IPK_DEST")"
+        (cd "$TMPDIR_EXTRACT" && ar x "$IPK_ABS") 2>/dev/null || {
             echo "  Предупреждение: не удалось распаковать ar-архив: $IPK_DEST" >&2
             rm -rf "$TMPDIR_EXTRACT"
             continue
