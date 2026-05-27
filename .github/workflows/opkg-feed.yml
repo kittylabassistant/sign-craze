@@ -83,7 +83,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            build-essential cmake libubox-dev git ca-certificates
+            build-essential cmake libssl-dev pkg-config git ca-certificates
 
       - name: Build usign from source
         run: |
