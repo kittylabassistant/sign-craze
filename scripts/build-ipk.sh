@@ -1,5 +1,5 @@
 #!/bin/sh
-set -euo pipefail
+set -eu
 
 if [ $# -ne 2 ]; then
     echo "Использование: $0 <suffix> <version>" >&2

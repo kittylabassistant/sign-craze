@@ -19,7 +19,7 @@
 #   <OUTPUT_DIR>/<arch>/Packages.gz
 #   <OUTPUT_DIR>/<arch>/Packages.sig  (только если USIGN_KEY задан и usign установлен)
 
-set -euo pipefail
+set -eu
 
 # ─── Аргументы ────────────────────────────────────────────────────────────────
 

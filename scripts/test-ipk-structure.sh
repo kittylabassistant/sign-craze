@@ -1,5 +1,5 @@
 #!/bin/sh
-set -euo pipefail
+set -eu
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 PASS=0
