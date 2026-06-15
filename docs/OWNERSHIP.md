@@ -21,7 +21,8 @@ Sign-craze удаляет только те системные сущности,
 | `signcraze_dpi`        | full (DPI) | `applyFullMode`                                         | `PREROUTING`              | `FlushAndDeleteChain` + jump -D | `internal/firewall/applier.go:212`            |
 | `signcraze_ports`      | full       | `applyFullMode`, `PortRules`                            | `PREROUTING`              | `FlushAndDeleteChain` + jump -D | `applier.go:212`, `modes/ports.go`            |
 | `signcraze_policy`     | policy     | `applyPolicyMode`                                       | `PREROUTING`              | `FlushAndDeleteChain` + jump -D | `modes/policy.go:8`                           |
-| `signcraze_policy_dpi` | policy+DPI | `applyPolicyMode` (DPIEnabled)                          | `POSTROUTING`             | `FlushAndDeleteChain` + jump -D | `modes/policy.go:12`                          |
+| `signcraze_dpi_fwd`    | policy+DPI | `applyPolicyMode` (DPIEnabled), `DPIForwardRules`       | `mangle FORWARD -o WAN`   | `FlushAndDeleteChain` + jump -D | `modes/policy.go:14`                          |
+| `signcraze_policy_dpi` | legacy     | cleanup-only при upgrade (висела в POSTROUTING до refactor 2026-05-12) | `POSTROUTING` (legacy) | `FlushAndDeleteChain`           | `modes/policy.go:21`                          |
 | `signcraze_probe`      | preflight  | `CheckRequiredIptablesModules` (временная, удаляется в defer) | нет                 | `FlushAndDeleteChain` в defer   | `internal/firewall/preflight.go`              |
 
 **Правило удаления:** для каждой chain сначала `DeleteJumpAll(mangle, PREROUTING, chain)`, затем `FlushAndDeleteChain(mangle, chain)`. Оба вызова идемпотентны. Реализовано в `Remove()` → `internal/firewall/applier.go:276-336`.
@@ -30,7 +31,7 @@ Sign-craze удаляет только те системные сущности,
 
 ## 3. iptables jumps (PREROUTING mangle)
 
-Sign-craze устанавливает jump-правила только в `mangle PREROUTING` и `mangle POSTROUTING`. Никаких правил в `OUTPUT`, `nat`, `raw`.
+Sign-craze устанавливает jump-правила в `mangle PREROUTING`, `mangle FORWARD` (policy+DPI), `filter/FORWARD` и `filter/INPUT`. Legacy `mangle POSTROUTING` (до refactor 2026-05-12) — только cleanup при upgrade. Никаких правил в `OUTPUT`, `nat`, `raw`.
 
 #### filter/FORWARD
 
@@ -61,9 +62,9 @@ Sign-craze устанавливает jump-правила только в `mangl
 | `mangle PREROUTING`   | входящий/транзитный     | безусловно   | `-j signcraze_dpi`        | full+DPI   |
 | `mangle PREROUTING`   | входящий/транзитный     | безусловно   | `-j signcraze_ports`      | full+ports |
 | `mangle PREROUTING`   | входящий/транзитный     | безусловно   | `-j signcraze_policy`     | policy     |
-| `mangle POSTROUTING`  | исходящий (post-NAT)    | безусловно   | `-j signcraze_policy_dpi` | policy+DPI |
+| `mangle FORWARD`      | транзитный (не-policy LAN→WAN) | `-o $WAN`, `! --mark 0x53` | `-j signcraze_dpi_fwd`    | policy+DPI |
 
-Удаление: `iptables -t mangle -D PREROUTING -j <target>` (для PREROUTING-цепочек) и `iptables -t mangle -D POSTROUTING -j signcraze_policy_dpi` по точному совпадению args (`DeleteJumpAll`). Цикл не более 16 итераций.
+Удаление: `iptables -t mangle -D PREROUTING -j <target>` (для PREROUTING-цепочек) и `iptables -t mangle -D FORWARD -j signcraze_dpi_fwd` по точному совпадению args (`DeleteJumpAll`). Legacy `signcraze_policy_dpi` в POSTROUTING (до refactor 2026-05-12) удаляется отдельно при upgrade. Цикл не более 16 итераций.
 
 > Loop-prevention для исходящих от sing-box обеспечивается через `ip rule` (fwmark 0x53 lookup 83), не через правила в OUTPUT — поэтому в OUTPUT sign-craze ничего не пишет.
 

@@ -95,7 +95,7 @@ Single source of truth для инвариантов, нарушение кот�
 | `ip rule` приоритет | `32765` | Ниже Keenetic-политик, выше `32766 unreachable` | `internal/firewall/applier.go:71`, `BEHAVIOR_SPEC.md:346` |
 | sing-box TPROXY/TUN listen port | `7895` | Фиксирован в конфиге; `BEHAVIOR_SPEC.md:280` | `internal/firewall/applier.go:72` |
 | sing-box loopback mark (SO_MARK) | `0x53` | Совпадает с fwmark; пакеты от прокси уходят в таблицу 83 | `BEHAVIOR_SPEC.md:281` |
-| NFQUEUE num (DPI) | `200` | Фиксирован в конфиге nfqws2 и iptables-правилах | `internal/firewall/applier.go:73` |
+| NFQUEUE num (DPI) | `300` | Фиксирован в конфиге nfqws2 и iptables-правилах (совпадает с upstream nfqws2-keenetic) | `internal/firewall/applier.go:57,151` |
 | TUN-интерфейс sing-box | `signbox-tun` | Имя жёстко в конфиге sing-box и firewall-слое | `internal/firewall/applier.go:59`, `internal/singbox/config.go:23` |
 | TUN-адреса | `172.19.0.1/30`, `fdfe:dcba:9876::1/126` | Не пересекаются с типичными Keenetic LAN | `internal/singbox/config.go:29` |
 | Prefix цепочек iptables | `signcraze_*` | Namespace для idempotent cleanup | `internal/firewall/applier.go:284-309` |

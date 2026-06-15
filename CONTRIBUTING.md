@@ -36,8 +36,9 @@ Keenetic поверх Entware: установка sing-box / xray / mihomo, оп
 
 Технические инварианты, которые нельзя нарушать в PR:
 
-- Бинарь sign-craze собирается **только** через podman/docker, Go на хост
-  не ставится: см. `Makefile` и скилл `go-xbuild`.
+- Go 1.25.9 доступен на хосте: `go build`/`test`/`vet`/`mod tidy` — локально.
+  podman/docker нужен ТОЛЬКО для cross-compile под mipsle/mips/arm: см. `Makefile`
+  и скилл `go-xbuild`.
 - `CGO_ENABLED=0`, `GOMIPS=softfloat`, `-ldflags="-s -w"`, цель ≤ 4 МБ
   после `upx --lzma`.
 - Sign-craze управляет только **своими** объектами по префиксу
@@ -178,8 +179,9 @@ GitHub Security Advisories, см.
 
 ## Окружение разработки
 
-**Go на хост не ставится.** Все операции go (`build`, `test`,
-`mod tidy`, `lint`) запускаются через podman/docker:
+**Go 1.25.9 на хосте.** Обычные операции go (`build`, `test`, `vet`,
+`mod tidy`, `lint`) запускаются локально. podman/docker — только для
+cross-compile под целевые архитектуры (mipsle/mips/arm):
 
 ```sh
 # Сборка под текущий arch:
