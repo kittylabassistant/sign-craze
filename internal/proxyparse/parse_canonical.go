@@ -234,14 +234,12 @@ func canonicalVLESS(s string) (types.Outbound, types.Canonical, error) {
 
 // vmessJSON — внутренняя структура VMess base64-JSON.
 type vmessJSON struct {
-	V    string `json:"v"`
 	PS   string `json:"ps"`
 	Add  string `json:"add"`
 	Port any    `json:"port"` // может быть string или number
 	ID   string `json:"id"`
 	Aid  any    `json:"aid"` // может быть string или number
 	Net  string `json:"net"`
-	Type string `json:"type"`
 	Host string `json:"host"`
 	Path string `json:"path"`
 	TLS  string `json:"tls"`

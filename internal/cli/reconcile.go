@@ -9,6 +9,7 @@ import (
 	"github.com/kittylabassistant/sign-craze/internal/firewall"
 	"github.com/kittylabassistant/sign-craze/internal/locks"
 	"github.com/kittylabassistant/sign-craze/internal/log"
+	"github.com/kittylabassistant/sign-craze/internal/netif"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
@@ -18,10 +19,11 @@ import (
 //  1. Load state (возможно state.PolicyMark обновлён CLI/web между тиками).
 //  2. Если ModePolicy — ensureKeeneticPolicy: обновляет mark в state, если
 //     Keenetic пересоздал policy (типичный триггер — WAN reconnect, ndmc save).
-//  3. Pre-check: если все критичные правила на месте — ничего не делаем.
+//  3. Pre-check: если все критичные правила на месте — fast-path return nil.
 //     Pre-check дешёвый (3-4 вызова iptables -C), Reconcile полный — 15-30
 //     вызовов. На быстрых роутерах разница незаметна, на KN-1410 — заметна.
-//  4. Если правила пропали — Reconcile (idempotent re-apply без auto-rollback).
+//  4. Если правила пропали — создаём applier (DNS-резолв только здесь) и
+//     Reconcile (idempotent re-apply без auto-rollback).
 func reconcileFirewall(ctx context.Context) error {
 	// Skip-and-return-nil при занятом flock: CLI команда (--stop, --restart,
 	// --update-geo и т.п.) держит lock в этот момент, watchdog не должен
@@ -58,16 +60,33 @@ func reconcileFirewall(ctx context.Context) error {
 		}
 	}
 
+	// Pre-check критичных правил: быстрая ветка идемпотентности.
+	ipt := firewall.New(exectx.OS)
+	critCfg := &firewall.CriticalRulesConfig{
+		UseTProxy:  st.Inbound == "tproxy",
+		DPIEnabled: st.DPIEnabled,
+		FWMark:     0x53,
+	}
+	// TProxyKernelOK: best-effort probe без side-effects.
+	if critCfg.UseTProxy {
+		critCfg.TProxyKernelOK = firewall.EnsureKernelModule(
+			ctx, exectx.OS, "xt_TPROXY", firewall.KernelModulePathXtTProxy) == nil
+	}
+	// WANIface: best-effort, при ошибке check работает без -o фильтра.
+	if critCfg.DPIEnabled {
+		if iface, wanErr := netif.DetectWANIface(ctx, exectx.OS); wanErr == nil {
+			critCfg.WANIface = iface
+		}
+	}
+	missing := ipt.CheckCriticalRules(ctx, st.Mode, st.PolicyMark, critCfg)
+	if len(missing) == 0 {
+		return nil
+	}
+
+	// DNS-резолв (collectVPNExcludeIPs внутри) — только если правила пропали.
 	applier, err := newFirewallApplier(st)
 	if err != nil {
 		return fmt.Errorf("applier: %w", err)
-	}
-
-	// Pre-check критичных правил: быстрая ветка идемпотентности.
-	ipt := firewall.New(exectx.OS)
-	missing := ipt.CheckCriticalRules(ctx, st.Mode, st.PolicyMark)
-	if len(missing) == 0 {
-		return nil
 	}
 
 	log.L().Warn("watchdog: критичные правила пропали, реапплай",

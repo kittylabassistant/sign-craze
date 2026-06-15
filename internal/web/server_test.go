@@ -3,35 +3,18 @@ package web
 import (
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
-
-	"golang.org/x/crypto/bcrypt"
 )
 
-// makeTestServer создаёт Server с известным паролем для тестов.
+// makeTestServer создаёт Server для тестов.
 func makeTestServer(t *testing.T) (*Server, string) {
 	t.Helper()
-	const password = "test-secret"
-
-	dir := t.TempDir()
-	path := filepath.Join(dir, "admin.creds")
-
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
-	if err != nil {
-		t.Fatalf("bcrypt: %v", err)
-	}
-	if wErr := os.WriteFile(path, append(hash, '\n'), 0o600); wErr != nil {
-		t.Fatalf("WriteFile: %v", wErr)
-	}
-
-	s, err := NewServer(ServerConfig{CredsPath: path})
+	s, err := NewServer(ServerConfig{})
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
-	return s, password
+	return s, ""
 }
 
 // TestSecurityHeaders_присутствуют — middleware должен ставить X-Content-Type-Options,

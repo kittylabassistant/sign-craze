@@ -42,11 +42,6 @@ func proxyRewriter(base string) URLRewriter {
 	}
 }
 
-// ghProxyRewriter — алиас для совместимости с тестами.
-func ghProxyRewriter(u string) string {
-	return proxyRewriter("https://gh-proxy.com")(u)
-}
-
 // jsdelivrRewriter переписывает raw.githubusercontent.com URL в
 // cdn.jsdelivr.net/gh/<owner>/<repo>@<ref>/<path>. Не подходит для
 // release-assets (cdn.jsdelivr.net их не хостит) и api.github.com —

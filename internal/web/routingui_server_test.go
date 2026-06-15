@@ -4,32 +4,16 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
-
-	"golang.org/x/crypto/bcrypt"
 )
 
 // makeRoutingUIServer создаёт Server с включённым routing UI на 127.0.0.1:0
 // (kernel выбирает порт через FindFreePort).
 func makeRoutingUIServer(t *testing.T, port uint16, maxAttempts int) (*Server, string) {
 	t.Helper()
-	const password = "test-secret"
-
-	dir := t.TempDir()
-	credsPath := filepath.Join(dir, "admin.creds")
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
-	if err != nil {
-		t.Fatalf("bcrypt: %v", err)
-	}
-	if wErr := os.WriteFile(credsPath, append(hash, '\n'), 0o600); wErr != nil {
-		t.Fatalf("WriteFile: %v", wErr)
-	}
 
 	cfg := ServerConfig{
-		CredsPath:            credsPath,
 		RoutingUIEnabled:     true,
 		RoutingUIBind:        "127.0.0.1",
 		RoutingUIPort:        port,
@@ -44,7 +28,7 @@ func makeRoutingUIServer(t *testing.T, port uint16, maxAttempts int) (*Server, s
 			_ = s.routingUIListener.Close()
 		}
 	})
-	return s, password
+	return s, ""
 }
 
 // servingMux строит handler chain как в NewServer, но без открытия listener'а.

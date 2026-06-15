@@ -17,7 +17,6 @@ import (
 	"github.com/kittylabassistant/sign-craze/internal/service"
 	"github.com/kittylabassistant/sign-craze/internal/version"
 	"github.com/kittylabassistant/sign-craze/internal/web"
-	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
 // stateLockTimeout — лимит ожидания flock на state-файле для веб-API.
@@ -362,7 +361,3 @@ func ParsedAdminIPs(s *State) ([]netip.Prefix, error) {
 	}
 	return out, nil
 }
-
-// ApplyOutboundsToPorts — заглушка: types.Outbound пока не используется здесь.
-// Сохраняет ссылку на пакет types во избежание неиспользованного импорта.
-var _ = types.ModePolicy

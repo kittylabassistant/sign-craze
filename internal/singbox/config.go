@@ -103,14 +103,10 @@ type ConfigParams struct {
 	TUNMTU           int      // default 1280
 
 	Outbounds          []types.Outbound
-	Routing            types.RoutingRules
 	DefaultOutboundTag string // тег первого outbound, используемый как final
-	// RuleSets — список дескрипторов rule_set для секции route.rule_set.
-	// Генерируется автоматически из Routing.GeoSiteProxy + GeoSiteDirect.
-	RuleSets []types.RuleSetRef
 
-	// RoutingConfig — пользовательская конфигурация маршрутизации (новый путь).
-	// Если задан — переопределяет Routing/Outbounds (legacy путь).
+	// RoutingConfig — пользовательская конфигурация маршрутизации.
+	// Если задан — outbounds, rules и rule_sets берутся из него.
 	RoutingConfig *types.RoutingConfig
 
 	// InboundMode — режим входящего соединения: "tun" или "tproxy".
@@ -283,47 +279,4 @@ func WriteConfig(ctx context.Context, runner exectx.Runner, p ConfigParams, binP
 
 	log.L().Info("конфиг sing-box записан", "path", configPath)
 	return nil
-}
-
-// buildRuleSets формирует список rule_set дескрипторов для секции route (legacy путь).
-func buildRuleSets(r types.RoutingRules) []types.RuleSetRef {
-	const (
-		// ruleSetBaseURL — базовый URL репозитория sign-craze-dat.
-		// Репозиторий публикует source JSON под расширением .srs (не бинарный).
-		// Поэтому Format должен быть "source", не "binary".
-		ruleSetBaseURL = "https://github.com/kittylabassistant/sign-craze-dat/releases/latest/download/"
-		detour         = "direct"
-	)
-
-	seen := map[string]bool{}
-	var refs []types.RuleSetRef
-
-	addCategory := func(cat string) {
-		if seen[cat] {
-			return
-		}
-		seen[cat] = true
-		// sign-craze-dat публикует source JSON (не скомпилированный бинарный rule_set),
-		// поэтому Format="source". Для внешних репозиториев (sing-geoip/sing-geosite)
-		// формат задаётся явно через RuleSets/RoutingConfig.RuleSets.
-		refs = append(refs, types.RuleSetRef{
-			Tag:            cat,
-			Type:           "remote",
-			Format:         "source",
-			URL:            ruleSetBaseURL + cat + ".srs",
-			DownloadDetour: detour,
-		})
-	}
-
-	for _, cat := range r.GeoSiteProxy {
-		addCategory(cat)
-	}
-	for _, cat := range r.GeoSiteDirect {
-		addCategory(cat)
-	}
-	for _, cat := range r.GeoSiteDPI {
-		addCategory(cat)
-	}
-
-	return refs
 }

@@ -171,11 +171,12 @@ func parseVLESS(s string) (types.Outbound, error) {
 			if v := q.Get("pbk"); v != "" {
 				reality["public_key"] = v
 			}
-			// sid (новый), spx (legacy alias) — оба в short_id
+			// sid → short_id; spx → spider_x (xray-only поле маскировки запроса)
 			if v := q.Get("sid"); v != "" {
 				reality["short_id"] = v
-			} else if v := q.Get("spx"); v != "" {
-				reality["short_id"] = v
+			}
+			if v := q.Get("spx"); v != "" {
+				reality["spider_x"] = v
 			}
 			// post-quantum mldsa65 (sing-box >= 1.12)
 			if v := q.Get("mldsa65Verify"); v != "" {

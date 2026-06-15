@@ -121,7 +121,12 @@ func (s *Server) apiRulesReorder(w http.ResponseWriter, r *http.Request) {
 	if body.To > body.From {
 		body.To--
 	}
-	cfg.Rules = append(cfg.Rules[:body.To], append([]types.RouteRule{rule}, cfg.Rules[body.To:]...)...)
+	// Преаллоцируем результирующий слайс нужной ёмкости вместо вложенного append
+	result := make([]types.RouteRule, 0, len(cfg.Rules))
+	result = append(result, cfg.Rules[:body.To]...)
+	result = append(result, rule)
+	result = append(result, cfg.Rules[body.To:]...)
+	cfg.Rules = result
 	if err := s.saveRoutingConfig(cfg); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

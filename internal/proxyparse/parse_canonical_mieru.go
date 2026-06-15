@@ -1,7 +1,6 @@
 package proxyparse
 
 import (
-	"encoding/base64"
 	"fmt"
 	"net/url"
 	"strings"
@@ -133,7 +132,7 @@ func canonicalMieruProto(s string) (types.Outbound, types.Canonical, error) {
 		return types.Outbound{}, types.Canonical{}, fmt.Errorf("proxyparse mieru: пустой base64 после префикса")
 	}
 
-	raw, err := decodeMieruBase64(body)
+	raw, err := decodeBase64(body)
 	if err != nil {
 		return types.Outbound{}, types.Canonical{}, fmt.Errorf("proxyparse mieru: base64: %w", err)
 	}
@@ -230,22 +229,6 @@ func mieruMultiplexingOrDefault(v string) (string, error) {
 	default:
 		return "", fmt.Errorf("неподдерживаемый multiplexing=%q (ожидалось MULTIPLEXING_OFF|LOW|MIDDLE|HIGH)", v)
 	}
-}
-
-// decodeMieruBase64 пробует Std/URLEncoding с/без паддинга — mieru export config
-// использует стандартный URL-safe base64 без паддинга, но допускаем и со звёздочкой.
-func decodeMieruBase64(s string) ([]byte, error) {
-	// Сначала URL-safe без паддинга (наиболее частый случай у mieru CLI).
-	if v, err := base64.RawURLEncoding.DecodeString(s); err == nil {
-		return v, nil
-	}
-	if v, err := base64.URLEncoding.DecodeString(s); err == nil {
-		return v, nil
-	}
-	if v, err := base64.RawStdEncoding.DecodeString(s); err == nil {
-		return v, nil
-	}
-	return base64.StdEncoding.DecodeString(s)
 }
 
 // mieruWireCfg — извлечённые поля из protobuf-сообщения ClientConfig mieru.

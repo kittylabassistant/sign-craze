@@ -242,3 +242,20 @@ func TestParse_Errors(t *testing.T) {
 		}
 	}
 }
+
+func TestParseVLESS_SPX_SpiderX(t *testing.T) {
+	// spx должен попасть в spider_x, а не short_id
+	rawURL := "vless://uuid-x@host:443?security=reality&pbk=PK&spx=%2Fpath&sid=ab&fp=chrome"
+	o, err := Parse(rawURL)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	tls, _ := o.Settings["tls"].(map[string]any)
+	reality, _ := tls["reality"].(map[string]any)
+	if reality["spider_x"] != "/path" {
+		t.Errorf("spider_x = %v, ожидалось /path", reality["spider_x"])
+	}
+	if reality["short_id"] != "ab" {
+		t.Errorf("short_id = %v, ожидалось ab", reality["short_id"])
+	}
+}

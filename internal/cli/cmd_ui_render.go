@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
 	"github.com/kittylabassistant/sign-craze/internal/core"
@@ -121,7 +122,7 @@ func collectCompatWarnings(c core.Core, cfg *types.RoutingConfig) []string {
 	switch c.GeoFormat() {
 	case core.GeoMRS:
 		for _, rs := range cfg.RuleSets {
-			if rs.URL != "" && !hasSuffix(rs.URL, ".mrs") {
+			if rs.URL != "" && !strings.HasSuffix(rs.URL, ".mrs") {
 				warnings = append(warnings,
 					fmt.Sprintf("rule_set %q: URL %q, mihomo требует .mrs — применить preset заново для активного ядра", rs.Tag, rs.URL))
 			}
@@ -130,7 +131,7 @@ func collectCompatWarnings(c core.Core, cfg *types.RoutingConfig) []string {
 		// xray использует translation RuleSet→geosite:/geoip: matcher.
 		// Без префикса translation невозможна.
 		for _, rs := range cfg.RuleSets {
-			if !startsWith(rs.Tag, "geosite-") && !startsWith(rs.Tag, "geoip-") {
+			if !strings.HasPrefix(rs.Tag, "geosite-") && !strings.HasPrefix(rs.Tag, "geoip-") {
 				warnings = append(warnings,
 					fmt.Sprintf("rule_set %q: для xray translation работает только с префиксом geosite-/geoip-, matcher будет пропущен", rs.Tag))
 			}
@@ -138,12 +139,4 @@ func collectCompatWarnings(c core.Core, cfg *types.RoutingConfig) []string {
 	}
 
 	return warnings
-}
-
-func hasSuffix(s, suffix string) bool {
-	return len(s) >= len(suffix) && s[len(s)-len(suffix):] == suffix
-}
-
-func startsWith(s, prefix string) bool {
-	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
 }

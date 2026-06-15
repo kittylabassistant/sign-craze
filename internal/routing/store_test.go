@@ -231,26 +231,11 @@ func TestLoad_LegacyVersionZero(t *testing.T) {
 }
 
 // TestFilterUnreferencedRuleSets — инвариант 2026-05-12:
-// routing.json НЕ должен содержать rule_sets, на которые нет ссылок из rules[].
-// Иначе sing-box загружает их на старте → 404/invalid URL → клиенты теряют интернет.
-//
-// ТЕКУЩИЙ СТАТУС: фильтрация unused rule_sets НЕ реализована в store.go.
-// Тест помечен t.Skip до реализации (Phase 12 followup, lessons.md 2026-05-12).
-// Когда buildRuleSets/Save начнёт фильтровать — убрать t.Skip и проверить реальное поведение.
+// FilterUnusedRuleSets должна удалять rule_sets, не упоминаемые в rules[].
+// Инцидент: sing-box 1.10+ загружает ВСЕ объявленные rule_sets на старте;
+// 404 на любом → panic/exit → клиенты теряют интернет.
 func TestFilterUnreferencedRuleSets(t *testing.T) {
-	t.Skip(
-		"регрессия требует фильтрации unused rule_sets в store.go; " +
-			"см. lessons.md 2026-05-12; план Phase 12 followup. " +
-			"sing-box 1.10+ загружает ВСЕ объявленные rule_sets на старте, " +
-			"404 на любом → panic/exit → клиенты теряют интернет",
-	)
-
-	// Когда фильтрация будет добавлена, тест должен работать так:
-	// - config с 2 rule_sets: "used-rs" и "unused-rs"
-	// - rules[] ссылается только на "used-rs"
-	// - после Save/Load (или buildRuleSets) итоговый JSON содержит только "used-rs"
-	path := filepath.Join(t.TempDir(), "routing.json")
-	cfg := &types.RoutingConfig{
+	cfg := types.RoutingConfig{
 		Version: SchemaVersion,
 		RuleSets: []types.RuleSetRef{
 			{Tag: "used-rs", Type: "remote", Format: "binary", URL: "https://example.com/used.srs"},
@@ -261,26 +246,20 @@ func TestFilterUnreferencedRuleSets(t *testing.T) {
 		},
 		Final: "direct",
 	}
-	if err := Save(path, cfg); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
 
-	got, err := Load(path)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
+	FilterUnusedRuleSets(&cfg)
 
-	for _, rs := range got.RuleSets {
+	for _, rs := range cfg.RuleSets {
 		if rs.Tag == "unused-rs" {
 			t.Errorf(
-				"routing.json содержит неиспользуемый rule_set %q: "+
-					"sing-box загрузит его на старте и упадёт при 404 (инцидент 2026-05-12)",
+				"FilterUnusedRuleSets оставил неиспользуемый rule_set %q "+
+					"(инцидент 2026-05-12: sing-box падает при 404 на старте)",
 				rs.Tag,
 			)
 		}
 	}
-	if len(got.RuleSets) != 1 || got.RuleSets[0].Tag != "used-rs" {
-		t.Errorf("ожидался ровно 1 rule_set 'used-rs', получили: %+v", got.RuleSets)
+	if len(cfg.RuleSets) != 1 || cfg.RuleSets[0].Tag != "used-rs" {
+		t.Errorf("ожидался ровно 1 rule_set 'used-rs', получили: %+v", cfg.RuleSets)
 	}
 }
 

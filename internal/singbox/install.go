@@ -2,7 +2,6 @@ package singbox
 
 import (
 	"archive/tar"
-	"bytes"
 	"compress/gzip"
 	"context"
 	"errors"
@@ -14,6 +13,7 @@ import (
 	"time"
 
 	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
+	"github.com/kittylabassistant/sign-craze/internal/elfcheck"
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/log"
 )
@@ -60,9 +60,6 @@ func PrepareAndValidate(ctx context.Context, runner exectx.Runner, workDir, tarP
 
 	return tempBin, nil
 }
-
-// elfMagic — первые 4 байта Linux ELF-бинаря (\x7f E L F).
-var elfMagic = []byte{0x7f, 'E', 'L', 'F'}
 
 // binaryStream — потоковый ридер на содержимое бинаря из tarball.
 // Caller обязан вызвать Close() для освобождения tar/gzip/file.
@@ -111,21 +108,18 @@ func openSingboxBinaryStream(tarPath string) (*binaryStream, error) {
 
 		// ELF-magic проверяется без чтения всего бинаря: первые 4 байта
 		// в буфер, остаток стримится через MultiReader.
-		magic := make([]byte, len(elfMagic))
-		n, readErr := io.ReadFull(tr, magic)
-		if readErr != nil && readErr != io.ErrUnexpectedEOF {
+		full, got, n, readErr := elfcheck.CheckAndRewind(tr)
+		if readErr != nil {
 			_ = gz.Close()
 			_ = f.Close()
 			return nil, fmt.Errorf("чтение ELF-magic: %w", readErr)
 		}
-		if n < len(elfMagic) || !bytes.Equal(magic[:n], elfMagic) {
+		if !elfcheck.IsELF(got, n) {
 			_ = gz.Close()
 			_ = f.Close()
 			return nil, fmt.Errorf("singbox install: %s/sing-box не ELF-бинарь (magic=%x)",
-				filepath.Dir(hdr.Name), magic[:n])
+				filepath.Dir(hdr.Name), got[:n])
 		}
-
-		full := io.MultiReader(bytes.NewReader(magic), tr)
 		closer := func() error {
 			_ = gz.Close()
 			return f.Close()

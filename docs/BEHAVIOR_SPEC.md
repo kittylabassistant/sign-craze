@@ -63,6 +63,23 @@
 
 ---
 
+### `--reinstall`
+
+Переустановка поверх существующей конфигурации. Принимает те же флаги, что и
+`--install`: `[--proxy <URL>] [--core <name>] [--preset <name>] [--with-dpi]
+[--with-naive] [--inbound <mode>]`.
+
+**Поведение флага `--core`:**
+
+- Если `--core <name>` передан явно — переустанавливается указанное ядро.
+- Если `--core` не передан — берётся текущее `state.Core` (из `state.json`).
+- Если `state.Core` не заполнен — используется `DefaultCore` (sing-box).
+
+Существующие конфиги (`routing.json`, пользовательские настройки портов и
+исключений) **не затираются**; бинарь ядра заменяется.
+
+---
+
 ### `--start`
 
 **Входные данные**: нет.
@@ -348,6 +365,12 @@ resolver без override — пользовательский DNSCrypt/DoH со�
 | sing-box | JSON | `route.rules[]` + `route.rule_set[]` | прямой `.srs` URL |
 | xray | JSON | `routing.rules[]` (field type) | `geosite-X`/`geoip-X` → `domain:["geosite:X"]`/`ip:["geoip:X"]` matcher |
 | mihomo | YAML | `rules:` (TYPE,VALUE,ACTION) + `rule-providers:` | `.mrs` URL в rule-providers |
+
+**Фильтрация неиспользуемых rule_sets (sing-box)**: перед записью `config.json`
+функция `routing.FilterUnusedRuleSets` удаляет из `route.rule_set[]` все записи,
+на которые нет ссылки ни в одном элементе `route.rules[]`. Таким образом, даже
+если `routing.json` содержит объявленные, но неиспользуемые rule_set-блоки,
+sing-box их не скачивает и не инициализирует при старте.
 
 Несовместимые конструкции (TUN inbound на xray/mihomo, `.srs` URL на mihomo,
 RuleSet без `geosite-`/`geoip-` префикса на xray) **не блокируют** apply, но
@@ -814,8 +837,7 @@ SIGHUP-перезагрузки нет. Изменения конфига тре
 │   │   ├── config.json             # конфиг sing-box (генерируется)
 │   │   ├── nfqws2.conf             # конфиг nfqws2 (генерируется, опционально)
 │   │   ├── dpi-hostlist.txt        # SNI-цели Selective DPI (генерируется, опционально)
-│   │   ├── mieru-<tag>.conf.json   # конфиг mieru-клиента (генерируется, mode 0600, один файл на mieru-outbound)
-│   │   └── admin.creds             # bcrypt-хэш пароля для web UI
+│   │   └── mieru-<tag>.conf.json   # конфиг mieru-клиента (генерируется, mode 0600, один файл на mieru-outbound)
 │   ├── init.d/
 │   │   └── S99signcraze    # init.d shim (генерируется)
 │   └── ndm/
@@ -852,16 +874,14 @@ SIGHUP-перезагрузки нет. Изменения конфига тре
 
 ### Аутентификация
 
-Все эндпоинты обоих портов доступны без аутентификации (auth удалён).
+Auth-каркас полностью удалён (`LoadOrCreateCreds`, `CheckPassword`, поле `CredsPath`).
+Файл `/opt/etc/sign-craze/admin.creds` не создаётся и не используется.
+Пароль **не генерируется и не печатается** при старте.
+Зависимость `golang.org/x/crypto` удалена из `go.mod`.
 
-#### bcrypt cost по архитектурам
-
-При наличии защищённого доступа (`admin.creds`) bcrypt cost зависит от целевой архитектуры:
-
-- **MIPS / MIPSLE** (Keenetic softfloat, ~400 MHz): `cost=10` — login ≤ 2s.
-- **arm64, arm7, amd64**: `cost=12` — рекомендуемый production минимум.
-
-Выбор происходит через Go build tags (`//go:build mips || mipsle`) — без runtime-проверки.
+Все эндпоинты портов 9090/9091/9092 доступны без HTTP-аутентификации.
+Защита от WAN обеспечивается исключительно правилом NDM INPUT DROP (NDM
+блокирует входящие соединения с WAN на эти порты на уровне ядра).
 
 ### Порт 9091 — Admin REST API
 

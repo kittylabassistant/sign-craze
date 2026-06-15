@@ -10,14 +10,14 @@ import (
 // (DNAT в local stack), потому что TPROXY недоступен.
 
 func TestPolicyTProxyRules_НулевойMark_ВозвращаетNil(t *testing.T) {
-	rules := PolicyTProxyRules(0, 0x53, 7895)
+	rules := PolicyTProxyRules(0, 7895)
 	if rules != nil {
 		t.Errorf("PolicyTProxyRules(keenMark=0) должна возвращать nil, получено %v", rules)
 	}
 }
 
 func TestPolicyTProxyRules_СодержитREDIRECTTarget(t *testing.T) {
-	rules := PolicyTProxyRules(0xaab, 0x53, 7895)
+	rules := PolicyTProxyRules(0xaab, 7895)
 	if len(rules) == 0 {
 		t.Fatal("PolicyTProxyRules: пустой результат")
 	}
@@ -37,7 +37,7 @@ func TestPolicyTProxyRules_СодержитREDIRECTTarget(t *testing.T) {
 }
 
 func TestPolicyTProxyRules_TCP(t *testing.T) {
-	rules := PolicyTProxyRules(0xaab, 0x53, 7895)
+	rules := PolicyTProxyRules(0xaab, 7895)
 
 	checks := []struct {
 		desc    string
@@ -56,7 +56,7 @@ func TestPolicyTProxyRules_TCP(t *testing.T) {
 }
 
 func TestPolicyTProxyRules_КорректныйПорт(t *testing.T) {
-	rules := PolicyTProxyRules(0xaab, 0x53, 7895)
+	rules := PolicyTProxyRules(0xaab, 7895)
 	for _, r := range rules {
 		joined := strings.Join(r.Args, " ")
 		if strings.Contains(joined, "REDIRECT") && !strings.Contains(joined, "7895") {
@@ -66,7 +66,7 @@ func TestPolicyTProxyRules_КорректныйПорт(t *testing.T) {
 }
 
 func TestPolicyTProxyRules_ВсеВNAT(t *testing.T) {
-	rules := PolicyTProxyRules(0xaab, 0x53, 7895)
+	rules := PolicyTProxyRules(0xaab, 7895)
 	for _, r := range rules {
 		if r.Table != "nat" {
 			t.Errorf("REDIRECT правила должны быть в nat-таблице, получено %s: %v", r.Table, r.Args)
@@ -75,7 +75,7 @@ func TestPolicyTProxyRules_ВсеВNAT(t *testing.T) {
 }
 
 func TestPolicyTProxyRules_БезFORWARDACCEPT(t *testing.T) {
-	rules := PolicyTProxyRules(0xaab, 0x53, 7895)
+	rules := PolicyTProxyRules(0xaab, 7895)
 	for _, r := range rules {
 		if r.Table == "filter" && r.Chain == "FORWARD" {
 			t.Errorf("REDIRECT-режим не должен содержать filter/FORWARD правил: %v", r.Args)
@@ -84,7 +84,7 @@ func TestPolicyTProxyRules_БезFORWARDACCEPT(t *testing.T) {
 }
 
 func TestPolicyTProxyRules_БезTCPMSS(t *testing.T) {
-	rules := PolicyTProxyRules(0xaab, 0x53, 7895)
+	rules := PolicyTProxyRules(0xaab, 7895)
 	for _, r := range rules {
 		for _, arg := range r.Args {
 			if arg == "TCPMSS" {
@@ -95,7 +95,7 @@ func TestPolicyTProxyRules_БезTCPMSS(t *testing.T) {
 }
 
 func TestPolicyTProxyRules_КастомныйПорт(t *testing.T) {
-	rules := PolicyTProxyRules(0x1234, 0x53, 9999)
+	rules := PolicyTProxyRules(0x1234, 9999)
 	for _, r := range rules {
 		joined := strings.Join(r.Args, " ")
 		if strings.Contains(joined, "REDIRECT") && !strings.Contains(joined, "9999") {

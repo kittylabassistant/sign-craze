@@ -124,27 +124,6 @@ func syncDir(dir string) {
 	_ = d.Close()
 }
 
-// BackupAndReplace создаёт резервную копию dst (если существует) с суффиксом .bak.<unix>,
-// затем атомарно записывает newData в dst.
-// Возвращает путь к созданной резервной копии (пустую строку если файл не существовал).
-func BackupAndReplace(dst string, newData []byte, perm os.FileMode) (backupPath string, err error) {
-	if _, statErr := os.Stat(dst); statErr == nil {
-		backupPath = fmt.Sprintf("%s.bak.%d", dst, time.Now().Unix())
-		existing, readErr := os.ReadFile(dst)
-		if readErr != nil {
-			return "", fmt.Errorf("atomicfs: чтение текущего файла для бэкапа: %w", readErr)
-		}
-		if writeErr := WriteFileAtomic(backupPath, existing, perm); writeErr != nil {
-			return "", fmt.Errorf("atomicfs: запись резервной копии: %w", writeErr)
-		}
-	}
-
-	if err := WriteFileAtomic(dst, newData, perm); err != nil {
-		return backupPath, err
-	}
-	return backupPath, nil
-}
-
 // BackupAndReplaceFromReader — потоковая версия BackupAndReplace.
 // Бэкап существующего dst делается через rename (без чтения файла в RAM),
 // новое содержимое стримится из r через WriteFileAtomicFromReader.

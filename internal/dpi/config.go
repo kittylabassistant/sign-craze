@@ -176,7 +176,7 @@ func WriteHostlist(path string, targets []string) error {
 	}
 	var buf bytes.Buffer
 	for _, t := range targets {
-		t = trimSpace(t)
+		t = strings.TrimSpace(t)
 		if t == "" {
 			continue
 		}
@@ -188,18 +188,6 @@ func WriteHostlist(path string, targets []string) error {
 	}
 	log.L().Info("dpi hostlist сгенерирован", "path", path, "entries", len(targets))
 	return nil
-}
-
-func trimSpace(s string) string {
-	start := 0
-	end := len(s)
-	for start < end && (s[start] == ' ' || s[start] == '\t' || s[start] == '\r' || s[start] == '\n') {
-		start++
-	}
-	for end > start && (s[end-1] == ' ' || s[end-1] == '\t' || s[end-1] == '\r' || s[end-1] == '\n') {
-		end--
-	}
-	return s[start:end]
 }
 
 // GenerateConfig генерирует nfqws2.conf из шаблона и атомарно записывает в dstPath.
@@ -231,56 +219,4 @@ func GenerateConfig(params ConfigParams, dstPath string) error {
 
 	log.L().Info("nfqws2.conf сгенерирован", "path", dstPath, "iface", params.ISPInterface)
 	return nil
-}
-
-// DetectISPInterface определяет ISP-интерфейс через `ip route show default`.
-// Парсит первое вхождение "dev <iface>" в выводе.
-func DetectISPInterface(routeOutput string) (string, error) {
-	for _, line := range splitLines(routeOutput) {
-		fields := splitFields(line)
-		for i, f := range fields {
-			if f == "dev" && i+1 < len(fields) {
-				return fields[i+1], nil
-			}
-		}
-	}
-	return "", fmt.Errorf("dpi config: не удалось определить ISP-интерфейс из вывода ip route")
-}
-
-func splitLines(s string) []string {
-	var lines []string
-	start := 0
-	for i, c := range s {
-		if c == '\n' {
-			lines = append(lines, s[start:i])
-			start = i + 1
-		}
-	}
-	if start < len(s) {
-		lines = append(lines, s[start:])
-	}
-	return lines
-}
-
-func splitFields(s string) []string {
-	var fields []string
-	inField := false
-	start := 0
-	for i, c := range s {
-		if c == ' ' || c == '\t' {
-			if inField {
-				fields = append(fields, s[start:i])
-				inField = false
-			}
-		} else {
-			if !inField {
-				start = i
-				inField = true
-			}
-		}
-	}
-	if inField {
-		fields = append(fields, s[start:])
-	}
-	return fields
 }

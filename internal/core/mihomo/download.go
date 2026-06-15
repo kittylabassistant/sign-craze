@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/kittylabassistant/sign-craze/internal/core"
 	"github.com/kittylabassistant/sign-craze/internal/ghrelease"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
@@ -73,22 +74,15 @@ func matchAsset(arch types.Arch) func(types.Asset) bool {
 	}
 }
 
-// DownloadResult описывает результат вызова Download.
-type DownloadResult struct {
-	Downloaded bool
-	Version    string
-	Path       string
-}
-
 // Download скачивает GZIP-архив mihomo для указанной архитектуры в dstDir.
 // Внутри архива — ELF-бинарь напрямую (без TAR-обёртки).
-func Download(ctx context.Context, arch types.Arch, dstDir string) (DownloadResult, error) {
+func Download(ctx context.Context, arch types.Arch, dstDir string) (core.DownloadResult, error) {
 	if err := arch.Validate(); err != nil {
-		return DownloadResult{}, err
+		return core.DownloadResult{}, err
 	}
 
 	if _, ok := archAssetPrefix[arch]; !ok {
-		return DownloadResult{}, fmt.Errorf("mihomo download: нет паттерна для архитектуры %q", arch)
+		return core.DownloadResult{}, fmt.Errorf("mihomo download: нет паттерна для архитектуры %q", arch)
 	}
 
 	res, err := ghrelease.New().Fetch(ctx, ghrelease.FetchOptions{
@@ -103,10 +97,10 @@ func Download(ctx context.Context, arch types.Arch, dstDir string) (DownloadResu
 		AllowMissingSHA: true,
 	})
 	if err != nil {
-		return DownloadResult{}, fmt.Errorf("mihomo download: %w", err)
+		return core.DownloadResult{}, fmt.Errorf("mihomo download: %w", err)
 	}
 
-	return DownloadResult{
+	return core.DownloadResult{
 		Downloaded: res.Downloaded,
 		Version:    res.Version,
 		Path:       res.Path,

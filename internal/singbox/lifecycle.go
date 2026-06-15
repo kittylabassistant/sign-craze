@@ -14,11 +14,11 @@ const (
 	DefaultStderrLog = "/opt/var/log/sign-craze/sing-box.stderr.log"
 )
 
-// NewLifecycle создаёт Lifecycle для процесса sing-box.
+// newLifecycle создаёт Lifecycle для процесса sing-box.
 // binPath — путь к бинарю (обычно DefaultBinPath).
 // configPath — путь к config.json (обычно <DefaultConfigDir>/config.json).
 // pidFile — путь к PID-файлу (обычно DefaultPIDFile).
-func NewLifecycle(binPath, configPath, pidFile string) service.Lifecycle {
+func newLifecycle(binPath, configPath, pidFile string) service.Lifecycle {
 	return service.NewLifecycle(service.ProcessConfig{
 		Name:       "sing-box",
 		BinPath:    binPath,
@@ -30,5 +30,5 @@ func NewLifecycle(binPath, configPath, pidFile string) service.Lifecycle {
 
 // DefaultLifecycle создаёт Lifecycle с путями по умолчанию.
 func DefaultLifecycle() service.Lifecycle {
-	return NewLifecycle(DefaultBinPath, DefaultConfigDir+"/config.json", DefaultPIDFile)
+	return newLifecycle(DefaultBinPath, DefaultConfigDir+"/config.json", DefaultPIDFile)
 }

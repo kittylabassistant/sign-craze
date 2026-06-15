@@ -8,6 +8,7 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/kittylabassistant/sign-craze/internal/log"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
@@ -54,7 +55,6 @@ type templateData struct {
 	LogLevel   string
 	TProxyPort uint16
 	FWMark     uint32
-	DefaultTag string
 	// Proxies — сериализованные YAML-строки для каждого proxy-entry.
 	// Шаблон вставляет их через range + yamlInline.
 	Proxies    []map[string]any
@@ -116,14 +116,17 @@ func Render(p ConfigParams) ([]byte, error) {
 	var ruleStrings []string
 	var providers []RuleProvider
 	if p.RoutingConfig != nil && (len(p.RoutingConfig.Rules) > 0 || p.RoutingConfig.Final != "") {
-		ruleStrings, providers, _ = TranslateRoutingRules(p.RoutingConfig, p.DefaultTag)
+		var warnings []string
+		ruleStrings, providers, warnings = TranslateRoutingRules(p.RoutingConfig, p.DefaultTag)
+		for _, w := range warnings {
+			log.L().Warn("mihomo render: трансляция правил", "warning", w)
+		}
 	}
 
 	data := templateData{
 		LogLevel:      p.LogLevel,
 		TProxyPort:    p.TProxyPort,
 		FWMark:        p.FWMark,
-		DefaultTag:    p.DefaultTag,
 		Proxies:       proxies,
 		ProxyNames:    proxyNames,
 		Rules:         ruleStrings,

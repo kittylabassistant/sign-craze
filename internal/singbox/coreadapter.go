@@ -35,15 +35,7 @@ func (coreImpl) NewLifecycle() service.Lifecycle {
 }
 
 func (coreImpl) Download(ctx context.Context, arch types.Arch, dstDir string) (core.DownloadResult, error) {
-	res, err := Download(ctx, arch, dstDir)
-	if err != nil {
-		return core.DownloadResult{}, err
-	}
-	return core.DownloadResult{
-		Downloaded: res.Downloaded,
-		Version:    res.Version,
-		Path:       res.Path,
-	}, nil
+	return Download(ctx, arch, dstDir)
 }
 
 // Install устанавливает sing-box без валидации конфига. Caller обязан

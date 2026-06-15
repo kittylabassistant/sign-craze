@@ -19,9 +19,9 @@ func TestGHProxyRewriter(t *testing.T) {
 		"http://github.com/insecure":                                "",
 	}
 	for in, want := range cases {
-		got := ghProxyRewriter(in)
+		got := proxyRewriter("https://gh-proxy.com")(in)
 		if got != want {
-			t.Errorf("ghProxyRewriter(%q) = %q, want %q", in, got, want)
+			t.Errorf("proxyRewriter(gh-proxy.com)(%q) = %q, want %q", in, got, want)
 		}
 	}
 }

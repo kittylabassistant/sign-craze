@@ -17,9 +17,7 @@ const (
 	ansiRed    = "\x1b[31m"
 	ansiGreen  = "\x1b[32m"
 	ansiYellow = "\x1b[33m"
-	ansiBlue   = "\x1b[34m"
 	ansiCyan   = "\x1b[36m"
-	ansiRedB   = "\x1b[31;1m"
 )
 
 var (
@@ -98,7 +96,6 @@ func wrap(code, s string) string {
 func Red(s string) string    { return wrap(ansiRed, s) }
 func Green(s string) string  { return wrap(ansiGreen, s) }
 func Yellow(s string) string { return wrap(ansiYellow, s) }
-func Blue(s string) string   { return wrap(ansiBlue, s) }
 func Cyan(s string) string   { return wrap(ansiCyan, s) }
 func Dim(s string) string    { return wrap(ansiDim, s) }
 func Bold(s string) string   { return wrap(ansiBold, s) }

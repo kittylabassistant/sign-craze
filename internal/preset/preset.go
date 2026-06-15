@@ -24,54 +24,44 @@ const (
 //
 // Источники:
 //   - SRS: SagerNet/sing-{geosite,geoip} (rule-set ветка, daily обновление).
-//   - DAT: пусто — xray использует translation RouteRule.RuleSet → geosite:/geoip:
-//     matchers (см. internal/core/xray/render_rules.go). Префикс geosite-/geoip- в
-//     Tag — единственный требуемый идентификатор; URL не нужен.
 //   - MRS: MetaCubeX/meta-rules-dat (raw release ветка).
 //
+// Для xray (GeoDAT) URL не нужен — translation через RouteRule.RuleSet → geosite:/geoip:
+// matchers в internal/core/xray/render_rules.go; поле Tag — единственный идентификатор.
 // Refilter-blocked-domains: SRS + MRS из 1andrevich/Re-filter-lists releases.
-// Для xray (DAT) эквивалента нет — rule пропускается с warning через Validator.
+// Для xray эквивалента нет — rule пропускается с warning через Validator.
 type RuleSetSource struct {
-	Tag      string
-	SRS      string
-	DAT      string // пусто для xray — translation в matcher делает render_rules.go
-	MRS      string
-	Behavior string // "domain" | "ipcidr" | "classical" — для mihomo rule-providers
+	Tag string
+	SRS string
+	MRS string
 }
 
 // RuleSetSources — список источников rule_set, используемых пресетами.
 var RuleSetSources = []RuleSetSource{
 	{
-		Tag:      "geosite-youtube",
-		SRS:      "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-youtube.srs",
-		MRS:      "https://github.com/MetaCubeX/meta-rules-dat/raw/meta/geo/geosite/youtube.mrs",
-		Behavior: "domain",
+		Tag: "geosite-youtube",
+		SRS: "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-youtube.srs",
+		MRS: "https://github.com/MetaCubeX/meta-rules-dat/raw/meta/geo/geosite/youtube.mrs",
 	},
 	{
-		Tag:      "geosite-discord",
-		SRS:      "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-discord.srs",
-		MRS:      "https://github.com/MetaCubeX/meta-rules-dat/raw/meta/geo/geosite/discord.mrs",
-		Behavior: "domain",
+		Tag: "geosite-discord",
+		SRS: "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-discord.srs",
+		MRS: "https://github.com/MetaCubeX/meta-rules-dat/raw/meta/geo/geosite/discord.mrs",
 	},
 	{
-		Tag:      "geosite-category-ads-all",
-		SRS:      "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ads-all.srs",
-		MRS:      "https://github.com/MetaCubeX/meta-rules-dat/raw/meta/geo/geosite/category-ads-all.mrs",
-		Behavior: "domain",
+		Tag: "geosite-category-ads-all",
+		SRS: "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ads-all.srs",
+		MRS: "https://github.com/MetaCubeX/meta-rules-dat/raw/meta/geo/geosite/category-ads-all.mrs",
 	},
 	{
-		Tag:      "geoip-ru",
-		SRS:      "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs",
-		MRS:      "https://github.com/MetaCubeX/meta-rules-dat/raw/meta/geo/geoip/ru.mrs",
-		Behavior: "ipcidr",
+		Tag: "geoip-ru",
+		SRS: "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs",
+		MRS: "https://github.com/MetaCubeX/meta-rules-dat/raw/meta/geo/geoip/ru.mrs",
 	},
 	{
-		Tag:      "refilter-blocked-domains",
-		SRS:      "https://github.com/1andrevich/Re-filter-lists/releases/latest/download/ruleset-domain-refilter_domains.srs",
-		MRS:      "https://github.com/1andrevich/Re-filter-lists/releases/latest/download/ruleset-domain-refilter_domains.mrs",
-		Behavior: "domain",
-		// DAT пусто — xray не имеет .dat-эквивалента для refilter.
-		// rule пропускается с warning при render.
+		Tag: "refilter-blocked-domains",
+		SRS: "https://github.com/1andrevich/Re-filter-lists/releases/latest/download/ruleset-domain-refilter_domains.srs",
+		MRS: "https://github.com/1andrevich/Re-filter-lists/releases/latest/download/ruleset-domain-refilter_domains.mrs",
 	},
 }
 

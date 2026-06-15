@@ -2,5 +2,5 @@
 //
 // Логика: ghrelease.Downloader забирает asset для текущей архитектуры,
 // SHA256 проверяется через парный .sha256 asset, бинарь атомарно заменяется
-// через atomicfs.BackupAndReplace. Запущенный сервис не перезапускается.
+// через atomicfs.BackupAndReplaceFromReader. Запущенный сервис не перезапускается.
 package selfupdate

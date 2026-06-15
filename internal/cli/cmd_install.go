@@ -40,40 +40,19 @@ const (
 	installOffline
 )
 
-// parseInboundFlag ищет --inbound tun|tproxy в аргументах.
-// Возвращает режим inbound (default = "tproxy" если флаг не задан) и остаток args.
-func parseInboundFlag(args []string) (mode string, rest []string) {
+// parseStringFlag вытягивает флаг --name <value> / --name=<value> из args.
+// Возвращает значение (или пустую строку) и остаток args.
+func parseStringFlag(args []string, name string) (value string, rest []string) {
 	rest = make([]string, 0, len(args))
+	flag := "--" + name
 	for i := 0; i < len(args); i++ {
-		if args[i] == "--inbound" && i+1 < len(args) {
-			mode = args[i+1]
+		if args[i] == flag && i+1 < len(args) {
+			value = args[i+1]
 			i++
 			continue
 		}
-		if after, ok := strings.CutPrefix(args[i], "--inbound="); ok {
-			mode = after
-			continue
-		}
-		rest = append(rest, args[i])
-	}
-	if mode == "" {
-		mode = state.DefaultInbound
-	}
-	return
-}
-
-// parseInstallCoreFlag ищет --core <name> или --core=<name> в аргументах.
-// Возвращает имя ядра (или пустую строку если флаг не задан) и остаток args.
-func parseInstallCoreFlag(args []string) (coreName string, rest []string) {
-	rest = make([]string, 0, len(args))
-	for i := 0; i < len(args); i++ {
-		if args[i] == "--core" && i+1 < len(args) {
-			coreName = args[i+1]
-			i++
-			continue
-		}
-		if after, ok := strings.CutPrefix(args[i], "--core="); ok {
-			coreName = after
+		if after, ok := strings.CutPrefix(args[i], flag+"="); ok {
+			value = after
 			continue
 		}
 		rest = append(rest, args[i])
@@ -81,106 +60,61 @@ func parseInstallCoreFlag(args []string) (coreName string, rest []string) {
 	return
 }
 
-// parseWithDPIFlag вытягивает булев флаг --with-dpi из args.
-// При наличии: устанавливаем nfqws2 + blobs, включаем DPI с preset
-// "discord-youtube" (out-of-box работа YouTube + Discord без ручных шагов).
-func parseWithDPIFlag(args []string) (withDPI bool, rest []string) {
+// parseBoolFlag вытягивает булев флаг --name из args.
+// Возвращает true если флаг присутствует и остаток args.
+func parseBoolFlag(args []string, name string) (found bool, rest []string) {
 	rest = make([]string, 0, len(args))
+	flag := "--" + name
 	for _, a := range args {
-		if a == "--with-dpi" {
-			withDPI = true
+		if a == flag {
+			found = true
 			continue
 		}
 		rest = append(rest, a)
-	}
-	return
-}
-
-// parseWithNaiveFlag вытягивает булев флаг --with-naive из args.
-// При наличии: скачивает и устанавливает бинарь naive, выставляет
-// State.NaiveEnabled=true БЕЗ добавления outbound (пользователь добавит
-// позже через wizard или web UI).
-func parseWithNaiveFlag(args []string) (withNaive bool, rest []string) {
-	rest = make([]string, 0, len(args))
-	for _, a := range args {
-		if a == "--with-naive" {
-			withNaive = true
-			continue
-		}
-		rest = append(rest, a)
-	}
-	return
-}
-
-// parseProxyFlag вытягивает --proxy <URL> / --proxy=<URL> из args.
-// URL без --proxy остаётся в rest (для install-offline он трактуется как путь к tarball).
-func parseProxyFlag(args []string) (proxyURL string, rest []string) {
-	rest = make([]string, 0, len(args))
-	for i := 0; i < len(args); i++ {
-		if args[i] == "--proxy" && i+1 < len(args) {
-			proxyURL = args[i+1]
-			i++
-			continue
-		}
-		if after, ok := strings.CutPrefix(args[i], "--proxy="); ok {
-			proxyURL = after
-			continue
-		}
-		rest = append(rest, args[i])
-	}
-	return
-}
-
-// parsePresetFlag вытягивает --preset <name> / --preset=<name> из args.
-// Имя пресета валидируется в applyInstallPreset через preset.Find.
-func parsePresetFlag(args []string) (presetName string, rest []string) {
-	rest = make([]string, 0, len(args))
-	for i := 0; i < len(args); i++ {
-		if args[i] == "--preset" && i+1 < len(args) {
-			presetName = args[i+1]
-			i++
-			continue
-		}
-		if after, ok := strings.CutPrefix(args[i], "--preset="); ok {
-			presetName = after
-			continue
-		}
-		rest = append(rest, args[i])
 	}
 	return
 }
 
 func handleInstall(ctx context.Context, args []string) error {
-	coreName, rest := parseInstallCoreFlag(args)
-	proxyURL, rest := parseProxyFlag(rest)
-	withDPI, rest := parseWithDPIFlag(rest)
-	withNaive, rest := parseWithNaiveFlag(rest)
-	presetName, rest := parsePresetFlag(rest)
-	inbound, _ := parseInboundFlag(rest)
+	coreName, rest := parseStringFlag(args, "core")
+	proxyURL, rest := parseStringFlag(rest, "proxy")
+	withDPI, rest := parseBoolFlag(rest, "with-dpi")
+	withNaive, rest := parseBoolFlag(rest, "with-naive")
+	presetName, rest := parseStringFlag(rest, "preset")
+	inbound, _ := parseStringFlag(rest, "inbound")
+	if inbound == "" {
+		inbound = state.DefaultInbound
+	}
 	return withLock(ctx, func() error {
 		return doInstall(ctx, installInteractive, "", false, coreName, proxyURL, withDPI, withNaive, inbound, presetName)
 	})
 }
 
 func handleInstallAuto(ctx context.Context, args []string) error {
-	coreName, rest := parseInstallCoreFlag(args)
-	proxyURL, rest := parseProxyFlag(rest)
-	withDPI, rest := parseWithDPIFlag(rest)
-	withNaive, rest := parseWithNaiveFlag(rest)
-	presetName, rest := parsePresetFlag(rest)
-	inbound, _ := parseInboundFlag(rest)
+	coreName, rest := parseStringFlag(args, "core")
+	proxyURL, rest := parseStringFlag(rest, "proxy")
+	withDPI, rest := parseBoolFlag(rest, "with-dpi")
+	withNaive, rest := parseBoolFlag(rest, "with-naive")
+	presetName, rest := parseStringFlag(rest, "preset")
+	inbound, _ := parseStringFlag(rest, "inbound")
+	if inbound == "" {
+		inbound = state.DefaultInbound
+	}
 	return withLock(ctx, func() error {
 		return doInstall(ctx, installAuto, "", false, coreName, proxyURL, withDPI, withNaive, inbound, presetName)
 	})
 }
 
 func handleInstallOffline(ctx context.Context, args []string) error {
-	coreName, rest := parseInstallCoreFlag(args)
-	proxyURL, rest := parseProxyFlag(rest)
-	withDPI, rest := parseWithDPIFlag(rest)
-	withNaive, rest := parseWithNaiveFlag(rest)
-	presetName, rest := parsePresetFlag(rest)
-	inbound, rest := parseInboundFlag(rest)
+	coreName, rest := parseStringFlag(args, "core")
+	proxyURL, rest := parseStringFlag(rest, "proxy")
+	withDPI, rest := parseBoolFlag(rest, "with-dpi")
+	withNaive, rest := parseBoolFlag(rest, "with-naive")
+	presetName, rest := parseStringFlag(rest, "preset")
+	inbound, rest := parseStringFlag(rest, "inbound")
+	if inbound == "" {
+		inbound = state.DefaultInbound
+	}
 	if len(rest) == 0 {
 		return fmt.Errorf("--install-offline: требуется путь к tarball")
 	}
@@ -193,18 +127,26 @@ func handleInstallOffline(ctx context.Context, args []string) error {
 }
 
 func handleReinstall(ctx context.Context, args []string) error {
-	_, rest := parseInstallCoreFlag(args)
-	proxyURL, rest := parseProxyFlag(rest)
-	withDPI, rest := parseWithDPIFlag(rest)
-	withNaive, rest := parseWithNaiveFlag(rest)
-	presetName, rest := parsePresetFlag(rest)
-	inbound, _ := parseInboundFlag(rest)
+	coreName, rest := parseStringFlag(args, "core")
+	proxyURL, rest := parseStringFlag(rest, "proxy")
+	withDPI, rest := parseBoolFlag(rest, "with-dpi")
+	withNaive, rest := parseBoolFlag(rest, "with-naive")
+	presetName, rest := parseStringFlag(rest, "preset")
+	inbound, _ := parseStringFlag(rest, "inbound")
+	if inbound == "" {
+		inbound = state.DefaultInbound
+	}
+	if coreName == "" {
+		if prevSt, loadErr := loadState(); loadErr == nil && prevSt.Core != "" {
+			coreName = prevSt.Core
+		}
+	}
 	mode := installAuto
 	if proxyURL != "" {
 		mode = installInteractive
 	}
 	return withLock(ctx, func() error {
-		return doInstall(ctx, mode, "", true, "", proxyURL, withDPI, withNaive, inbound, presetName)
+		return doInstall(ctx, mode, "", true, coreName, proxyURL, withDPI, withNaive, inbound, presetName)
 	})
 }
 

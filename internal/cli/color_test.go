@@ -129,7 +129,7 @@ func TestColorFuncs_DisabledAreNoop(t *testing.T) {
 		name string
 		fn   func(string) string
 	}{
-		{"Red", Red}, {"Green", Green}, {"Yellow", Yellow}, {"Blue", Blue},
+		{"Red", Red}, {"Green", Green}, {"Yellow", Yellow},
 		{"Cyan", Cyan}, {"Dim", Dim}, {"Bold", Bold},
 		{"OK", OK}, {"Warn", Warn}, {"Err", Err}, {"Info", Info},
 		{"Hint", Hint}, {"Header", Header}, {"Key", Key},
@@ -153,7 +153,7 @@ func TestColorFuncs_EnabledWrapWithANSI(t *testing.T) {
 
 	cases := map[string]string{
 		"Red": Red("x"), "Green": Green("x"), "Yellow": Yellow("x"),
-		"Blue": Blue("x"), "Cyan": Cyan("x"), "Dim": Dim("x"), "Bold": Bold("x"),
+		"Cyan": Cyan("x"), "Dim": Dim("x"), "Bold": Bold("x"),
 		"OK": OK("x"), "Warn": Warn("x"), "Err": Err("x"), "Info": Info("x"),
 		"Hint": Hint("x"), "Header": Header("x"), "Key": Key("x"),
 	}

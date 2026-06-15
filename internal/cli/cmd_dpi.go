@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"net/netip"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/kittylabassistant/sign-craze/internal/dpi"
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
+	"github.com/kittylabassistant/sign-craze/internal/netif"
 	"github.com/kittylabassistant/sign-craze/internal/singbox"
 	"github.com/kittylabassistant/sign-craze/internal/state"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
@@ -48,7 +50,7 @@ func detectISPInterface(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("ip route: %w", err)
 	}
-	iface, err := dpi.DetectISPInterface(string(routeRes.Stdout))
+	iface, err := netif.ParseDefaultRouteIface(string(routeRes.Stdout))
 	if err != nil {
 		return "", fmt.Errorf("ISP-интерфейс: %w", err)
 	}
@@ -398,8 +400,8 @@ func handleDPIUpdateInterval(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("--dpi-update-interval: требуется число часов (0 = выкл)")
 	}
-	hours := 0
-	if _, err := fmt.Sscanf(strings.TrimSpace(args[0]), "%d", &hours); err != nil {
+	hours, err := strconv.Atoi(strings.TrimSpace(args[0]))
+	if err != nil {
 		return fmt.Errorf("--dpi-update-interval: некорректное число %q: %w", args[0], err)
 	}
 	if hours < 0 {
