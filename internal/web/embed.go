@@ -26,14 +26,25 @@ func embedCacheMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// assets содержит встроенный Zashboard (git submodule).
+// assets содержит встроенный Zashboard (git submodule) и Routing UI.
 // Для инициализации submodule: git submodule update --init internal/web/assets/zashboard
 //
-// ВАЖНО: префикс all: обязателен, иначе Go embed по умолчанию ИСКЛЮЧАЕТ файлы
-// и каталоги, начинающиеся с "_" или ".", — а Zashboard содержит каталоги
-// _nuxt/ и _fonts/ (Nuxt build), без которых страница ловит 404 на CSS/JS.
+// Шрифты (_fonts/ ~464KB), CNAME, .nojekyll и 200.html намеренно исключены:
+// они нужны только для GitHub Pages деплоя, в бинаре не нужны.
+// _nuxt/ перечислен явно (Go embed без "all:" исключает каталоги с "_").
 //
-//go:embed all:assets
+//go:embed assets/routingui
+//go:embed assets/zashboard/_nuxt
+//go:embed assets/zashboard/index.html
+//go:embed assets/zashboard/404.html
+//go:embed assets/zashboard/config.js
+//go:embed assets/zashboard/favicon.ico
+//go:embed assets/zashboard/favicon.svg
+//go:embed assets/zashboard/apple-touch-icon-180x180.png
+//go:embed assets/zashboard/maskable-icon-512x512.png
+//go:embed assets/zashboard/pwa-192x192.png
+//go:embed assets/zashboard/pwa-512x512.png
+//go:embed assets/zashboard/pwa-64x64.png
 var assets embed.FS
 
 // zashboardFS возвращает файловую систему с Zashboard.

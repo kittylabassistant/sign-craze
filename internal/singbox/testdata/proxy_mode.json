@@ -1,14 +1,7 @@
 {
   "dns": {
     "final": "remote",
-    "rules": [
-      {
-        "rule_set": [
-          "geosite-ru"
-        ],
-        "server": "local"
-      }
-    ],
+    "rules": [],
     "servers": [
       {
         "detour": "proxy-out",

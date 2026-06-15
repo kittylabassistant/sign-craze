@@ -1,7 +1,6 @@
 package firewall
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"fmt"
@@ -56,10 +55,6 @@ func (b *BatchBuilder) Commit() *BatchBuilder {
 func (b *BatchBuilder) Bytes() []byte {
 	return b.buf.Bytes()
 }
-
-// maxIptablesOutputLine — лимит на одну строку iptables -S при сканировании.
-// Защита от raw-output > 256KB, который мог бы исчерпать RAM на 128MB роутере.
-const maxIptablesOutputLine = 256 * 1024
 
 // IPTables управляет правилами iptables через exectx.Runner.
 type IPTables struct {
@@ -183,113 +178,4 @@ func (t *IPTables) RestoreBatch(ctx context.Context, dump []byte) error {
 	}
 	log.L().Debug("firewall: iptables-restore batch выполнен", "bytes", len(dump))
 	return nil
-}
-
-// ListRules возвращает правила цепочки (iptables -S chain).
-func (t *IPTables) ListRules(ctx context.Context, table, chain string) ([]string, error) {
-	res, err := t.runner.Run(ctx, "iptables", "-t", table, "-S", chain)
-	if err != nil {
-		return nil, fmt.Errorf("firewall: список правил %s/%s: %w", table, chain, err)
-	}
-	rules, scanErr := scanLines(res.Stdout)
-	if scanErr != nil {
-		return nil, fmt.Errorf("firewall: парсинг %s/%s: %w", table, chain, scanErr)
-	}
-	return rules, nil
-}
-
-// DeleteRulesByComment удаляет все правила таблицы, содержащие commentPrefix в комментарии.
-// Используется при откате и при --stop для гарантированной очистки.
-//
-// Парсинг учитывает iptables-формат с quoted-комментариями
-// `--comment "signcraze:xxx"` — strings.Fields() разрезал бы кавычки на отдельные
-// токены и получившийся iptables -D не находил бы исходное правило.
-func (t *IPTables) DeleteRulesByComment(ctx context.Context, table, commentPrefix string) error {
-	res, err := t.runner.Run(ctx, "iptables", "-t", table, "-S")
-	if err != nil {
-		return fmt.Errorf("firewall: получение правил таблицы %s: %w", table, err)
-	}
-	lines, scanErr := scanLines(res.Stdout)
-	if scanErr != nil {
-		return fmt.Errorf("firewall: парсинг таблицы %s: %w", table, scanErr)
-	}
-	for _, line := range lines {
-		if !strings.Contains(line, commentPrefix) {
-			continue
-		}
-		if !strings.HasPrefix(line, "-A ") {
-			continue
-		}
-		rest := line[3:]
-		idx := strings.IndexByte(rest, ' ')
-		if idx < 0 {
-			continue
-		}
-		chain := rest[:idx]
-		ruleStr := rest[idx+1:]
-		args, splitErr := splitIptablesArgs(ruleStr)
-		if splitErr != nil {
-			log.L().Warn("firewall: не разобрал правило", "line", line, "err", splitErr)
-			continue
-		}
-		deleteArgs := append([]string{"-t", table, "-D", chain}, args...)
-		if _, delErr := t.runner.Run(ctx, "iptables", deleteArgs...); delErr != nil {
-			log.L().Warn("firewall: не удалось удалить правило", "line", line, "err", delErr)
-		}
-	}
-	return nil
-}
-
-// scanLines читает построчно через bufio.Scanner с расширенным буфером, чтобы
-// длинные правила iptables не падали с ErrTooLong.
-func scanLines(data []byte) ([]string, error) {
-	sc := bufio.NewScanner(bytes.NewReader(data))
-	sc.Buffer(make([]byte, 64*1024), maxIptablesOutputLine)
-	var lines []string
-	for sc.Scan() {
-		line := sc.Text()
-		if line != "" {
-			lines = append(lines, line)
-		}
-	}
-	if err := sc.Err(); err != nil {
-		return nil, err
-	}
-	return lines, nil
-}
-
-// splitIptablesArgs разбивает строку правила на токены с учётом double-quoted
-// строк. Кавычки в выводе iptables-save обрамляют значения опций, содержащих
-// пробелы (типичный случай: --comment "sign-craze: xxx"). Возвращает токены БЕЗ
-// внешних кавычек.
-//
-// Пример: `-p tcp -m comment --comment "signcraze:foo" -j MARK`
-// → ["-p", "tcp", "-m", "comment", "--comment", "signcraze:foo", "-j", "MARK"]
-func splitIptablesArgs(s string) ([]string, error) {
-	var (
-		out      []string
-		buf      strings.Builder
-		inQuotes bool
-	)
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		switch {
-		case c == '"':
-			inQuotes = !inQuotes
-		case c == ' ' && !inQuotes:
-			if buf.Len() > 0 {
-				out = append(out, buf.String())
-				buf.Reset()
-			}
-		default:
-			buf.WriteByte(c)
-		}
-	}
-	if inQuotes {
-		return nil, fmt.Errorf("несбалансированные кавычки: %q", s)
-	}
-	if buf.Len() > 0 {
-		out = append(out, buf.String())
-	}
-	return out, nil
 }

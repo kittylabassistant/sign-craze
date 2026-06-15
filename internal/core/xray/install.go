@@ -2,52 +2,17 @@ package xray
 
 import (
 	"archive/zip"
-	"bytes"
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
+	"github.com/kittylabassistant/sign-craze/internal/elfcheck"
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/log"
 )
-
-// elfMagic — первые 4 байта Linux ELF-бинаря (\x7f E L F).
-var elfMagic = []byte{0x7f, 'E', 'L', 'F'}
-
-// PrepareAndValidate распаковывает бинарь xray из zip во временный файл,
-// проверяет ELF-magic и (если configPath не пустой) валидирует config через
-// `xray test -c`. Возвращает путь к временному бинарю с правами 0755.
-//
-// Caller обязан после успешной валидации сделать atomic move temp → final
-// или удалить tmpDir при отказе. Конфиг в configPath остаётся как есть.
-//
-// workDir — родительская директория для temp-папки распаковки. Должна быть
-// на постоянной FS (см. DefaultCacheDir): xray ~16MB, /tmp на Keenetic
-// — tmpfs ~50MB и часто переполнен.
-func PrepareAndValidate(ctx context.Context, runner exectx.Runner, workDir, zipPath, configPath string) (tempBinPath string, err error) {
-	tmpDir, err := os.MkdirTemp(workDir, "sign-craze-xray-install-*")
-	if err != nil {
-		return "", fmt.Errorf("xray prepare: tempdir: %w", err)
-	}
-	tempBin := filepath.Join(tmpDir, "xray")
-	if err := extractBinaryToFile(zipPath, tempBin, 0o755); err != nil {
-		_ = os.RemoveAll(tmpDir)
-		return "", fmt.Errorf("xray prepare: распаковка: %w", err)
-	}
-
-	if configPath != "" {
-		if err := CheckConfig(ctx, runner, tempBin, configPath); err != nil {
-			_ = os.RemoveAll(tmpDir)
-			return "", fmt.Errorf("xray prepare: валидация конфига: %w", err)
-		}
-	}
-
-	return tempBin, nil
-}
 
 // Install устанавливает бинарь xray из zip-архива в binDst.
 //
@@ -128,20 +93,17 @@ func openXrayBinaryStream(zipPath string) (*binaryStream, error) {
 		}
 
 		// ELF-magic check.
-		magic := make([]byte, len(elfMagic))
-		n, readErr := io.ReadFull(rc, magic)
-		if readErr != nil && readErr != io.ErrUnexpectedEOF {
+		full, got, n, readErr := elfcheck.CheckAndRewind(rc)
+		if readErr != nil {
 			_ = rc.Close()
 			_ = r.Close()
 			return nil, fmt.Errorf("чтение ELF-magic из %s: %w", f.Name, readErr)
 		}
-		if n < len(elfMagic) || !bytes.Equal(magic[:n], elfMagic) {
+		if !elfcheck.IsELF(got, n) {
 			_ = rc.Close()
 			_ = r.Close()
-			return nil, fmt.Errorf("xray install: %s не ELF-бинарь (magic=%x)", f.Name, magic[:n])
+			return nil, fmt.Errorf("xray install: %s не ELF-бинарь (magic=%x)", f.Name, got[:n])
 		}
-
-		full := io.MultiReader(bytes.NewReader(magic), rc)
 		closer := func() error {
 			_ = rc.Close()
 			return r.Close()
@@ -151,18 +113,4 @@ func openXrayBinaryStream(zipPath string) (*binaryStream, error) {
 
 	_ = r.Close()
 	return nil, fmt.Errorf("бинарь 'xray' не найден в архиве %s", zipPath)
-}
-
-// extractBinaryToFile стримит бинарь xray из zip напрямую в dstPath.
-func extractBinaryToFile(zipPath, dstPath string, perm os.FileMode) error {
-	stream, err := openXrayBinaryStream(zipPath)
-	if err != nil {
-		return err
-	}
-	defer stream.Close()
-
-	if err := atomicfs.WriteFileAtomicFromReader(dstPath, stream.Reader, perm); err != nil {
-		return fmt.Errorf("запись бинаря: %w", err)
-	}
-	return nil
 }

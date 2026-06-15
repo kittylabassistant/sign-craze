@@ -25,12 +25,10 @@ type PolicyInfo struct {
 
 // rawPolicyShow — формат ответа /rci/show/ip/policy.
 type rawPolicyShow struct {
-	Description string         `json:"description"`
-	Mark        string         `json:"mark"` // hex-строка без 0x
-	Table4      int            `json:"table4"`
-	Table6      int            `json:"table6"`
-	Route4      map[string]any `json:"route4,omitempty"`
-	Route6      map[string]any `json:"route6,omitempty"`
+	Description string `json:"description"`
+	Mark        string `json:"mark"` // hex-строка без 0x
+	Table4      int    `json:"table4"`
+	Table6      int    `json:"table6"`
 }
 
 // rawPolicyRC — формат ответа /rci/show/rc/ip/policy.

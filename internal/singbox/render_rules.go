@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/kittylabassistant/sign-craze/internal/routing"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
@@ -23,8 +24,6 @@ type effectiveModel struct {
 	UserRules []string         // пользовательские правила — уже сериализованный JSON
 	RuleSets  []types.RuleSetRef
 	Final     string
-
-	DNSDirectRuleSets []string // legacy путь: GeoSiteDirect → local DNS
 }
 
 // outboundsHaveDirect возвращает true, если среди списка есть outbound с tag=direct.
@@ -145,6 +144,10 @@ func buildEffectiveModel(p ConfigParams) (effectiveModel, error) {
 			}
 			m.UserRules = append(m.UserRules, s)
 		}
+		// Применяем фильтр: удаляем unreferenced rule_sets из конфига.
+		// Это предотвращает загрузку sing-box rule_sets которые не используются
+		// ни в одном route rule (инцидент 2026-05-12: unused rule_sets → 404 → клиенты теряют интернет).
+		routing.FilterUnusedRuleSets(p.RoutingConfig)
 		m.RuleSets = p.RoutingConfig.RuleSets
 		if p.RoutingConfig.Final != "" {
 			m.Final = p.RoutingConfig.Final
@@ -152,36 +155,11 @@ func buildEffectiveModel(p ConfigParams) (effectiveModel, error) {
 			m.Final = p.DefaultOutboundTag
 		}
 	} else {
-		// legacy путь: Routing + Outbounds
+		// Нет RoutingConfig: используем только Outbounds + DefaultOutboundTag.
+		// Валидация Outbounds выполнена выше в Render().
 		m.Outbounds = p.Outbounds
 		m.HasDirect = outboundsHaveDirect(m.Outbounds)
-		if len(p.Routing.GeoSiteDirect) > 0 {
-			s, err := marshalRule(map[string]any{
-				"rule_set": p.Routing.GeoSiteDirect,
-				"outbound": "direct",
-			})
-			if err != nil {
-				return m, fmt.Errorf("legacy GeoSiteDirect rule: %w", err)
-			}
-			m.UserRules = append(m.UserRules, s)
-		}
-		if len(p.Routing.GeoSiteProxy) > 0 {
-			s, err := marshalRule(map[string]any{
-				"rule_set": p.Routing.GeoSiteProxy,
-				"outbound": p.DefaultOutboundTag,
-			})
-			if err != nil {
-				return m, fmt.Errorf("legacy GeoSiteProxy rule: %w", err)
-			}
-			m.UserRules = append(m.UserRules, s)
-		}
-		m.RuleSets = buildRuleSets(p.Routing)
-		if p.Routing.FinalOutbound != "" {
-			m.Final = p.Routing.FinalOutbound
-		} else {
-			m.Final = p.DefaultOutboundTag
-		}
-		m.DNSDirectRuleSets = p.Routing.GeoSiteDirect
+		m.Final = p.DefaultOutboundTag
 	}
 
 	return m, nil

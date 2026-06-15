@@ -283,7 +283,12 @@ func processAliveWith(pid int, expectedName string, cr commReader) bool {
 	}
 	// /proc/<pid>/status содержит строку "State:\tX (descriptive)".
 	// Z = zombie, X = dead. Любое другое — живой.
-	for _, line := range strings.Split(string(data), "\n") {
+	// Используем strings.Cut вместо strings.Split, чтобы не аллоцировать слайс
+	// всех строк файла — ищем только первую строку "State:".
+	rest := string(data)
+	for rest != "" {
+		var line string
+		line, rest, _ = strings.Cut(rest, "\n")
 		if !strings.HasPrefix(line, "State:") {
 			continue
 		}

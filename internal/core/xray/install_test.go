@@ -3,9 +3,12 @@ package xray
 import (
 	"archive/zip"
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/kittylabassistant/sign-craze/internal/elfcheck"
 )
 
 // makeXrayZip создаёт zip-архив с одним файлом "xray", содержащим
@@ -37,42 +40,35 @@ func makeXrayZip(t *testing.T, body []byte, entryName string) string {
 
 // elfBody — минимальный ELF-magic-подобный body для прохождения проверки.
 func elfBody() []byte {
-	body := append([]byte{}, elfMagic...)
+	body := append([]byte{}, elfcheck.Magic...)
 	body = append(body, []byte("rest-of-binary-content")...)
 	return body
 }
 
-func TestExtractBinaryToFile_Success(t *testing.T) {
+// TestOpenXrayBinaryStream_ReadsValidELF — поток возвращает полный ELF-контент.
+func TestOpenXrayBinaryStream_ReadsValidELF(t *testing.T) {
 	zipPath := makeXrayZip(t, elfBody(), "xray")
 
-	dst := filepath.Join(t.TempDir(), "out", "xray")
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := extractBinaryToFile(zipPath, dst, 0o755); err != nil {
-		t.Fatalf("extractBinaryToFile: %v", err)
-	}
-
-	got, err := os.ReadFile(dst)
+	stream, err := openXrayBinaryStream(zipPath)
 	if err != nil {
-		t.Fatalf("read dst: %v", err)
+		t.Fatalf("openXrayBinaryStream: %v", err)
+	}
+	defer stream.Close()
+
+	got, err := io.ReadAll(stream.Reader)
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
 	}
 	if !bytes.Equal(got, elfBody()) {
 		t.Errorf("содержимое отличается:\ngot:  %x\nwant: %x", got, elfBody())
 	}
-	info, _ := os.Stat(dst)
-	if info.Mode().Perm() != 0o755 {
-		t.Errorf("perm = %o, ожидалось 0755", info.Mode().Perm())
-	}
 }
 
-// TestExtractBinaryToFile_RejectsNonELF — содержимое без ELF-magic должно
+// TestOpenXrayBinaryStream_RejectsNonELF — содержимое без ELF-magic должно
 // быть отвергнуто (защита от компрометированного релиза).
-func TestExtractBinaryToFile_RejectsNonELF(t *testing.T) {
+func TestOpenXrayBinaryStream_RejectsNonELF(t *testing.T) {
 	zipPath := makeXrayZip(t, []byte("MZ-not-elf"), "xray")
-	dst := filepath.Join(t.TempDir(), "out", "xray")
-	_ = os.MkdirAll(filepath.Dir(dst), 0o755)
-	err := extractBinaryToFile(zipPath, dst, 0o755)
+	_, err := openXrayBinaryStream(zipPath)
 	if err == nil {
 		t.Fatal("ожидалась ошибка для не-ELF содержимого")
 	}

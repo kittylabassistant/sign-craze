@@ -41,8 +41,8 @@ func handleStatus(ctx context.Context, _ []string) error {
 		coreVer = v
 	}
 
-	fmt.Printf("%s  %s\n", Key(c.Name()+":"), formatService(sb.Running, sb.PID))
-	fmt.Printf("%s    %s\n", Key("nfqws2:"), formatService(dpiSt.Running, dpiSt.PID))
+	fmt.Printf("%s  %s\n", Key(c.Name()+":"), ServiceStatus(sb.Running, sb.PID))
+	fmt.Printf("%s    %s\n", Key("nfqws2:"), ServiceStatus(dpiSt.Running, dpiSt.PID))
 
 	// Supervised peers (mieru). Выводим только если есть mieru-outbound'ы,
 	// чтобы не засорять status пустой секцией для обычных пользователей.
@@ -53,7 +53,7 @@ func handleStatus(ctx context.Context, _ []string) error {
 			if p.LocalPort > 0 {
 				suffix = fmt.Sprintf("  (socks5 → 127.0.0.1:%d)", p.LocalPort)
 			}
-			fmt.Printf("%s  %s%s\n", Key(label), formatService(p.Running, p.PID), suffix)
+			fmt.Printf("%s  %s%s\n", Key(label), ServiceStatus(p.Running, p.PID), suffix)
 		}
 	}
 
@@ -64,10 +64,6 @@ func handleStatus(ctx context.Context, _ []string) error {
 		fmt.Printf("%s    sign-craze %s / %s %s\n", Key("версия:"), version.Short(), c.Name(), Err("не установлен"))
 	}
 	return nil
-}
-
-func formatService(running bool, pid int) string {
-	return ServiceStatus(running, pid)
 }
 
 func handleVersion(ctx context.Context, _ []string) error {

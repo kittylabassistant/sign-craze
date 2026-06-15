@@ -59,14 +59,7 @@
         "tag": "local"
       }
     ],
-    "rules": [
-{{- if .DNSDirectRuleSets }}
-      {
-        "rule_set": {{ jsonMarshal .DNSDirectRuleSets }},
-        "server": "local"
-      }
-{{- end }}
-    ],
+    "rules": [],
     "final": "remote"
   },
   "experimental": {

@@ -151,6 +151,7 @@ func TestInstall_ОшибкаЕслиБинарьОтсутствуетВАрх�
 
 func TestExtractBinary_НаходитВложенныйФайл(t *testing.T) {
 	content := []byte("binary-content")
+	// Install принимает tar.gz напрямую и находит nfqws2 по любому вложению
 	tarData := makeTarGZ(t, "subdir/nfqws2", content)
 
 	dir := t.TempDir()
@@ -160,8 +161,8 @@ func TestExtractBinary_НаходитВложенныйФайл(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := extractBinaryToFile(tarPath, dstPath, 0o755); err != nil {
-		t.Fatalf("extractBinaryToFile: %v", err)
+	if err := Install(tarPath, dstPath); err != nil {
+		t.Fatalf("Install (nested binary): %v", err)
 	}
 	got, _ := os.ReadFile(dstPath)
 	if !bytes.Equal(got, content) {

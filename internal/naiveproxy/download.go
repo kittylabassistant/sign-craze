@@ -20,29 +20,22 @@ var naiveAssetPattern = map[types.Arch]string{
 	// ArchMIPS (big-endian) ОТСУТСТВУЕТ — klzgrad публикует только LE.
 }
 
-// DownloadResult описывает результат вызова Download.
-type DownloadResult struct {
-	Downloaded bool   // false если файл актуален (ETag совпал)
-	Version    string // тег релиза, например "v148.0.7778.96-5"
-	Path       string // путь к скачанному tarball
-}
-
 // DefaultCacheDir — постоянный каталог под кеш tarball'ов naiveproxy.
 const DefaultCacheDir = "/opt/var/lib/sign-craze/cache/naive"
 
 // Download скачивает актуальный tarball naiveproxy для указанной архитектуры в dstDir.
 // При совпадении ETag повторная загрузка не производится.
 // Возвращает явную ошибку для arch=mips (big-endian) — naive не публикует BE.
-func Download(ctx context.Context, arch types.Arch, dstDir string) (DownloadResult, error) {
+func Download(ctx context.Context, arch types.Arch, dstDir string) (ghrelease.FetchResult, error) {
 	if err := arch.Validate(); err != nil {
-		return DownloadResult{}, err
+		return ghrelease.FetchResult{}, err
 	}
 	if arch == types.ArchMIPS {
-		return DownloadResult{}, fmt.Errorf("naiveproxy download: архитектура mips (big-endian) не поддерживается upstream klzgrad/naiveproxy (публикует только linux-mipsel)")
+		return ghrelease.FetchResult{}, fmt.Errorf("naiveproxy download: архитектура mips (big-endian) не поддерживается upstream klzgrad/naiveproxy (публикует только linux-mipsel)")
 	}
 	pattern, ok := naiveAssetPattern[arch]
 	if !ok {
-		return DownloadResult{}, fmt.Errorf("naiveproxy download: нет паттерна для архитектуры %q", arch)
+		return ghrelease.FetchResult{}, fmt.Errorf("naiveproxy download: нет паттерна для архитектуры %q", arch)
 	}
 
 	res, err := ghrelease.New().Fetch(ctx, ghrelease.FetchOptions{
@@ -57,12 +50,8 @@ func Download(ctx context.Context, arch types.Arch, dstDir string) (DownloadResu
 		AllowMissingSHA: true,
 	})
 	if err != nil {
-		return DownloadResult{}, fmt.Errorf("naiveproxy download: %w", err)
+		return ghrelease.FetchResult{}, fmt.Errorf("naiveproxy download: %w", err)
 	}
 
-	return DownloadResult{
-		Downloaded: res.Downloaded,
-		Version:    res.Version,
-		Path:       res.Path,
-	}, nil
+	return res, nil
 }

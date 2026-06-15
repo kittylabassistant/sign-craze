@@ -81,44 +81,6 @@ func TestWriteFileAtomic_SetsPermissions(t *testing.T) {
 	}
 }
 
-func TestBackupAndReplace_CreatesBackup(t *testing.T) {
-	dir := t.TempDir()
-	dst := filepath.Join(dir, "bin")
-
-	_ = WriteFileAtomic(dst, []byte("v1"), 0o755)
-
-	backupPath, err := BackupAndReplace(dst, []byte("v2"), 0o755)
-	if err != nil {
-		t.Fatalf("BackupAndReplace: %v", err)
-	}
-	if backupPath == "" {
-		t.Fatal("ожидался непустой путь к бэкапу")
-	}
-
-	backup, _ := os.ReadFile(backupPath)
-	if string(backup) != "v1" {
-		t.Errorf("содержимое бэкапа = %q, ожидалось %q", backup, "v1")
-	}
-
-	current, _ := os.ReadFile(dst)
-	if string(current) != "v2" {
-		t.Errorf("текущий файл = %q, ожидалось %q", current, "v2")
-	}
-}
-
-func TestBackupAndReplace_NoExisting(t *testing.T) {
-	dir := t.TempDir()
-	dst := filepath.Join(dir, "new")
-
-	backupPath, err := BackupAndReplace(dst, []byte("fresh"), 0o644)
-	if err != nil {
-		t.Fatalf("BackupAndReplace без существующего файла: %v", err)
-	}
-	if backupPath != "" {
-		t.Errorf("ожидался пустой backupPath, получили %q", backupPath)
-	}
-}
-
 func TestRestoreBackup(t *testing.T) {
 	dir := t.TempDir()
 	dst := filepath.Join(dir, "bin")

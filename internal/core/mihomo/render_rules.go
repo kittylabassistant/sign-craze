@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/kittylabassistant/sign-craze/internal/core"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
@@ -80,12 +81,12 @@ func TranslateRoutingRules(rc *types.RoutingConfig, defaultTag string) (rules []
 
 	for i, rr := range rc.Rules {
 		action, w := resolveAction(rr)
-		warnings = append(warnings, prefixWarnings(fmt.Sprintf("rules[%d]", i), w)...)
+		warnings = append(warnings, core.PrefixWarnings(fmt.Sprintf("rules[%d]", i), w)...)
 		if action == "" {
 			continue
 		}
 		ruleLines, w := emitRuleLines(rr, action, providersByTag)
-		warnings = append(warnings, prefixWarnings(fmt.Sprintf("rules[%d]", i), w)...)
+		warnings = append(warnings, core.PrefixWarnings(fmt.Sprintf("rules[%d]", i), w)...)
 		rules = append(rules, ruleLines...)
 	}
 
@@ -248,16 +249,4 @@ func parseInterval(s string) int {
 		return 86400
 	}
 	return total
-}
-
-// prefixWarnings добавляет префикс (например "rules[0]") к каждой warning-строке.
-func prefixWarnings(prefix string, ws []string) []string {
-	if len(ws) == 0 {
-		return nil
-	}
-	out := make([]string, len(ws))
-	for i, w := range ws {
-		out[i] = prefix + ": " + w
-	}
-	return out
 }

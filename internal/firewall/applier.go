@@ -435,13 +435,19 @@ func (a *applierImpl) applyPolicyTUNMode(ctx context.Context) error {
 	mangle.Chain(modes.PolicyChainName)
 	mangle.Flush(modes.PolicyChainName) // flush для идемпотентности
 
+	// filter: секция должна быть объявлена до добавления правил.
+	filter.Table("filter")
+
 	// Правила PolicyRules возвращают все правила для mangle и filter.
-	// Разбиваем по таблицам.
-	for _, spec := range modes.PolicyRules(a.cfg.PolicyMark, a.cfg.FWMark) {
-		if spec.Table == "mangle" {
+	// Разбиваем по таблицам за один проход (избегаем двойного вызова).
+	policyRules := modes.PolicyRules(a.cfg.PolicyMark, a.cfg.FWMark)
+	for _, spec := range policyRules {
+		switch spec.Table {
+		case "mangle":
 			mangle.Rule(spec.Chain, spec.Args...)
+		case "filter":
+			filter.Rule(spec.Chain, spec.Args...)
 		}
-		// filter-правила обработаем ниже
 	}
 
 	// DPI цепочка и правила в mangle FORWARD
@@ -456,13 +462,7 @@ func (a *applierImpl) applyPolicyTUNMode(ctx context.Context) error {
 	}
 	mangle.Commit()
 
-	// filter: FORWARD ACCEPT для signbox-tun (из PolicyRules)
-	filter.Table("filter")
-	for _, spec := range modes.PolicyRules(a.cfg.PolicyMark, a.cfg.FWMark) {
-		if spec.Table == "filter" {
-			filter.Rule(spec.Chain, spec.Args...)
-		}
-	}
+	// filter: завершаем секцию (Table уже объявлена выше, правила добавлены в цикле).
 	filter.Commit()
 
 	// Шаг 3: Применить batch'и.
@@ -552,7 +552,7 @@ func (a *applierImpl) applyPolicyRedirect(ctx context.Context) error {
 	nat.Table("nat")
 	nat.Chain(modes.PolicyChainName)
 	nat.Flush(modes.PolicyChainName)
-	for _, spec := range modes.PolicyTProxyRules(a.cfg.PolicyMark, a.cfg.FWMark, a.cfg.Port) {
+	for _, spec := range modes.PolicyTProxyRules(a.cfg.PolicyMark, a.cfg.Port) {
 		if spec.Table == "nat" {
 			nat.Rule(spec.Chain, spec.Args...)
 		}
@@ -640,7 +640,9 @@ func (a *applierImpl) applyFullMode(ctx context.Context) error {
 	var mangle BatchBuilder
 	mangle.Table("mangle")
 	// Объявляем все sign-craze цепочки в mangle + flush для идемпотентности.
-	for _, chain := range []string{"signcraze", "signcraze_full", "signcraze_dpi", "signcraze_ports"} {
+	// signcraze_full исключена: ghost-цепочка, в неё нет jump-правил и правил не пишется.
+	// В Remove() цепочка по-прежнему чистится для безопасного апгрейда со старых версий.
+	for _, chain := range []string{"signcraze", "signcraze_dpi", "signcraze_ports"} {
 		mangle.Chain(chain)
 		mangle.Flush(chain)
 	}
@@ -744,7 +746,7 @@ func (a *applierImpl) Remove(ctx context.Context) error {
 		modes.PolicyChainName, // signcraze_policy
 		"signcraze_dpi",
 		"signcraze_ports",
-		"signcraze_full",
+		"signcraze_full", // legacy: не создаётся с v0.x, удалена из Apply; cleanup для апгрейдов
 		"signcraze",
 	}
 	for _, target := range preroutingJumps {
@@ -781,7 +783,7 @@ func (a *applierImpl) Remove(ctx context.Context) error {
 		modes.PolicyChainName,
 		"signcraze_dpi",
 		"signcraze_ports",
-		"signcraze_full",
+		"signcraze_full", // legacy: не создаётся с v0.x, удалена из Apply; cleanup для апгрейдов
 		"signcraze",
 	}
 	for _, chain := range allChains {

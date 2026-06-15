@@ -205,20 +205,6 @@ func openNfqwsBinaryStreamIPK(ipkPath string) (*binaryStream, error) {
 	}
 }
 
-// extractBinaryToFile стримит бинарь nfqws2 из tarball напрямую в dstPath.
-func extractBinaryToFile(tarPath, dstPath string, perm os.FileMode) error {
-	stream, err := openNfqwsBinaryStream(tarPath)
-	if err != nil {
-		return err
-	}
-	defer stream.Close()
-
-	if err := atomicfs.WriteFileAtomicFromReader(dstPath, stream.Reader, perm); err != nil {
-		return fmt.Errorf("запись бинаря: %w", err)
-	}
-	return nil
-}
-
 // InstallAssets извлекает из .ipk все runtime-ресурсы nfqws2:
 //   - blob-payload'ы (etc/nfqws2/blobs/*.bin → blobDir/*.bin)
 //   - lua-расширения (etc/nfqws2/lua/*.lua.gz → luaDir/*.lua, gunzip)

@@ -3,6 +3,7 @@ package firewall
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -215,5 +216,48 @@ func TestCheckCriticalRules_Full_OK(t *testing.T) {
 	missing := ipt.CheckCriticalRules(context.Background(), types.ModeFull, 0)
 	if len(missing) != 0 {
 		t.Errorf("ожидалось 0 missing, получено: %v", missing)
+	}
+}
+
+// TestCheckCriticalRules_KeenMark_Zero — keenMark=0, проверка MARK не выполняется.
+func TestCheckCriticalRules_KeenMark_Zero(t *testing.T) {
+	rules := tunRules()
+	rules["iptables -t mangle -C PREROUTING -j signcraze_policy"] = true
+	ipt := New(&ruleSet{rules})
+	missing := ipt.CheckCriticalRules(context.Background(), types.ModePolicy, 0)
+	if len(missing) != 0 {
+		t.Errorf("keenMark=0: ожидалось 0 missing, получено: %v", missing)
+	}
+}
+
+// TestCheckCriticalRules_KeenMark_Present — keenMark>0, MARK-правило есть → missing пустой.
+func TestCheckCriticalRules_KeenMark_Present(t *testing.T) {
+	rules := tunRules()
+	rules["iptables -t mangle -C PREROUTING -j signcraze_policy"] = true
+	rules["iptables -t mangle -C signcraze_policy -m mark --mark 0xaabb -j MARK --set-mark 0x53"] = true
+	ipt := New(&ruleSet{rules})
+	cfg := &CriticalRulesConfig{FWMark: 0x53}
+	missing := ipt.CheckCriticalRules(context.Background(), types.ModePolicy, 0xaabb, cfg)
+	if len(missing) != 0 {
+		t.Errorf("keenMark present: ожидалось 0 missing, получено: %v", missing)
+	}
+}
+
+// TestCheckCriticalRules_KeenMark_Missing — keenMark>0, MARK-правило отсутствует → в missing.
+func TestCheckCriticalRules_KeenMark_Missing(t *testing.T) {
+	rules := tunRules()
+	rules["iptables -t mangle -C PREROUTING -j signcraze_policy"] = true
+	// MARK-правило не добавляем
+	ipt := New(&ruleSet{rules})
+	cfg := &CriticalRulesConfig{FWMark: 0x53}
+	missing := ipt.CheckCriticalRules(context.Background(), types.ModePolicy, 0xaabb, cfg)
+	found := false
+	for _, m := range missing {
+		if strings.Contains(m, "MARK rule") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("keenMark missing: ожидался 'MARK rule' в missing, получено: %v", missing)
 	}
 }

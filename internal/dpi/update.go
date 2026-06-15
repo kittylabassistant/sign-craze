@@ -2,6 +2,7 @@ package dpi
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -197,7 +198,8 @@ func fetchHostlist(ctx context.Context, client *http.Client, url string) ([]stri
 	}
 
 	hosts := make([]string, 0, 256)
-	scanner := bufio.NewScanner(strings.NewReader(string(body)))
+	// bytes.NewReader работает напрямую с []byte без лишней аллокации строки
+	scanner := bufio.NewScanner(bytes.NewReader(body))
 	scanner.Buffer(make([]byte, 64*1024), 256*1024)
 	for scanner.Scan() {
 		line := scanner.Text()

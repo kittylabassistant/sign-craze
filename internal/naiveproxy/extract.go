@@ -2,18 +2,15 @@ package naiveproxy
 
 import (
 	"archive/tar"
-	"bytes"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 
 	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
+	"github.com/kittylabassistant/sign-craze/internal/elfcheck"
 	"github.com/ulikunitz/xz"
 )
-
-// elfMagic — первые 4 байта Linux ELF (\x7f E L F).
-var elfMagic = []byte{0x7f, 'E', 'L', 'F'}
 
 // ExtractBinary распаковывает tar.xz и извлекает бинарь "naive" в dstPath.
 // Стриминговая распаковка через xz → tar reader → atomicfs (без буферизации
@@ -46,16 +43,13 @@ func ExtractBinary(tarXZPath, dstPath string, perm os.FileMode) error {
 			continue
 		}
 
-		magic := make([]byte, len(elfMagic))
-		n, readErr := io.ReadFull(tr, magic)
-		if readErr != nil && readErr != io.ErrUnexpectedEOF {
+		full, got, n, readErr := elfcheck.CheckAndRewind(tr)
+		if readErr != nil {
 			return fmt.Errorf("naiveproxy extract: чтение ELF magic: %w", readErr)
 		}
-		if n < len(elfMagic) || !bytes.Equal(magic[:n], elfMagic) {
-			return fmt.Errorf("naiveproxy extract: %s не ELF-бинарь (magic=%x)", hdr.Name, magic[:n])
+		if !elfcheck.IsELF(got, n) {
+			return fmt.Errorf("naiveproxy extract: %s не ELF-бинарь (magic=%x)", hdr.Name, got[:n])
 		}
-
-		full := io.MultiReader(bytes.NewReader(magic), tr)
 		if _, err := atomicfs.BackupAndReplaceFromReader(dstPath, full, perm); err != nil {
 			return fmt.Errorf("naiveproxy extract: запись %s: %w", dstPath, err)
 		}

@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/kittylabassistant/sign-craze/internal/core"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
@@ -88,7 +89,7 @@ func renderXrayRoutingRules(rc *types.RoutingConfig, geoAssetsDir string) ([]map
 
 	for i, rr := range rc.Rules {
 		rendered, w := renderXrayRule(rr)
-		warnings = append(warnings, prefixWarnings(fmt.Sprintf("rules[%d]", i), w)...)
+		warnings = append(warnings, core.PrefixWarnings(fmt.Sprintf("rules[%d]", i), w)...)
 		if rendered != nil {
 			rules = append(rules, rendered)
 		}
@@ -211,16 +212,4 @@ func renderXrayRule(r types.RouteRule) (map[string]any, []string) {
 
 	out["outboundTag"] = outboundTag
 	return out, warnings
-}
-
-// prefixWarnings добавляет префикс (например "rules[0]") к каждой warning-строке.
-func prefixWarnings(prefix string, ws []string) []string {
-	if len(ws) == 0 {
-		return nil
-	}
-	out := make([]string, len(ws))
-	for i, w := range ws {
-		out[i] = prefix + ": " + w
-	}
-	return out
 }

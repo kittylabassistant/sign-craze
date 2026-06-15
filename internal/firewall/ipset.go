@@ -1,6 +1,7 @@
 package firewall
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/netip"
@@ -68,19 +69,18 @@ func (s *IPSet) AtomicReplace(ctx context.Context, name, setType, family string,
 // batch (ipset transaction-aware). Для надёжности также делаем явный
 // destroy <tmp> отдельным вызовом — на случай если swap не достиг конца.
 func (s *IPSet) atomicReplaceBatch(ctx context.Context, runner exectx.StdinRunner, name, tmp, setType, family string, cidrs []netip.Prefix) error {
-	var sb strings.Builder
+	var buf bytes.Buffer
 	// preallocate: ~30 байт на ADD-строку (cidr + префикс) для умеренной
 	// экономии аллокаций при 10K CIDR (≈300KB строки).
-	sb.Grow(64 + 30*len(cidrs))
-	fmt.Fprintf(&sb, "create %s %s family %s\n", tmp, setType, family)
+	buf.Grow(64 + 30*len(cidrs))
+	fmt.Fprintf(&buf, "create %s %s family %s\n", tmp, setType, family)
 	for _, cidr := range cidrs {
-		fmt.Fprintf(&sb, "add %s %s\n", tmp, cidr.String())
+		fmt.Fprintf(&buf, "add %s %s\n", tmp, cidr.String())
 	}
-	fmt.Fprintf(&sb, "swap %s %s\n", name, tmp)
-	fmt.Fprintf(&sb, "destroy %s\n", tmp)
+	fmt.Fprintf(&buf, "swap %s %s\n", name, tmp)
+	fmt.Fprintf(&buf, "destroy %s\n", tmp)
 
-	stdin := strings.NewReader(sb.String())
-	if _, err := runner.RunWithStdin(ctx, stdin, "ipset", "restore"); err != nil {
+	if _, err := runner.RunWithStdin(ctx, &buf, "ipset", "restore"); err != nil {
 		// rollback: явно уничтожаем tmp если он остался от частично применённого batch
 		if _, delErr := s.runner.Run(ctx, "ipset", "destroy", tmp); delErr != nil {
 			log.L().Debug("firewall: rollback tmp после ipset restore (no-op если отсутствует)", "tmp", tmp, "err", delErr)

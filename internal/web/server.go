@@ -13,9 +13,6 @@ import (
 
 // ServerConfig содержит зависимости и параметры сервера.
 type ServerConfig struct {
-	// CredsPath — путь к файлу bcrypt-хэша (/opt/etc/sign-craze/admin.creds).
-	CredsPath string
-
 	// ListenHost — bind-адрес для портов 9090 (Zashboard) и 9091 (admin REST).
 	// LAN-trust-модель: должен быть IP LAN-bridge (например 192.168.1.1) или
 	// loopback. Пустая строка (legacy) → ":9090"/":9091" (0.0.0.0) — небезопасно
@@ -59,22 +56,12 @@ type Server struct {
 	routingUIPort     uint16       // фактически выбранный порт (после FindFreePort)
 	routingUIListener net.Listener // зарезервированный listener; передаётся в routingUI.Serve
 
-	creds []byte
-	cfg   ServerConfig
+	cfg ServerConfig
 }
 
-// NewServer создаёт Server. Если cfg.CredsPath задан, загружает (или генерирует) учётные данные.
+// NewServer создаёт Server.
 func NewServer(cfg ServerConfig) (*Server, error) {
-	var creds []byte
-	if cfg.CredsPath != "" {
-		loaded, err := LoadOrCreateCreds(cfg.CredsPath)
-		if err != nil {
-			return nil, err
-		}
-		creds = loaded
-	}
-
-	s := &Server{creds: creds, cfg: cfg}
+	s := &Server{cfg: cfg}
 
 	// Zashboard (порт 9090): Clash-совместимый API + встроенный SPA.
 	// Доступ ограничивается iptables DROP на WAN_IF (не через bind).

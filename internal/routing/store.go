@@ -67,6 +67,31 @@ func Save(path string, c *types.RoutingConfig) error {
 	return nil
 }
 
+// FilterUnusedRuleSets удаляет из RoutingConfig.RuleSets те записи,
+// чей Tag не упоминается ни в одном из RoutingConfig.Rules[].RuleSet.
+// Фильтрует ТОЛЬКО по route rules (не dns.rules).
+// Мутирует поле RuleSets переданного конфига на месте (nil-safe: nil-вход — no-op).
+func FilterUnusedRuleSets(c *types.RoutingConfig) {
+	if c == nil || len(c.RuleSets) == 0 {
+		return
+	}
+	// собираем все теги, на которые есть ссылки из rules[]
+	referenced := make(map[string]bool)
+	for _, r := range c.Rules {
+		for _, tag := range r.RuleSet {
+			referenced[tag] = true
+		}
+	}
+	// фильтруем RuleSets: оставляем только referenced
+	filtered := c.RuleSets[:0]
+	for _, rs := range c.RuleSets {
+		if referenced[rs.Tag] {
+			filtered = append(filtered, rs)
+		}
+	}
+	c.RuleSets = filtered
+}
+
 // Default возвращает пустой RoutingConfig с Version=SchemaVersion.
 func Default() *types.RoutingConfig {
 	return &types.RoutingConfig{

@@ -110,13 +110,12 @@ const PolicyTUNDeviceName = "signbox-tun"
 // (TUN или TPROXY — последний недоступен на Keenetic 4.9).
 //
 // Правила в `nat:PREROUTING` (DNAT — не mangle).
-func PolicyTProxyRules(keenMark, loopMark uint32, tproxyPort uint16) []RuleSpec {
+func PolicyTProxyRules(keenMark uint32, tproxyPort uint16) []RuleSpec {
 	if keenMark == 0 {
 		return nil
 	}
 	keen := fmt.Sprintf("0x%x", keenMark)
 	port := fmt.Sprintf("%d", tproxyPort)
-	_ = loopMark // REDIRECT не использует mark; зарезервирован для loop-prevention
 
 	return []RuleSpec{
 		// TCP REDIRECT: DNAT keenetic-policy TCP в local 127.0.0.1:port.
@@ -274,10 +273,14 @@ func DPIForwardRules(loopMark uint32, nfqueueNum int, wanIface string, vpnExclud
 	}
 	// Переход FORWARD → signcraze_dpi_fwd. Filter `! --mark $loopMark`
 	// исключает self-traffic sing-box (loop-prevention).
-	jumpArgs := []string{"-m", "mark", "!", "--mark", mark, "-j", DPIForwardChainName}
+	var jumpArgs []string
 	if wanIface != "" {
-		jumpArgs = append([]string{"-o", wanIface}, jumpArgs...)
+		jumpArgs = make([]string, 0, 9) // "-o" + wanIface + 7 оставшихся
+		jumpArgs = append(jumpArgs, "-o", wanIface)
+	} else {
+		jumpArgs = make([]string, 0, 7)
 	}
+	jumpArgs = append(jumpArgs, "-m", "mark", "!", "--mark", mark, "-j", DPIForwardChainName)
 	rules = append(rules, RuleSpec{
 		Table: "mangle", Chain: "FORWARD",
 		Args: jumpArgs,

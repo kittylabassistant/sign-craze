@@ -5,7 +5,6 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/kittylabassistant/sign-craze/pkg/types"
@@ -16,14 +15,26 @@ var update = flag.Bool("update", false, "обновить golden-файлы")
 
 func TestRender_ProxyMode(t *testing.T) {
 	p := DefaultConfigParams()
-	p.Outbounds = []types.Outbound{
-		{Tag: "proxy-out", Type: "socks", Server: "1.2.3.4", Port: 1080},
+	p.RoutingConfig = &types.RoutingConfig{
+		Version: 1,
+		Outbounds: []types.Outbound{
+			{Tag: "proxy-out", Type: "socks", Server: "1.2.3.4", Port: 1080},
+		},
+		RuleSets: []types.RuleSetRef{
+			{Tag: "geosite-blocked", Type: "remote", Format: "source",
+				URL:            "https://github.com/kittylabassistant/sign-craze-dat/releases/latest/download/geosite-blocked.srs",
+				DownloadDetour: "direct"},
+			{Tag: "geosite-ru", Type: "remote", Format: "source",
+				URL:            "https://github.com/kittylabassistant/sign-craze-dat/releases/latest/download/geosite-ru.srs",
+				DownloadDetour: "direct"},
+		},
+		Rules: []types.RouteRule{
+			{RuleSet: []string{"geosite-ru"}, Outbound: "direct"},
+			{RuleSet: []string{"geosite-blocked"}, Outbound: "proxy-out"},
+		},
+		Final: "proxy-out",
 	}
-	p.Routing = types.RoutingRules{
-		GeoSiteDirect: []string{"geosite-ru"},
-		GeoSiteProxy:  []string{"geosite-blocked"},
-		FinalOutbound: "proxy-out",
-	}
+	p.DefaultOutboundTag = "proxy-out"
 
 	checkGolden(t, "proxy_mode.json", p)
 }
@@ -92,13 +103,26 @@ func TestRender_DefaultsApplied(t *testing.T) {
 
 func TestRender_RuleSetsBuilt(t *testing.T) {
 	p := DefaultConfigParams()
-	p.Outbounds = []types.Outbound{
-		{Tag: "out", Type: "socks", Server: "1.1.1.1", Port: 9000},
+	p.RoutingConfig = &types.RoutingConfig{
+		Version: 1,
+		Outbounds: []types.Outbound{
+			{Tag: "out", Type: "socks", Server: "1.1.1.1", Port: 9000},
+		},
+		RuleSets: []types.RuleSetRef{
+			{Tag: "geosite-blocked", Type: "remote", Format: "source",
+				URL: "https://github.com/kittylabassistant/sign-craze-dat/releases/latest/download/geosite-blocked.srs"},
+			{Tag: "geosite-ru", Type: "remote", Format: "source",
+				URL: "https://github.com/kittylabassistant/sign-craze-dat/releases/latest/download/geosite-ru.srs"},
+			{Tag: "geosite-private", Type: "remote", Format: "source",
+				URL: "https://github.com/kittylabassistant/sign-craze-dat/releases/latest/download/geosite-private.srs"},
+		},
+		Rules: []types.RouteRule{
+			{RuleSet: []string{"geosite-ru", "geosite-private"}, Outbound: "direct"},
+			{RuleSet: []string{"geosite-blocked"}, Outbound: "out"},
+		},
+		Final: "out",
 	}
-	p.Routing = types.RoutingRules{
-		GeoSiteProxy:  []string{"geosite-blocked"},
-		GeoSiteDirect: []string{"geosite-ru", "geosite-private"},
-	}
+	p.DefaultOutboundTag = "out"
 
 	data, err := Render(p)
 	if err != nil {
@@ -459,46 +483,39 @@ func TestRender_TProxyKernelFalse_IsRedirect(t *testing.T) {
 	}
 }
 
-func TestBuildRuleSets_NoDuplicates(t *testing.T) {
-	r := types.RoutingRules{
-		GeoSiteProxy:  []string{"cat-a", "cat-b"},
-		GeoSiteDirect: []string{"cat-a", "cat-c"}, // cat-a дублируется
+// TestRender_FilterUnusedRuleSets проверяет, что Render() не включает в финальный
+// конфиг rule_sets, не упомянутые ни в одном rule.
+// Инвариант: инцидент 2026-05-12 — unused rule_sets вызывают 404 при старте sing-box.
+func TestRender_FilterUnusedRuleSets(t *testing.T) {
+	p := DefaultConfigParams()
+	p.RoutingConfig = &types.RoutingConfig{
+		Version: 1,
+		Outbounds: []types.Outbound{
+			{Tag: "proxy-out", Type: "socks", Server: "1.2.3.4", Port: 1080},
+		},
+		RuleSets: []types.RuleSetRef{
+			{Tag: "used-rs", Type: "remote", Format: "binary", URL: "https://example.com/used.srs"},
+			{Tag: "unused-rs", Type: "remote", Format: "binary", URL: "https://example.com/unused.srs"},
+		},
+		Rules: []types.RouteRule{
+			{RuleSet: []string{"used-rs"}, Outbound: "proxy-out"},
+		},
+		Final: "proxy-out",
 	}
-	refs := buildRuleSets(r)
-
-	seen := map[string]int{}
-	for _, ref := range refs {
-		seen[ref.Tag]++
+	data, err := Render(p)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
 	}
-	for tag, count := range seen {
-		if count > 1 {
-			t.Errorf("дублирующийся rule_set tag: %q (встречается %d раз)", tag, count)
-		}
+	var parsed map[string]any
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
 	}
-}
-
-// TestBuildRuleSets_SignCrazeDat_FormatSource проверяет, что URL'ы из репозитория
-// sign-craze-dat получают Format="source", а не "binary".
-// sign-craze-dat/.github/workflows/update.yml публикует source JSON под .srs расширением.
-func TestBuildRuleSets_SignCrazeDat_FormatSource(t *testing.T) {
-	r := types.RoutingRules{
-		GeoSiteProxy:  []string{"geosite-blocked"},
-		GeoSiteDirect: []string{"geosite-ru"},
-	}
-	refs := buildRuleSets(r)
-
-	if len(refs) == 0 {
-		t.Fatal("buildRuleSets вернул пустой список")
-	}
-
-	for _, ref := range refs {
-		// Все URL'ы из buildRuleSets указывают на sign-craze-dat
-		if !strings.Contains(ref.URL, "sign-craze-dat") {
-			t.Errorf("ref %q: URL %q не содержит sign-craze-dat", ref.Tag, ref.URL)
-		}
-		if ref.Format != "source" {
-			t.Errorf("ref %q: Format=%q, ожидалось \"source\" (sign-craze-dat публикует source JSON)",
-				ref.Tag, ref.Format)
+	route := parsed["route"].(map[string]any)
+	ruleSets, _ := route["rule_set"].([]any)
+	for _, rs := range ruleSets {
+		m := rs.(map[string]any)
+		if m["tag"] == "unused-rs" {
+			t.Error("финальный конфиг содержит unused-rs, который не используется ни в одном rule")
 		}
 	}
 }

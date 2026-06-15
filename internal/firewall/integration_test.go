@@ -56,13 +56,10 @@ func TestIntegration_IPTables_EnsureAndDeleteRule(t *testing.T) {
 		t.Fatalf("EnsureRule (повторный): %v", err)
 	}
 
-	// Проверяем через ListRules
-	rules, err := ipt.ListRules(ctx, "mangle", chain)
-	if err != nil {
-		t.Fatalf("ListRules: %v", err)
-	}
-	if len(rules) < 1 {
-		t.Error("ListRules: ожидалось хотя бы одно правило")
+	// Проверяем наличие правила через -C (идемпотентная проверка присутствия).
+	checkArgs := append([]string{"-t", "mangle", "-C", chain}, rule...)
+	if _, err := runner.Run(ctx, "iptables", checkArgs...); err != nil {
+		t.Fatalf("правило отсутствует после EnsureRule: %v", err)
 	}
 
 	// Удаляем правило

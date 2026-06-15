@@ -1,48 +1,17 @@
 package mihomo
 
 import (
-	"bytes"
 	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 
 	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
+	"github.com/kittylabassistant/sign-craze/internal/elfcheck"
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/log"
 )
-
-// elfMagic — первые 4 байта Linux ELF-бинаря (\x7f E L F).
-var elfMagic = []byte{0x7f, 'E', 'L', 'F'}
-
-// PrepareAndValidate распаковывает бинарь mihomo из gzip во временный файл
-// и валидирует через `mihomo -t -d <dir>`. Возвращает путь к временному
-// бинарю с правами 0755.
-//
-// configPath может указывать на файл (yaml) — функция возьмёт его dir для
-// `mihomo -t -d`.
-func PrepareAndValidate(ctx context.Context, runner exectx.Runner, workDir, gzPath, configPath string) (tempBinPath string, err error) {
-	tmpDir, err := os.MkdirTemp(workDir, "sign-craze-mihomo-install-*")
-	if err != nil {
-		return "", fmt.Errorf("mihomo prepare: tempdir: %w", err)
-	}
-	tempBin := filepath.Join(tmpDir, "mihomo")
-	if err := extractBinaryToFile(gzPath, tempBin, 0o755); err != nil {
-		_ = os.RemoveAll(tmpDir)
-		return "", fmt.Errorf("mihomo prepare: распаковка: %w", err)
-	}
-
-	if configPath != "" {
-		if err := CheckConfig(ctx, runner, tempBin, configPath); err != nil {
-			_ = os.RemoveAll(tmpDir)
-			return "", fmt.Errorf("mihomo prepare: валидация конфига: %w", err)
-		}
-	}
-
-	return tempBin, nil
-}
 
 // Install устанавливает бинарь mihomo из gzip-архива в binDst.
 //
@@ -108,37 +77,20 @@ func openMihomoBinaryStream(gzPath string) (*binaryStream, error) {
 		return nil, fmt.Errorf("gzip reader: %w", err)
 	}
 
-	magic := make([]byte, len(elfMagic))
-	n, readErr := io.ReadFull(gz, magic)
-	if readErr != nil && readErr != io.ErrUnexpectedEOF {
+	full, got, n, readErr := elfcheck.CheckAndRewind(gz)
+	if readErr != nil {
 		_ = gz.Close()
 		_ = f.Close()
 		return nil, fmt.Errorf("чтение ELF-magic: %w", readErr)
 	}
-	if n < len(elfMagic) || !bytes.Equal(magic[:n], elfMagic) {
+	if !elfcheck.IsELF(got, n) {
 		_ = gz.Close()
 		_ = f.Close()
-		return nil, fmt.Errorf("mihomo install: содержимое gzip не ELF-бинарь (magic=%x)", magic[:n])
+		return nil, fmt.Errorf("mihomo install: содержимое gzip не ELF-бинарь (magic=%x)", got[:n])
 	}
-
-	full := io.MultiReader(bytes.NewReader(magic), gz)
 	closer := func() error {
 		_ = gz.Close()
 		return f.Close()
 	}
 	return &binaryStream{Reader: full, closer: closer}, nil
-}
-
-// extractBinaryToFile стримит бинарь mihomo из gzip напрямую в dstPath.
-func extractBinaryToFile(gzPath, dstPath string, perm os.FileMode) error {
-	stream, err := openMihomoBinaryStream(gzPath)
-	if err != nil {
-		return err
-	}
-	defer stream.Close()
-
-	if err := atomicfs.WriteFileAtomicFromReader(dstPath, stream.Reader, perm); err != nil {
-		return fmt.Errorf("запись бинаря: %w", err)
-	}
-	return nil
 }

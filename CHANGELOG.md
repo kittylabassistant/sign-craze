@@ -5,6 +5,51 @@
 
 ---
 
+## [1.6.1] - 2026-06-15
+
+### Removed
+
+- **Web UI bcrypt auth-каркас удалён**: `LoadOrCreateCreds`, `CheckPassword`,
+  поле `CredsPath` и файл `/opt/etc/sign-craze/admin.creds` исключены из кодовой
+  базы. Пароль больше **не генерируется и не печатается** при старте. Зависимость
+  `golang.org/x/crypto` полностью убрана из `go.mod`. Защита портов 9090/9091/9092
+  от WAN сохраняется через NDM INPUT DROP (как и прежде — auth нигде не
+  энфорсился на уровне HTTP).
+- **Ghost-цепочка `signcraze_full`** удалена из full-mode apply. Cleanup при
+  `--remove`/`--uninstall` оставлен для upgrade-safety.
+- **Мёртвый код**: удалён `internal/web/ws.go` (рукописный WebSocket, вытеснен
+  ReverseProxy), `xray`/`mihomo` `PrepareAndValidate`, `ListRules`-семейство в
+  firewall и ряд неиспользуемых полей/функций по ~13 пакетам. Итого −1147 LOC.
+
+### Fixed
+
+- **`--reinstall` теперь уважает флаг `--core`**: ранее `--reinstall` молча
+  использовал sing-box независимо от `--core`. Теперь при явном `--core <name>`
+  переустанавливается указанное ядро; при пустом `--core` берёт текущее
+  `state.Core` (или `DefaultCore` как fallback).
+- **Firewall watchdog MARK-check**: параметр `keenMark` в `CheckCriticalRules`
+  теперь реально используется при проверке Keenetic-mark MARK-правила в
+  `mangle/signcraze_policy`. Ранее параметр передавался, но игнорировался.
+  `Reconcile` передаёт полный `CriticalRulesConfig` — проверки TProxy/DPI-вариантов
+  снова активны.
+- **Proxy-URL парсер: `spx` → `spider_x`**: legacy-парсер proxy-URL ошибочно
+  мапил query-параметр `spx` в поле `short_id`; теперь корректно в `spider_x`.
+
+### Changed
+
+- **Фильтрация неиспользуемых rule_sets в sing-box config** (`routing.FilterUnusedRuleSets`):
+  `route.rule_set[]` теперь включает только те записи, на которые ссылается
+  хотя бы одно правило в `route.rules[]`. Неиспользуемые rule_sets не попадают в
+  `config.json` и не скачиваются при каждом старте. Закрывает инцидент 2026-05-12
+  («routing.json rule-set ломает sing-box»).
+
+### Performance
+
+- **Размер бинаря mipsle**: 13.25 МБ → 12.75 МБ (−512 КБ): trim шрифтов из
+  embed Zashboard + удаление bcrypt + мёртвый код (−1147 LOC).
+
+---
+
 ## [1.6.0] - (unreleased)
 
 ### Added

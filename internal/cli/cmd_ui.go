@@ -192,7 +192,6 @@ func runUIServer(ctx context.Context) error {
 	}
 
 	cfg := web.ServerConfig{
-		CredsPath:  filepath.Join(singbox.DefaultConfigDir, "admin.creds"),
 		ListenHost: lanIP,
 		Status:     statusReader,
 		Config:     configRW,

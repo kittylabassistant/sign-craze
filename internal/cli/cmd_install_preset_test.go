@@ -44,7 +44,7 @@ func TestParsePresetFlag(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, rest := parsePresetFlag(tc.args)
+			got, rest := parseStringFlag(tc.args, "preset")
 			if got != tc.wantName {
 				t.Errorf("name: got %q, want %q", got, tc.wantName)
 			}

@@ -162,5 +162,18 @@ func (t *IPTables) CheckCriticalRules(ctx context.Context, mode types.Mode, keen
 		}
 	}
 
+	// keenMark>0 → проверить наличие MARK-правила в mangle/signcraze_policy.
+	// Форма правила соответствует PolicyRules() в modes/policy.go.
+	if keenMark > 0 && mode == types.ModePolicy {
+		keen := fmt.Sprintf("0x%x", keenMark)
+		loop := fmt.Sprintf("0x%x", ccfg.FWMark)
+		if !check("mangle", modes.PolicyChainName,
+			"-m", "mark", "--mark", keen,
+			"-j", "MARK", "--set-mark", loop,
+		) {
+			missing = append(missing, fmt.Sprintf("mangle/signcraze_policy MARK rule (keenMark=%s)", keen))
+		}
+	}
+
 	return missing
 }
