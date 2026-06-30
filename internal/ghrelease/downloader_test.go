@@ -84,6 +84,113 @@ func TestFetch_AssetNotFound(t *testing.T) {
 	}
 }
 
+// TestFetch_AssetMatchers_FirstMatchWins — релиз содержит base+musl, причём base
+// идёт ПЕРВЫМ в списке assets. Приоритетный matcher [musl, base] обязан выбрать
+// musl (первый matcher), а не первый в API-ответе. Это инвариант приоритета.
+func TestFetch_AssetMatchers_FirstMatchWins(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/releases/latest"):
+			rel := types.Release{
+				TagName: "v1",
+				Assets: []types.Asset{
+					{Name: "tool-linux-arm64.tar.gz", BrowserDownloadURL: "http://" + r.Host + "/dl/base"},
+					{Name: "tool-linux-arm64-musl.tar.gz", BrowserDownloadURL: "http://" + r.Host + "/dl/musl"},
+				},
+			}
+			_ = json.NewEncoder(w).Encode(rel)
+		default:
+			_, _ = w.Write([]byte("payload"))
+		}
+	}))
+	defer srv.Close()
+
+	old := APIBaseURL
+	APIBaseURL = srv.URL
+	defer func() { APIBaseURL = old }()
+
+	res, err := New().Fetch(context.Background(), FetchOptions{
+		Owner: "o", Repo: "r",
+		AssetMatchers: []func(types.Asset) bool{
+			MatchByContains("linux-arm64-musl.tar.gz"),
+			MatchByContains("linux-arm64.tar.gz"),
+		},
+		DstDir: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if !strings.Contains(res.Path, "arm64-musl.tar.gz") {
+		t.Errorf("выбран %q, ожидался musl-вариант (приоритет matcher'а)", res.Path)
+	}
+}
+
+// TestFetch_AssetMatchers_FallbackToSecond — релиз содержит ТОЛЬКО базовый ассет
+// (musl отсутствует, как у sing-box для mips). Первый matcher не находит → fallback
+// на второй. Download выживает.
+func TestFetch_AssetMatchers_FallbackToSecond(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/releases/latest"):
+			rel := types.Release{
+				TagName: "v1",
+				Assets:  []types.Asset{{Name: "tool-linux-arm64.tar.gz", BrowserDownloadURL: "http://" + r.Host + "/dl/base"}},
+			}
+			_ = json.NewEncoder(w).Encode(rel)
+		default:
+			_, _ = w.Write([]byte("payload"))
+		}
+	}))
+	defer srv.Close()
+
+	old := APIBaseURL
+	APIBaseURL = srv.URL
+	defer func() { APIBaseURL = old }()
+
+	res, err := New().Fetch(context.Background(), FetchOptions{
+		Owner: "o", Repo: "r",
+		AssetMatchers: []func(types.Asset) bool{
+			MatchByContains("linux-arm64-musl.tar.gz"),
+			MatchByContains("linux-arm64.tar.gz"),
+		},
+		DstDir: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if strings.Contains(res.Path, "musl") || !strings.Contains(res.Path, "arm64.tar.gz") {
+		t.Errorf("выбран %q, ожидался базовый ассет (fallback)", res.Path)
+	}
+}
+
+// TestFetch_AssetMatchers_NoneMatch — ни один matcher не находит asset → ошибка.
+func TestFetch_AssetMatchers_NoneMatch(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		rel := types.Release{
+			TagName: "v1",
+			Assets:  []types.Asset{{Name: "tool-linux-amd64.tar.gz"}},
+		}
+		_ = json.NewEncoder(w).Encode(rel)
+	}))
+	defer srv.Close()
+
+	old := APIBaseURL
+	APIBaseURL = srv.URL
+	defer func() { APIBaseURL = old }()
+
+	_, err := New().Fetch(context.Background(), FetchOptions{
+		Owner: "o", Repo: "r",
+		AssetMatchers: []func(types.Asset) bool{
+			MatchByContains("linux-arm64-musl.tar.gz"),
+			MatchByContains("linux-arm64.tar.gz"),
+		},
+		DstDir: t.TempDir(),
+	})
+	if err == nil {
+		t.Fatal("ожидалась ошибка: ни один matcher не нашёл asset")
+	}
+}
+
 func TestFetch_VerifySHA_Match(t *testing.T) {
 	content := []byte("hello")
 	// sha256("hello") = 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824

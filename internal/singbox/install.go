@@ -52,6 +52,15 @@ func PrepareAndValidate(ctx context.Context, runner exectx.Runner, workDir, tarP
 		return "", fmt.Errorf("singbox prepare: распаковка: %w", err)
 	}
 
+	// Defense-in-depth: если бинарь динамически слинкован (PT_INTERP) и его
+	// интерпретатор отсутствует в системе (glibc-сборка на musl/Entware) — ранняя
+	// понятная ошибка вместо криптичного "fork/exec: no such file or directory"
+	// из sing-box check (issue #3).
+	if err := elfcheck.CheckInterpCompatibility(tempBin); err != nil {
+		_ = os.RemoveAll(tmpDir)
+		return "", fmt.Errorf("singbox prepare: несовместимый бинарь: %w", err)
+	}
+
 	// WriteConfig пишет конфиг и валидирует через `tempBin check -c configPath`.
 	if err := WriteConfig(ctx, runner, params, tempBin, configPath); err != nil {
 		_ = os.RemoveAll(tmpDir)

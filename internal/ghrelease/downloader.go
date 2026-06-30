@@ -100,8 +100,14 @@ type FetchOptions struct {
 	Repo       string                 // имя репозитория (например "sing-box")
 	Tag        string                 // конкретный tag релиза; пусто — latest
 	AssetMatch func(types.Asset) bool // выбор нужного asset из релиза
-	DstDir     string                 // директория для записи
-	VerifySHA  bool                   // если true — ищет рядом asset с суффиксом .sha256 и сверяет
+	// AssetMatchers — приоритетный список matcher'ов; пробуются по порядку,
+	// первый давший asset выигрывает (независимо от порядка assets в API-ответе).
+	// Если задан — AssetMatch игнорируется. Нужен когда upstream публикует
+	// несколько вариантов одного бинаря (напр. musl/glibc), а требуется
+	// приоритетный выбор с fallback (предпочесть musl, иначе базовый).
+	AssetMatchers []func(types.Asset) bool
+	DstDir        string // директория для записи
+	VerifySHA     bool   // если true — ищет рядом asset с суффиксом .sha256 и сверяет
 	// AllowMissingSHA — при VerifySHA=true и отсутствии `<asset>.sha256` в
 	// релизе НЕ возвращать ошибку, а только записать WARN. Использовать
 	// исключительно для upstream-репозиториев, которые исторически не
@@ -123,8 +129,8 @@ func (d *Downloader) Fetch(ctx context.Context, opts FetchOptions) (FetchResult,
 	if opts.Owner == "" || opts.Repo == "" {
 		return FetchResult{}, fmt.Errorf("ghrelease: пустой Owner/Repo")
 	}
-	if opts.AssetMatch == nil {
-		return FetchResult{}, fmt.Errorf("ghrelease: AssetMatch не задан")
+	if opts.AssetMatch == nil && len(opts.AssetMatchers) == 0 {
+		return FetchResult{}, fmt.Errorf("ghrelease: AssetMatch или AssetMatchers не задан")
 	}
 
 	var release *types.Release
@@ -138,7 +144,12 @@ func (d *Downloader) Fetch(ctx context.Context, opts FetchOptions) (FetchResult,
 		return FetchResult{}, fmt.Errorf("ghrelease: метаданные релиза %s/%s: %w", opts.Owner, opts.Repo, err)
 	}
 
-	asset := matchAsset(release.Assets, opts.AssetMatch)
+	var asset *types.Asset
+	if len(opts.AssetMatchers) > 0 {
+		asset = matchAssetPriority(release.Assets, opts.AssetMatchers)
+	} else {
+		asset = matchAsset(release.Assets, opts.AssetMatch)
+	}
 	if asset == nil {
 		return FetchResult{}, fmt.Errorf("ghrelease: asset не найден в релизе %s/%s %s", opts.Owner, opts.Repo, release.TagName)
 	}
@@ -495,6 +506,18 @@ func matchAsset(assets []types.Asset, fn func(types.Asset) bool) *types.Asset {
 	for i := range assets {
 		if fn(assets[i]) {
 			return &assets[i]
+		}
+	}
+	return nil
+}
+
+// matchAssetPriority перебирает fns по порядку; для каждого matcher'а сканирует
+// ВСЕ assets и возвращает первый совпавший. Приоритет задаётся порядком fns,
+// а не порядком assets в API-ответе: первый matcher имеет наивысший приоритет.
+func matchAssetPriority(assets []types.Asset, fns []func(types.Asset) bool) *types.Asset {
+	for _, fn := range fns {
+		if a := matchAsset(assets, fn); a != nil {
+			return a
 		}
 	}
 	return nil
