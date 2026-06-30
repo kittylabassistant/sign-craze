@@ -1,0 +1,51 @@
+name: Wiki Pages
+
+# Рендерит wiki/*.md в статический сайт и публикует в корень ветки gh-pages
+# рядом с opkg feed (entware/). keep_files: true сохраняет feed нетронутым.
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "wiki/**"
+      - "packaging/wiki/**"
+      - "scripts/build-wiki-site.sh"
+      - ".github/workflows/wiki-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Не публиковать параллельно с самим собой. Feed (opkg-feed.yml) стейджит только
+# entware/, а публикация сайта идёт с keep_files: true — взаимного затирания нет.
+concurrency:
+  group: gh-pages-wiki
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    name: build wiki site
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pandoc
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends pandoc
+          pandoc --version | head -1
+
+      - name: Build static site
+        run: bash scripts/build-wiki-site.sh wiki/ _site/
+
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./_site
+          publish_branch: gh-pages
+          keep_files: true
+          user_name: "github-actions[bot]"
+          user_email: "github-actions[bot]@users.noreply.github.com"
+          commit_message: "wiki site: deploy from main@${{ github.sha }}"
