@@ -264,9 +264,52 @@ free -m
 
 ## 5. Установка sign-craze
 
+### 5.1. Способ 1: opkg (рекомендуется)
+
+Если Entware установлен (шаги 3–4 выполнены) — используйте opkg. Даёт автоматические обновления через `opkg upgrade`, проверку подписи и автоматическую установку зависимостей (ipset, iptables, curl и др.).
+
+```sh
+# Определить архитектуру роутера
+opkg print-architecture | grep -v all
+# Примеры: mipsel-3.4 (MT7621 / Giga / Ultra), armv7-3.2 (KN-1011), aarch64-3.10 (Hero 4G+)
+
+ARCH=mipsel-3.4   # подставьте вашу архитектуру
+
+# Добавить публичный ключ feed
+mkdir -p /opt/etc/opkg/keys
+curl -fsSL https://kittylabassistant.github.io/sign-craze/entware/sign-craze-feed.pub \
+  > /opt/etc/opkg/keys/sign-craze-feed.pub
+
+# Подключить feed
+echo "src/gz signcraze https://kittylabassistant.github.io/sign-craze/entware/${ARCH}" \
+  >> /opt/etc/opkg.conf
+echo "option signed_packages 'sign-craze-feed'" >> /opt/etc/opkg.conf
+
+# Установить
+opkg update
+opkg install sign-craze
+```
+
+Обновления: `opkg upgrade sign-craze`. Удаление: `opkg remove sign-craze` (конфиги в `/opt/etc/sign-craze/` сохраняются).
+
+> [!NOTE]
+> **Offline-вариант** (feed недоступен): скачайте `.ipk` на десктопе и скопируйте на роутер:
+> ```sh
+> VER=1.6.1 ARCH=mipsel-3.4
+> wget "https://github.com/kittylabassistant/sign-craze/releases/download/v${VER}/sign-craze_${VER}_${ARCH}.ipk"
+> scp sign-craze_${VER}_${ARCH}.ipk root@192.168.1.1:/tmp/
+> # На роутере:
+> opkg install /tmp/sign-craze_${VER}_${ARCH}.ipk
+> ```
+> Переход с `install.sh` на opkg: скрипт `preinst` автоматически сохранит старый бинарь как `/opt/sbin/sign-craze.pre-opkg`; конфиги в `/opt/etc/sign-craze/` не трогаются.
+
+После установки через opkg — перейдите к [шагу 6 (конфигурация)](#6-конфигурация-sign-craze).
+
+### 5.2. Способ 2: curl | sh (альтернатива)
+
 > **Важно**: BusyBox `wget` на Keenetic собран **без SSL** и не поддерживает HTTPS — выдаст `not an http or ftp url`. Также BusyBox `od` не поддерживает опцию `-t`. Поэтому установка идёт через `curl` (с `-k` — без проверки сертификатов) или через `wget-ssl` из Entware.
 
-### 5.1. Установить curl (один раз)
+#### 5.2.1. Установить curl (один раз)
 
 ```sh
 opkg update
@@ -279,7 +322,7 @@ opkg install curl
 opkg install wget-ssl
 ```
 
-### 5.2. Запустить установщик
+#### 5.2.2. Запустить установщик
 
 ```sh
 # По SSH, в Entware shell на роутере
@@ -301,7 +344,7 @@ https_proxy=http://<host>:<port> curl -fsSL https://github.com/kittylabassistant
 - Проверит SHA256 (если файл `.sha256` доступен).
 - Атомарно установит в `/opt/sbin/sign-craze`.
 
-### 5.3. Возможные ошибки
+#### 5.2.3. Возможные ошибки
 
 | Ошибка | Причина | Решение |
 |--------|---------|---------|
@@ -356,6 +399,23 @@ sign-craze --core-install mihomo   # скачать mihomo в /opt/sbin/mihomo
 
 Ядро скачивается с GitHub Releases через тот же mirror chain, что и sign-craze (Fastly raw.githubusercontent.com как приоритетный канал). SHA256 проверяется автоматически.
 
+### 6.2. Supervised peers: naiveproxy и mieru (v1.3.0+)
+
+sign-craze поддерживает naiveproxy и mieru как supervised peers — запускаются как daemon рядом с sing-box (process chain через socks5-outbound). Работают **только** с ядром sing-box; xray и mihomo такие конфиги отклоняют с подсказкой `--core sing-box`.
+
+```sh
+# Установка + активация naiveproxy
+sign-craze --install --with-naive --proxy 'naive+https://user:pass@host:443'
+
+# Обновить бинарь naiveproxy
+sign-craze --update-naive
+```
+
+Поддерживаемые URL-схемы: `naive+https://user:pass@host:port`, `naive+quic://...`, `mieru://...`, `mierus://...`.
+
+> [!NOTE]
+> naiveproxy доступен только для **arm64, arm7, mipsle**. Роутеры big-endian MIPS (`mips`) не поддерживаются — klzgrad публикует только LE-сборки.
+
 ### 6.3. Интерактивная установка
 
 ```sh
@@ -379,6 +439,14 @@ sign-craze --restart
 ```
 
 Флаг `--proxy` принимает тот же URL-формат, что и при интерактивной установке. При `--reinstall --proxy` завершение подсказывает `--restart` (не `--start`), так как ядро продолжает работать.
+
+Флаг `--preset <name>` (v1.5.0+) применяет routing-пресет прямо при установке (режим replace):
+
+```sh
+sign-craze --install --proxy 'vless://...' --preset ru-direct
+```
+
+Доступные пресеты (8 шт.): `sign-craze-default`, `block-ads`, `ru-direct`, `ru-direct-rest-vpn`, `blocked-vpn`, `discord-vpn`, `torrents-direct`, `block-bogon-udp`. Посмотреть список: `sign-craze --preset-list`. Без `--preset` routing настраивается позже через Web UI на порту 9092.
 
 После завершения:
 
@@ -589,6 +657,9 @@ cat /opt/var/run/sign-craze-watchdog.pid
 
 ```sh
 sign-craze --diag
+
+# Machine-parseable JSON для скриптов и мониторинга (v1.4.0+)
+sign-craze --diag --json
 ```
 
 Выведет PASS/WARN/FAIL по пунктам:

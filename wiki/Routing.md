@@ -58,17 +58,27 @@ config.json    xray/config.json  mihomo/config.yaml
 
 В UI `:9092` применить пресет `ru-direct` (добавит geoip-ru → direct), затем вручную добавить rule_set `geosite-ru` и rule с `outbound=direct`, в секции final выбрать VPN-outbound, нажать Apply. После — выполнить `sign-craze --restart` в SSH. Полный пошаговый рецепт с примерами JSON — в [Recipe-RU-Direct.md](Recipe-RU-Direct.md).
 
-## Встроенные пресеты
+## Встроенные пресеты (v1.5.0+)
+
+Доступны через web UI `:9092` («Пресеты ▾»), REST API (`POST /api/presets/<name>/apply`) и CLI при установке:
+
+```sh
+sign-craze --preset-list                          # показать все 8 пресетов с описаниями
+sign-craze --install --proxy 'vless://...' --preset ru-direct-rest-vpn
+```
+
+Флаг `--preset` применяется в режиме replace (полностью перезаписывает Rules/Final). Без `--preset` routing не трогается.
 
 | Пресет | Что делает |
 | ------ | ------------ |
 | `sign-craze-default` | bittorrent→direct, youtube→direct, discord→direct, refilter-blocked-domains→{vpn}, final=direct |
 | `block-ads` | Блокирует рекламные домены через geosite-category-ads-all → block |
 | `ru-direct` | РФ-адреса (geoip-ru) → direct, минует VPN |
+| `ru-direct-rest-vpn` | geoip-ru → direct, остальной трафик → VPN (final={vpn}). Инвертированный «всё через VPN, кроме РФ» |
 | `blocked-vpn` | Заблокированные домены (refilter-blocked-domains) → прокси-outbound |
 | `discord-vpn` | Discord (geosite-discord) → прокси-outbound |
 | `torrents-direct` | BitTorrent-трафик → direct, не тратит VPN-квоту |
-| `block-bogon-udp` | Bogon-диапазоны в UDP → drop, защита от спуфинга |
+| `block-bogon-udp` | UDP-порты 135, 137–139 (NetBIOS/SMB) → reject, защита от шума LAN |
 
 ## Структура routing.json
 
