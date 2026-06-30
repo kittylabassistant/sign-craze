@@ -174,6 +174,13 @@ type applierImpl struct {
 func (a *applierImpl) Apply(ctx context.Context, mode types.Mode) error {
 	log.L().Info("firewall: применение правил", "mode", mode)
 
+	// Pre-flight: обязательные бинари iptables/iptables-restore/ipset. Без них
+	// последующие probe'ы падают с криптичной exec-ошибкой (issue #3) — ловим
+	// заранее с actionable-подсказкой про opkg.
+	if err := CheckRequiredBinaries(ctx, a.runner); err != nil {
+		return fmt.Errorf("firewall: pre-flight: %w", err)
+	}
+
 	// Pre-flight: kernel TUN — без него sing-box `tun` inbound не запустится.
 	// Для xray/mihomo (TProxy mode) и sing-box TPROXY-mode проверка пропускается.
 	if !a.cfg.SkipTUNCheck && !a.cfg.UseTProxy {

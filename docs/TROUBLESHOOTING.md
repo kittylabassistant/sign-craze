@@ -302,6 +302,15 @@ ipset list 2>&1 | head -50 >> /tmp/diag.txt
 
 ---
 
+## Firewall: `--start` падает
+
+| Симптом | Причина | Решение |
+|---|---|---|
+| `firewall: pre-flight: не найдены обязательные бинари: ...` | iptables/ipset не установлены (типично после `curl \| sh`) | `opkg update && opkg install iptables ipset` |
+| `iptables-restore: unrecognized option '--wait'` / `Can't open 2` | Старая сборка iptables без поддержки `--wait` (Entware ≤1.4.x) | Обновите sign-craze до v1.6.3+ — поддержка `--wait` определяется автоматически |
+
+---
+
 ## Установка через opkg
 
 | Симптом | Причина | Решение |

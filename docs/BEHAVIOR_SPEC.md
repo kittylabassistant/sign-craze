@@ -49,6 +49,7 @@
 - Нет сети → загрузка завершается с понятной ошибкой.
 - `/opt` не смонтирован / недостаточно места (<30 МБ) → явная ошибка до начала загрузки.
 - `sing-box check -c <config>` падает → откат бинаря из резервной копии, возврат ошибки.
+- `iptables`/`ipset` не установлены → печатается предупреждение `opkg install iptables ipset` (установку **не** блокирует; бинари обязательны на `--start`).
 
 ---
 
@@ -91,7 +92,8 @@
 
 - Захватывает `/opt/var/lock/sign-craze.lock` (flock LOCK_EX|LOCK_NB).
 - Проверяет установку (`/opt/sbin/sing-box` существует, конфиг существует).
-- Применяет правила iptables (см. §3).
+- Pre-flight firewall: наличие `iptables`/`iptables-restore`/`ipset` (иначе ошибка с подсказкой `opkg install iptables ipset`), kernel TUN (sing-box TUN-mode), match `set` (xt_set), свобода fwmark.
+- Применяет правила iptables (см. §3). `iptables-restore` получает `--wait` только если сборка iptables поддерживает эту опцию; на legacy Entware (iptables ≤1.4.x без `--wait`) флаг опускается.
 - Запускает `/opt/sbin/sing-box run -c /opt/etc/sign-craze/config.json` в фоне (detached, Setpgid).
 - Записывает PID в `/opt/var/run/sign-craze-singbox.pid`.
 - Опрашивает `/proc/<pid>/status` до 5 с для подтверждения, что процесс жив.

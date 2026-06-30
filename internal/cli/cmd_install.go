@@ -14,6 +14,7 @@ import (
 	"github.com/kittylabassistant/sign-craze/internal/core"
 	"github.com/kittylabassistant/sign-craze/internal/dpi"
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
+	"github.com/kittylabassistant/sign-craze/internal/firewall"
 	"github.com/kittylabassistant/sign-craze/internal/log"
 	"github.com/kittylabassistant/sign-craze/internal/naiveproxy"
 	"github.com/kittylabassistant/sign-craze/internal/proxyparse"
@@ -220,6 +221,14 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string, force b
 	// 1. Pre-check: /opt существует и есть место.
 	if err := checkOptMounted(); err != nil {
 		return fmt.Errorf("--install: %w", err)
+	}
+
+	// Pre-check (warn-only): iptables/iptables-restore/ipset нужны для --start,
+	// но не для самой установки. При `curl|sh` (минуя opkg-зависимости) их легко
+	// забыть — предупреждаем заранее, чтобы пользователь не словил firewall-ошибку
+	// на --start (issue #3). Установку не блокируем.
+	if err := firewall.CheckRequiredBinaries(ctx, exectx.OS); err != nil {
+		fmt.Printf("%s %v\n", Warn("Внимание"), err)
 	}
 
 	// 2. Создать директории.
