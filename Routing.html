@@ -114,6 +114,8 @@ href="https://github.com/kittylabassistant/sign-craze/blob/main/README.md">READM
 href="https://github.com/kittylabassistant/sign-craze/blob/main/CHANGELOG.md">CHANGELOG</a></li>
 <li><a
 href="https://github.com/kittylabassistant/sign-craze/blob/main/docs/ARCHITECTURE.md">ARCHITECTURE</a></li>
+<li><a
+href="https://github.com/kittylabassistant/sign-craze/blob/main/docs/BEHAVIOR_SPEC.md">BEHAVIOR_SPEC</a></li>
 </ul>
 <p><strong>Ссылки</strong></p>
 <ul>
@@ -158,12 +160,13 @@ routing.json.</p>
 <code>rule_set: ["geosite-youtube"], outbound: "direct"</code>
 превращается в:</p>
 <ul>
-<li><strong>sing-box</strong> →
+<li><strong><a
+href="https://sing-box.sagernet.org/">sing-box</a></strong> →
 <code>"route": {"rules": [{"rule_set": ["geosite-youtube"], "outbound": "direct"}]}</code></li>
-<li><strong>xray</strong> →
+<li><strong><a href="https://xtls.github.io/">xray</a></strong> →
 <code>"routing": {"rules": [{"domain": ["geosite:youtube"], "outboundTag": "direct"}]}</code></li>
-<li><strong>mihomo</strong> → строка
-<code>RULE-SET,geosite-youtube,DIRECT</code> в секции
+<li><strong><a href="https://wiki.metacubex.one/">mihomo</a></strong> →
+строка <code>RULE-SET,geosite-youtube,DIRECT</code> в секции
 <code>rules:</code> + запись в <code>rule-providers:</code></li>
 </ul>
 <p>Правило добавляется один раз — формат определяется ядром
@@ -180,7 +183,8 @@ routing.json.</p>
 <tbody>
 <tr class="odd">
 <td><code>:9090</code></td>
-<td>Zashboard SPA + reverse-proxy в sing-box clash_api</td>
+<td><a href="https://github.com/Zephyruso/zashboard">Zashboard</a> SPA +
+reverse-proxy в sing-box clash_api</td>
 <td>Runtime monitoring: proxies, connections, traffic</td>
 </tr>
 <tr class="even">

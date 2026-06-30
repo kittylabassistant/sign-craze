@@ -114,6 +114,8 @@ href="https://github.com/kittylabassistant/sign-craze/blob/main/README.md">READM
 href="https://github.com/kittylabassistant/sign-craze/blob/main/CHANGELOG.md">CHANGELOG</a></li>
 <li><a
 href="https://github.com/kittylabassistant/sign-craze/blob/main/docs/ARCHITECTURE.md">ARCHITECTURE</a></li>
+<li><a
+href="https://github.com/kittylabassistant/sign-craze/blob/main/docs/BEHAVIOR_SPEC.md">BEHAVIOR_SPEC</a></li>
 </ul>
 <p><strong>Ссылки</strong></p>
 <ul>
@@ -171,17 +173,19 @@ href="Installation.html">Installation</a>.</p>
 <div class="sourceCode" id="cb2"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># URL без spx=%2F (этот параметр специфичен xray, sing-box его отвергает)</span></span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--install-auto</span> <span class="at">--core</span> sing-box <span class="at">--with-dpi</span> <span class="at">--proxy</span> <span class="dt">\</span></span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>  <span class="st">&#39;vless://UUID@host:port?type=grpc&amp;encryption=none&amp;security=reality&amp;pbk=PBK&amp;fp=chrome&amp;sni=SNI&amp;sid=SID#tag&#39;</span></span></code></pre></div>
-<p>Sing-box скачает с GitHub через тот же mirror chain. Если упадёт на
-degraded-state (предыдущая установка не завершилась):</p>
+<p><a href="https://sing-box.sagernet.org/">Sing-box</a> скачает с
+GitHub через тот же mirror chain. Если упадёт на degraded-state
+(предыдущая установка не завершилась):</p>
 <div class="sourceCode" id="cb3"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--reinstall</span> <span class="at">--proxy</span> <span class="st">&#39;&lt;URL&gt;&#39;</span></span></code></pre></div>
 <h2 id="dpi--nfqws2">DPI / nfqws2</h2>
 <p><code>--with-dpi</code> в install-auto подтягивает ipk автоматически.
 Включение постфактум:</p>
 <div class="sourceCode" id="cb4"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--dpi</span> on</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--restart</span></span></code></pre></div>
-<p>Бинарь nfqws2 + lua/blob-ассеты (скрипты обхода, payload-blobs)
-скачиваются из <code>nfqws/nfqws2-keenetic</code>. С v0.6.2 install
-проверяет наличие ассетов, не только бинаря.</p>
+<p>Бинарь <a href="https://github.com/nfqws/nfqws2-keenetic">nfqws2</a>
++ lua/blob-ассеты (скрипты обхода, payload-blobs) скачиваются из
+<code>nfqws/nfqws2-keenetic</code>. С v0.6.2 install проверяет наличие
+ассетов, не только бинаря.</p>
 <h2 id="если-ничего-не-скачивается--offline">Если ничего не скачивается
 — offline</h2>
 <p>Скачай артефакты на десктоп с быстрым каналом:</p>
@@ -214,7 +218,8 @@ degraded-state (предыдущая установка не завершила�
 <span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--restart</span></span></code></pre></div>
 <h2 id="xray-при-жёстком-dpi">Xray при жёстком DPI</h2>
 <p>Если sing-box не пробивается через DPI (VLESS/VMess детектируются
-провайдером), xray предлагает дополнительные транспортные опции:</p>
+провайдером), <a href="https://xtls.github.io/">xray</a> предлагает
+дополнительные транспортные опции:</p>
 <ul>
 <li><strong>XHTTP packet-up режимы</strong>
 (<code>xhttpMode: packet-up</code>) — маскировка под обычный
@@ -235,12 +240,14 @@ HTTP-загрузчик, менее детектируем чем grpc/ws</li>
 <p>Установка с xray:</p>
 <div class="sourceCode" id="cb8"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--install</span> <span class="at">--core</span> xray <span class="at">--proxy</span> <span class="st">&#39;vless://UUID@host:443?type=xhttp&amp;security=reality&amp;pbk=PBK&amp;fp=chrome&amp;sni=SNI&amp;sid=SID&amp;mode=packet-up#tag&#39;</span></span>
 <span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--start</span></span></code></pre></div>
-<p>Xray использует TProxy inbound (не TUN), поэтому требует
-<code>xt_TPROXY</code> модуль в ядре. На Keenetic с прошивкой 4.9+
-модули <code>xt_TPROXY.ko</code> и <code>xt_socket.ko</code>
-присутствуют в <code>/lib/modules/</code> и загружаются автоматически
-через <code>insmod</code>. На более старых прошивках может понадобиться
-<code>--core sing-box</code> как fallback.</p>
+<p>Xray использует <a
+href="https://www.kernel.org/doc/html/latest/networking/tproxy.html">TProxy</a>
+inbound (не TUN), поэтому требует <code>xt_TPROXY</code> модуль в ядре.
+На Keenetic с прошивкой 4.9+ модули <code>xt_TPROXY.ko</code> и
+<code>xt_socket.ko</code> присутствуют в <code>/lib/modules/</code> и
+загружаются автоматически через <code>insmod</code>. На более старых
+прошивках может понадобиться <code>--core sing-box</code> как
+fallback.</p>
 <h2 id="vless-url-spx-и-выбор-ядра">VLESS URL: spx и выбор ядра</h2>
 <table>
 <thead>
@@ -286,8 +293,10 @@ TPROXY на стоковом ядре Keenetic, у которого нет
 <p>Если URL содержит <code>spx</code>, sign-craze принудительно выберет
 xray. <strong>Известное ограничение:</strong> xray policy-mode firewall
 в sign-craze не имеет TPROXY-правил, трафик не маршрутизируется через
-xray на стоковом ядре. Чтобы использовать REALITY с custom spider-path —
-потребуется ядро с <code>xt_TPROXY</code> (нестандартная прошивка).</p>
+xray на стоковом ядре. Чтобы использовать <a
+href="https://github.com/XTLS/REALITY">REALITY</a> с custom spider-path
+— потребуется ядро с <code>xt_TPROXY</code> (нестандартная
+прошивка).</p>
 <h2 id="override-mirror-chain">Override mirror chain</h2>
 <p>Поведение Go-кода (sing-box / nfqws2 / xray download) настраивается
 через env:</p>

@@ -114,6 +114,8 @@ href="https://github.com/kittylabassistant/sign-craze/blob/main/README.md">READM
 href="https://github.com/kittylabassistant/sign-craze/blob/main/CHANGELOG.md">CHANGELOG</a></li>
 <li><a
 href="https://github.com/kittylabassistant/sign-craze/blob/main/docs/ARCHITECTURE.md">ARCHITECTURE</a></li>
+<li><a
+href="https://github.com/kittylabassistant/sign-craze/blob/main/docs/BEHAVIOR_SPEC.md">BEHAVIOR_SPEC</a></li>
 </ul>
 <p><strong>Ссылки</strong></p>
 <ul>
@@ -128,8 +130,8 @@ href="https://github.com/kittylabassistant/sign-craze/blob/main/LICENSE">Лиц�
 </nav>
 <main class="content">
 <h1 id="установка-sign-craze">Установка sign-craze</h1>
-<p>Полная инструкция от чистой флешки до рабочего прокси на роутере
-Keenetic.</p>
+<p>Полная инструкция от чистой флешки до рабочего прокси на роутере <a
+href="https://help.keenetic.com/hc/ru">Keenetic</a>.</p>
 <blockquote>
 <p>[!WARNING] Все команды выполняются на ваш страх и риск. Перед
 форматированием убедитесь, что выбран правильный диск — ошибка может
@@ -163,8 +165,10 @@ Keenetic</a></li>
 <ul>
 <li>Роутер Keenetic с USB-портом и поддержкой OPKG (большинство моделей
 кроме самых младших).</li>
-<li>USB-флешка <strong>≥ 4 GB</strong> (sign-craze + sing-box +
-geo-файлы + swap-файл 1 GB + запас под Entware).</li>
+<li>USB-флешка <strong>≥ 4 GB</strong> (sign-craze + <a
+href="https://sing-box.sagernet.org/">sing-box</a> + geo-файлы +
+swap-файл 1 GB + запас под <a
+href="https://entware.net/">Entware</a>).</li>
 <li>ПК с Linux, macOS или Windows.</li>
 <li>Подписка на VPN/прокси-сервис: URL формата <code>vless://...</code>,
 <code>vmess://...</code>, <code>ss://...</code>,
@@ -433,8 +437,9 @@ swap-файл (рекомендуется, проще).</p>
 <h2 id="5-установка-sign-craze">5. Установка sign-craze</h2>
 <h3 id="51-способ-1-opkg-рекомендуется">5.1. Способ 1: opkg
 (рекомендуется)</h3>
-<p>Если Entware установлен (шаги 3–4 выполнены) — используйте opkg. Даёт
-автоматические обновления через <code>opkg upgrade</code>, проверку
+<p>Если Entware установлен (шаги 3–4 выполнены) — используйте <a
+href="https://openwrt.org/docs/guide-user/additional-software/opkg">opkg</a>.
+Даёт автоматические обновления через <code>opkg upgrade</code>, проверку
 подписи и автоматическую установку зависимостей (ipset, iptables, curl и
 др.).</p>
 <div class="sourceCode" id="cb9"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Определить архитектуру роутера</span></span>
@@ -478,12 +483,12 @@ href="#6-конфигурация-sign-craze">шагу 6 (конфигураци
 <h3 id="52-способ-2-curl--sh-альтернатива">5.2. Способ 2: curl | sh
 (альтернатива)</h3>
 <blockquote>
-<p><strong>Важно</strong>: BusyBox <code>wget</code> на Keenetic собран
-<strong>без SSL</strong> и не поддерживает HTTPS — выдаст
-<code>not an http or ftp url</code>. Также BusyBox <code>od</code> не
-поддерживает опцию <code>-t</code>. Поэтому установка идёт через
-<code>curl</code> (с <code>-k</code> — без проверки сертификатов) или
-через <code>wget-ssl</code> из Entware.</p>
+<p><strong>Важно</strong>: <a href="https://busybox.net/">BusyBox</a>
+<code>wget</code> на Keenetic собран <strong>без SSL</strong> и не
+поддерживает HTTPS — выдаст <code>not an http or ftp url</code>. Также
+BusyBox <code>od</code> не поддерживает опцию <code>-t</code>. Поэтому
+установка идёт через <code>curl</code> (с <code>-k</code> — без проверки
+сертификатов) или через <code>wget-ssl</code> из Entware.</p>
 </blockquote>
 <h4 id="521-установить-curl-один-раз">5.2.1. Установить curl (один
 раз)</h4>
@@ -593,7 +598,9 @@ sign-craze (Fastly raw.githubusercontent.com как приоритетный к�
 SHA256 проверяется автоматически.</p>
 <h3 id="62-supervised-peers-naiveproxy-и-mieru-v130">6.2. Supervised
 peers: naiveproxy и mieru (v1.3.0+)</h3>
-<p>sign-craze поддерживает naiveproxy и mieru как supervised peers —
+<p>sign-craze поддерживает <a
+href="https://github.com/klzgrad/naiveproxy">naiveproxy</a> и <a
+href="https://github.com/enfein/mieru">mieru</a> как supervised peers —
 запускаются как daemon рядом с sing-box (process chain через
 socks5-outbound). Работают <strong>только</strong> с ядром sing-box;
 xray и mihomo такие конфиги отклоняют с подсказкой
@@ -677,7 +684,8 @@ LAN-устройствам</li>
 <p><strong>Защита от SSH-lockout и LAN-трафик</strong>: SSH-порты
 роутера (<code>22</code> Entware/dropbear, <code>222</code> Keenetic
 admin) и локальные сети (RFC1918 + loopback + multicast + link-local)
-автоматически исключены из проксирования через ipset
+автоматически исключены из проксирования через <a
+href="https://ipset.netfilter.org/">ipset</a>
 <code>signcraze_excludes</code> и RETURN-правила в mangle.
 Дополнительной настройки не требуется. Для кастомизации (другие порты,
 bypass публичных IP) править поля <code>admin_ports</code> и
@@ -734,8 +742,11 @@ TCP/TLS блока).</p>
 <h2 id="7-запуск">7. Запуск</h2>
 <div class="sourceCode" id="cb27"><pre
 class="sourceCode sh"><code class="sourceCode bash"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--start</span></span></code></pre></div>
-<p>Применит iptables/ipset правила и запустит sing-box (и nfqws2 в
-режимах <code>dpi</code>/<code>hybrid</code>).</p>
+<p>Применит <a
+href="https://www.netfilter.org/projects/iptables/index.html">iptables</a>/ipset
+правила и запустит sing-box (и <a
+href="https://github.com/nfqws/nfqws2-keenetic">nfqws2</a> в режимах
+<code>dpi</code>/<code>hybrid</code>).</p>
 <blockquote>
 <p><strong>DPI отключён по умолчанию.</strong> После
 <code>sign-craze --install</code> (без <code>--with-dpi</code>) режим —
@@ -764,14 +775,15 @@ nfqws2: running (PID 12346)
 class="sourceCode sh"><code class="sourceCode bash"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--ui</span> on</span></code></pre></div>
 <p>Откроются три HTTP-сервиса (только из LAN):</p>
 <ul>
-<li><code>http://&lt;router-ip&gt;:9090/</code> —
-<strong>Zashboard</strong> (Clash-совместимый dashboard). Показывает
-реальное дерево прокси, живые счётчики трафика, активные соединения и
-логи в реальном времени — стриминговые эндпоинты (<code>/traffic</code>,
-<code>/logs</code>, <code>/connections</code>) передаются без
-буферизации. Данные приходят через Clash API реверс-прокси на sing-box
-(порт <code>9094</code>, внутренний). Выбор активного прокси сохраняется
-после рестарта sing-box.</li>
+<li><code>http://&lt;router-ip&gt;:9090/</code> — <strong><a
+href="https://github.com/Zephyruso/zashboard">Zashboard</a></strong>
+(Clash-совместимый dashboard). Показывает реальное дерево прокси, живые
+счётчики трафика, активные соединения и логи в реальном времени —
+стриминговые эндпоинты (<code>/traffic</code>, <code>/logs</code>,
+<code>/connections</code>) передаются без буферизации. Данные приходят
+через Clash API реверс-прокси на sing-box (порт <code>9094</code>,
+внутренний). Выбор активного прокси сохраняется после рестарта
+sing-box.</li>
 <li><code>http://&lt;router-ip&gt;:9091/api/status</code> —
 <strong>admin REST API</strong> (статус, конфиг, порты, исключения, DPI
 targets).</li>
@@ -796,9 +808,10 @@ class="sourceCode sh"><code class="sourceCode bash"><span id="cb32-1"><a href="#
 <h2 id="9a-selective-dpi-bypass-опционально">9a. Selective DPI bypass
 (опционально)</h2>
 <p>По умолчанию <code>--dpi on</code> запускает nfqws2 на
-<strong>весь</strong> TCP/UDP трафик (через NFQUEUE). На MIPS-роутерах
-это даёт packet-copy overhead до ~30% CPU при 40 Mbps. Selective режим
-ограничивает desync только выбранными доменами через
+<strong>весь</strong> TCP/UDP трафик (через <a
+href="https://www.netfilter.org/projects/libnetfilter_queue/">NFQUEUE</a>).
+На MIPS-роутерах это даёт packet-copy overhead до ~30% CPU при 40 Mbps.
+Selective режим ограничивает desync только выбранными доменами через
 <code>nfqws2 --hostlist</code>.</p>
 <div class="sourceCode" id="cb33"><pre
 class="sourceCode sh"><code class="sourceCode bash"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Включить DPI</span></span>

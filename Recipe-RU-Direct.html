@@ -114,6 +114,8 @@ href="https://github.com/kittylabassistant/sign-craze/blob/main/README.md">READM
 href="https://github.com/kittylabassistant/sign-craze/blob/main/CHANGELOG.md">CHANGELOG</a></li>
 <li><a
 href="https://github.com/kittylabassistant/sign-craze/blob/main/docs/ARCHITECTURE.md">ARCHITECTURE</a></li>
+<li><a
+href="https://github.com/kittylabassistant/sign-craze/blob/main/docs/BEHAVIOR_SPEC.md">BEHAVIOR_SPEC</a></li>
 </ul>
 <p><strong>Ссылки</strong></p>
 <ul>
@@ -131,7 +133,10 @@ href="https://github.com/kittylabassistant/sign-craze/blob/main/LICENSE">Лиц�
 DomainRU → direct, остальное → proxy</h1>
 <blockquote>
 <p><strong>Совместимость:</strong> шаги с <code>geoip-ru</code> работают
-на всех трёх ядрах (sing-box, xray, mihomo) — sign-craze транслирует
+на всех трёх ядрах (<a
+href="https://sing-box.sagernet.org/">sing-box</a>, <a
+href="https://xtls.github.io/">xray</a>, <a
+href="https://wiki.metacubex.one/">mihomo</a>) — sign-craze транслирует
 правило в нативный формат при Apply. Шаги с <code>geosite-ru</code>
 (A.5–A.6, B.3, B-альтернатива) используют источник из sign-craze-dat и
 применимы только с ядром sing-box; для mihomo/xray Validate покажет
@@ -145,7 +150,8 @@ DomainRU → direct, остальное → proxy</h1>
 иностранных ресурсов.</p>
 <h2 id="prerequisites">Prerequisites</h2>
 <ul>
-<li><p>sign-craze установлен (см. INSTALL.md).</p></li>
+<li><p>sign-craze установлен (см. <a
+href="Installation.html">Installation</a>).</p></li>
 <li><p>VPN-outbound (<code>vless</code>, <code>trojan</code> или
 <code>shadowsocks</code>) уже описан в <code>routing.json</code>.
 Получить его tag:</p>

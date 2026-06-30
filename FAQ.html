@@ -114,6 +114,8 @@ href="https://github.com/kittylabassistant/sign-craze/blob/main/README.md">READM
 href="https://github.com/kittylabassistant/sign-craze/blob/main/CHANGELOG.md">CHANGELOG</a></li>
 <li><a
 href="https://github.com/kittylabassistant/sign-craze/blob/main/docs/ARCHITECTURE.md">ARCHITECTURE</a></li>
+<li><a
+href="https://github.com/kittylabassistant/sign-craze/blob/main/docs/BEHAVIOR_SPEC.md">BEHAVIOR_SPEC</a></li>
 </ul>
 <p><strong>Ссылки</strong></p>
 <ul>
@@ -140,12 +142,15 @@ href="https://github.com/kittylabassistant/sign-craze/issues">issue</a>
 <ul>
 <li><strong><code>policy</code> (по умолчанию)</strong> — sign-craze
 создаёт IP-policy <code>sign-craze</code> в Keenetic через RCI, читает
-присвоенный Keenetic fwmark и ставит iptables-правила с фильтром по
-этому mark. <strong>Выбор устройств</strong> — через штатный web-UI
-Keenetic «Приоритеты подключений». Никакого собственного ipset не
-требуется. Безопасный default.</li>
+присвоенный Keenetic <a
+href="https://www.man7.org/linux/man-pages/man7/socket.7.html">fwmark</a>
+и ставит <a
+href="https://www.netfilter.org/projects/iptables/index.html">iptables</a>-правила
+с фильтром по этому mark. <strong>Выбор устройств</strong> — через
+штатный web-UI Keenetic «Приоритеты подключений». Никакого собственного
+ipset не требуется. Безопасный default.</li>
 <li><strong><code>full</code> (legacy)</strong> — sign-craze управляет
-всем: создаёт ipset
+всем: создаёт <a href="https://ipset.netfilter.org/">ipset</a>
 <code>signcraze_ipv4</code>/<code>signcraze_ipv6</code>/<code>signcraze_excludes</code>,
 ставит свой fwmark <code>0x53</code> и маршрутизирует
 <strong>весь</strong> транзитный трафик через TUN. Полезен на
@@ -180,11 +185,12 @@ netfilter.d hook (<code>/opt/etc/ndm/netfilter.d/50-sign-craze</code>)
 коробки?</h3>
 <p>Нет. После <code>--install</code> / <code>--install-auto</code>
 запущен только <code>sing-box</code> (режим <code>policy</code>),
-<code>nfqws2</code> <strong>не скачан</strong>, NFQUEUE-правила в
-iptables не добавлены, <code>state.json</code> хранит
+<code>nfqws2</code> <strong>не скачан</strong>, <a
+href="https://www.netfilter.org/projects/libnetfilter_queue/">NFQUEUE</a>-правила
+в iptables не добавлены, <code>state.json</code> хранит
 <code>dpi_enabled=false</code>. DPI-обход — opt-in.</p>
 <p>Минимум для активации:</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--dpi</span> on        <span class="co"># качает nfqws2 в /opt/sbin/, генерит /opt/etc/sign-craze/nfqws2.conf, ставит DPIEnabled=true</span></span>
+<div class="sourceCode" id="cb2"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--dpi</span> on        <span class="co"># качает [nfqws2](https://github.com/nfqws/nfqws2-keenetic) в /opt/sbin/, генерит /opt/etc/sign-craze/nfqws2.conf, ставит DPIEnabled=true</span></span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--restart</span>       <span class="co"># applier добавляет NFQUEUE-правила, lifecycle поднимает nfqws2</span></span></code></pre></div>
 <blockquote>
 <p><strong>nfqws2 загружается из репозитория
@@ -277,19 +283,24 @@ rule в sing-box).</p>
 </thead>
 <tbody>
 <tr class="odd">
-<td><strong>sing-box</strong> (умолчание)</td>
+<td><strong><a
+href="https://sing-box.sagernet.org/">sing-box</a></strong>
+(умолчание)</td>
 <td>Большинство конфигураций: VLESS/VMess/Trojan/Shadowsocks, TUN-режим
 на стоковом ядре Keenetic</td>
 </tr>
 <tr class="even">
-<td><strong>xray</strong></td>
+<td><strong><a href="https://xtls.github.io/">xray</a></strong></td>
 <td>PQ-VLESS (постквантовое шифрование), Vision UDP443, xhttp packet-up
 режимы — сценарии жёсткого DPI</td>
 </tr>
 <tr class="odd">
-<td><strong>mihomo</strong></td>
-<td>Hysteria2, TUIC, WireGuard — протоколы, нативно реализованные в
-mihomo/Meta</td>
+<td><strong><a
+href="https://wiki.metacubex.one/">mihomo</a></strong></td>
+<td><a href="https://v2.hysteria.network/">Hysteria2</a>, <a
+href="https://github.com/EAimTY/tuic">TUIC</a>, <a
+href="https://www.wireguard.com/">WireGuard</a> — протоколы, нативно
+реализованные в mihomo/Meta</td>
 </tr>
 </tbody>
 </table>
@@ -371,15 +382,17 @@ href="Recipe-RU-Direct.html">полный рецепт</a>.</p>
 <h2 id="web-ui">Web UI</h2>
 <h3 id="как-открыть-веб-интерфейс">Как открыть веб-интерфейс?</h3>
 <p>Откройте в браузере <code>http://&lt;ROUTER_IP&gt;:9090/</code> из
-локальной сети. Это Zashboard — Clash-совместимый dashboard, который
-показывает реальное дерево прокси, живые счётчики трафика, активные
-соединения и логи в реальном времени. Данные берутся напрямую из
-sing-box через Clash API реверс-прокси (sign-craze проксирует
-<code>/proxies</code>, <code>/connections</code>, <code>/traffic</code>,
-<code>/logs</code> и пр. на внутренний порт sing-box <code>9094</code>).
-Стриминговые эндпоинты (<code>/traffic</code>, <code>/logs</code>,
-<code>/connections</code>) передаются без буферизации. Предварительно
-запустите: <code>sign-craze --ui on</code>.</p>
+локальной сети. Это <a
+href="https://github.com/Zephyruso/zashboard">Zashboard</a> —
+Clash-совместимый dashboard, который показывает реальное дерево прокси,
+живые счётчики трафика, активные соединения и логи в реальном времени.
+Данные берутся напрямую из sing-box через Clash API реверс-прокси
+(sign-craze проксирует <code>/proxies</code>, <code>/connections</code>,
+<code>/traffic</code>, <code>/logs</code> и пр. на внутренний порт
+sing-box <code>9094</code>). Стриминговые эндпоинты
+(<code>/traffic</code>, <code>/logs</code>, <code>/connections</code>)
+передаются без буферизации. Предварительно запустите:
+<code>sign-craze --ui on</code>.</p>
 <p>Выбор активного прокси сохраняется через
 <code>experimental.cache_file.path</code>
 (<code>/opt/var/lib/sign-craze/cache.db</code>); поле
