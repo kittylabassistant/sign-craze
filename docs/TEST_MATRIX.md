@@ -10,7 +10,7 @@
 | Тип                | Где запускается                                | Build tag       | Инструмент                                                    |
 |--------------------|------------------------------------------------|-----------------|---------------------------------------------------------------|
 | **Unit**           | локально / CI                                  | — (без тега)    | `go test -race ./...`                                         |
-| **Integration**    | Docker `--privileged` / локально с NET_ADMIN   | `integration`   | `go test -tags=integration ./internal/firewall/...`           |
+| **Integration**    | [Docker](https://docs.docker.com/) `--privileged` / локально с NET_ADMIN   | `integration`   | `go test -tags=integration ./internal/firewall/...`           |
 | **E2E hardware**   | [Keenetic](https://help.keenetic.com/hc/ru) KN-1810 (mipsle, живое железо)        | —               | вручную по `tasks/test-roadmap.md`                            |
 | **Manual smoke**   | SSH на роутере                                 | —               | CLI-команды из `tasks/test-roadmap.md`                        |
 
@@ -24,13 +24,12 @@
 |-----------------------------|:----:|:-----------:|:------:|:------------:|-------------------------------------------------------------------------------------------------------------|
 | `internal/atomicfs`         | ✅   | ❌          | ❌      | ❌            | `atomicfs/atomicfs_test.go`                                                                                 |
 | `internal/backup`           | ✅   | ❌          | ❌      | ✅            | `backup/backup_test.go`, `backup/helper_test.go`                                                            |
-| `internal/cli`              | ✅   | ❌          | ❌      | ✅            | `cli/smoke_test.go`, `cli/dispatch_test.go`, `cli/cmd_reapply_test.go`, `cli/color_test.go`                 |
+| `internal/cli`              | ✅   | ❌          | ❌      | ✅            | `cli/smoke_test.go`, `cli/dispatch_test.go`, `cli/cmd_reapply_test.go`, `cli/color_test.go`, `cli/cores_sync_test.go` |
 | `internal/diag`             | ✅   | ❌          | ⚠️      | ✅            | `diag/diag_test.go`                                                                                         |
-| `internal/dpi`              | ✅   | ❌          | ⚠️      | ✅            | `dpi/config_test.go`, `dpi/lifecycle_test.go`, `dpi/nfqueue_test.go`, `dpi/download_test.go`, `dpi/install_test.go`, `dpi/update_test.go` |
-| `internal/errors`           | ✅   | ❌          | ❌      | ❌            | `errors/errors_test.go`                                                                                     |
+| `internal/dpi`              | ✅   | ❌          | ⚠️      | ✅            | `dpi/config_test.go`, `dpi/lifecycle_test.go`, `dpi/download_test.go`, `dpi/install_test.go`, `dpi/update_test.go` |
 | `internal/exectx`           | ✅   | ❌          | ❌      | ❌            | `exectx/exec_test.go`                                                                                       |
 | `internal/firewall`         | ✅   | ✅          | ⚠️      | ✅            | `firewall/{applier,iptables,ipset,ipset_persist,route,preflight}_test.go`, `firewall/integration_test.go`   |
-| `internal/firewall/modes`   | ✅   | ❌          | ⚠️      | ✅            | `modes/{tproxy,hybrid,redirect,excludes,ports,policy_dpi}_test.go`                                          |
+| `internal/firewall/modes`   | ✅   | ❌          | ⚠️      | ✅            | `modes/{tproxy,hybrid,excludes,ports,policy_dpi,policy_tproxy}_test.go`                                     |
 | `internal/geo`              | ✅   | ❌          | ⚠️      | ✅            | `geo/{srs,ipset,decompile}_test.go`                                                                         |
 | `internal/ghrelease`        | ✅   | ❌          | ❌      | ❌            | `ghrelease/downloader_test.go`                                                                              |
 | `internal/locks`            | ✅   | ❌          | ⚠️      | ✅            | `locks/file_test.go`                                                                                        |
@@ -40,11 +39,11 @@
 | `internal/selfupdate`       | ✅   | ❌          | ⚠️      | ✅            | `selfupdate/update_test.go`                                                                                 |
 | `internal/service`          | ✅   | ❌          | ⚠️      | ✅            | `service/{lifecycle,netfilter_hook,shim}_test.go`                                                           |
 | `internal/singbox`          | ✅   | ❌          | ⚠️      | ✅            | `singbox/{config,download,install,version}_test.go`                                                         |
-| `internal/state`            | ✅   | ❌          | ❌      | ❌            | `state/state_test.go`, `state/managers_test.go`, `state/cores_sync_test.go`                                 |
+| `internal/state`            | ✅   | ❌          | ❌      | ❌            | `state/state_test.go`, `state/managers_test.go`                                                             |
 | `internal/version`          | ✅   | ❌          | ❌      | ❌            | `version/version_test.go`                                                                                   |
-| `internal/naiveproxy`       | ✅   | ❌          | ⚠️      | ✅            | `naiveproxy/{config,download,extract,lifecycle,install}_test.go`                                            |
+| `internal/naiveproxy`       | ✅   | ❌          | ⚠️      | ✅            | `naiveproxy/{config,download,extract,lifecycle}_test.go`                                                    |
 | `internal/peer`             | ✅   | ❌          | ⚠️      | ✅            | `peer/{mieru_config,mieru_peer,portalloc}_test.go`                                                          |
-| `internal/web`              | ✅   | ❌          | ⚠️      | ✅            | `web/{api,auth,clash,server,ws}_test.go`, `web/routingui_multicore_test.go`                                 |
+| `internal/web`              | ✅   | ❌          | ⚠️      | ✅            | `web/{api,clash,server}_test.go`, `web/routingui_multicore_test.go`, `web/routingui_handlers_test.go`       |
 
 **Легенда:** ✅ покрыто / ❌ не покрыто / ⚠️ частично (сценарий в test-roadmap, не автоматизирован)
 
@@ -169,7 +168,7 @@ go test -tags=integration -v -timeout 60s ./internal/firewall/...
 | `TestE2E_PresetApply_PerCore` | Применение preset через `/api/routing/preset` при каждом из трёх ядер: URL резолвится через `c.GeoFormat()`, результирующий конфиг корректен для данного ядра |
 | `TestE2E_Validate_Warnings_XrayTunInbound` | `POST /api/validate` с routing.json, содержащим TUN inbound, при активном ядре xray: ответ содержит warning, HTTP 200 (не ошибка), Apply после validate не падает |
 
-**Файл:** `internal/state/cores_sync_test.go`
+**Файл:** `internal/cli/cores_sync_test.go`
 
 | Тест | Что покрывает |
 |------|---------------|
@@ -183,11 +182,11 @@ go test -tags=integration -v -timeout 60s ./internal/firewall/...
 
 | Тест                                    | Что проверяет                                                               |
 |-----------------------------------------|-----------------------------------------------------------------------------|
-| `TestParseNaiveURL`                     | Парсинг proxy-URL naiveproxy: scheme, user:pass, host:port, edge cases      |
+| `TestParseNaiveURL`                     | Парсинг proxy-URL [naiveproxy](https://github.com/klzgrad/naiveproxy): scheme, user:pass, host:port, edge cases |
 | `TestPortAllocator_Reserve`             | port allocator резервирует уникальный порт, не выдаёт дубли                 |
 | `TestNaiveLifecycle_StartStop`          | Start запускает subprocess, Stop завершает его без утечки goroutine          |
 | `TestNaiveConfigRender`                 | Рендер конфига naiveproxy из шаблона: поля listen, proxy, log               |
-| `TestMieruConfigRender`                 | Рендер конфига mieru из шаблона: portBindings, protocol, encryption         |
+| `TestMieruConfigRender`                 | Рендер конфига [mieru](https://github.com/enfein/mieru) из шаблона: portBindings, protocol, encryption |
 | `FuzzMieruWireProto`                    | Fuzz-тест wire-протокола mieru: 3 файла corpus в `internal/peer/testdata/fuzz/` |
 
 ---
@@ -268,8 +267,8 @@ go test -tags=integration -v -timeout 60s ./internal/firewall/...
 
 | Этап                          | Инструмент / действие                                               | Описание                                                                        |
 |-------------------------------|---------------------------------------------------------------------|---------------------------------------------------------------------------------|
-| `cosign-sign`                 | `sigstore/cosign-installer` + keyless OIDC через GH Actions OIDC  | Подписывает бинари без долгоживущих ключей; верификация через `cosign verify`   |
-| `attest-build-provenance`     | `actions/attest-build-provenance@v4`                               | SLSA provenance attestation для каждого артефакта                               |
+| `cosign-sign`                 | `sigstore/cosign-installer` + keyless OIDC через GH Actions OIDC  | Подписывает бинари без долгоживущих ключей ([cosign/Sigstore](https://www.sigstore.dev/)); верификация через `cosign verify` |
+| `attest-build-provenance`     | `actions/attest-build-provenance@v4`                               | [SLSA](https://slsa.dev/) provenance attestation для каждого артефакта          |
 | Reproducible builds           | `SOURCE_DATE_EPOCH`, `-buildid=`, `-trimpath`                       | Идентичный бинарь при повторной сборке из того же коммита                       |
 
 ---
@@ -279,7 +278,7 @@ go test -tags=integration -v -timeout 60s ./internal/firewall/...
 | Фаза | Статус | Ключевые тесты |
 |------|--------|---------------|
 | Phase 0 — scaffold | ✅ | CI smoke (build matrix) |
-| Phase 1 — Go scaffold | ✅ | `cli/dispatch_test.go`, `locks/file_test.go`, `exectx/exec_test.go`, `log/log_test.go`, `atomicfs/atomicfs_test.go`, `errors/errors_test.go`, `version/version_test.go` |
+| Phase 1 — Go scaffold | ✅ | `cli/dispatch_test.go`, `locks/file_test.go`, `exectx/exec_test.go`, `log/log_test.go`, `atomicfs/atomicfs_test.go`, `version/version_test.go` |
 | Phase 2 — sing-box | ✅ | `singbox/*_test.go`, `service/{lifecycle,shim}_test.go` |
 | Phase 3 — firewall | ✅ | `firewall/*_test.go` (6 unit + 1 integration), `firewall/modes/*_test.go` |
 | Phase 4 — DPI/nfqws2 | ✅ | `dpi/*_test.go` |
@@ -289,18 +288,18 @@ go test -tags=integration -v -timeout 60s ./internal/firewall/...
 | Phase 8 — CLI-команды | ✅ | `cli/smoke_test.go`, `backup/`, `diag/`, `state/`, `ndm/`, `ghrelease/`, `selfupdate/`, `proxyparse/`, `service/netfilter_hook_test.go` |
 | Phase 9 — policy mode | 🚧 | `ndm/policy_test.go`, `ndm/wan_test.go` — unit. **E2E hardware: ❌** |
 | v0.8.0 — DPI update + policy-DPI rules + reapply throttle | ✅ | `dpi/update_test.go` (5 unit), `firewall/modes/policy_dpi_test.go` (5 unit), `cli/cmd_reapply_test.go` (4 unit) — все pass |
-| v1.0.0 — unified multi-core routing | ✅ | `web/routingui_multicore_test.go` (e2e), `state/cores_sync_test.go` (unit) — см. §4.3 |
+| v1.0.0 — unified multi-core routing | ✅ | `web/routingui_multicore_test.go` (e2e), `cli/cores_sync_test.go` (unit) — см. §4.3 |
 | v1.1.0 — DPI FORWARD chain + routing UI presets AS-IS/TO-BE | ✅ | `firewall/modes/policy_dpi_test.go` (переписан под FORWARD + `! --mark`), `web/routingui_handlers_test.go` (+12 backend-тестов: preview+commit) |
 | v1.1.1 — SSH/admin bypass + NDM debounce | ✅ | `firewall/modes/excludes_test.go` (LAN-bypass + admin-ports), `firewall/applier_test.go` (bypass order regression) |
 | v1.2.0 — ANSI color | ✅ | `cli/color_test.go` (~10 unit-тестов: opt-out priority, no-op при выкл, semantic helpers) |
 | v1.3.0 — naive/mieru supervised peers | ✅ | `naiveproxy/*_test.go` + `peer/*_test.go`, mihomo/xray reject-тесты — см. §4.4 |
-| v1.4.0 — hardening (iptables batch, watchdog REDIRECT/DPI, repro builds, cosign, SLSA, regressions) | ✅ | см. §4.5 + `firewall/batch_test.go` |
+| v1.4.0 — hardening (iptables batch, watchdog REDIRECT/DPI, repro builds, cosign, SLSA, regressions) | ✅ | см. §4.5; `firewall/watchdog_test.go`, `firewall/fastpath_test.go` |
 
 ---
 
 ## 8. Gaps (открытые провалы)
 
-- **redirect mode не реализован** (`internal/firewall/modes/redirect.go` возвращает `nil`): `redirect_test.go` проверяет только `nil`-контракт заглушки.
+- **redirect mode не реализован** (`internal/firewall/modes/redirect.go` возвращает `nil`): тест заглушки отсутствует — `redirect_test.go` не существует.
 - **Watchdog policy** (`tasks/phase9-policy.md:155`): нет периодической проверки наличия policy в Keenetic RCI. Если пользователь удалит — узнаём только при `--start`.
 - **Автостарт после reboot** (safety-fixes #12, PARTIAL): `BootTimeoutSec` и `boot.log` готовы, но E2E на железе не проведён.
 - **Integration-тесты только в `firewall`**: пакеты `dpi`, `service`, `geo` не имеют integration с реальным ядром.

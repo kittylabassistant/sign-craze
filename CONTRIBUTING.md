@@ -36,8 +36,9 @@ Sign-craze. Go-утилита для управления firewall/маршру�
 
 Технические инварианты, которые нельзя нарушать в PR:
 
-- Go 1.25.9 доступен на хосте: `go build`/`test`/`vet`/`mod tidy` — локально.
-  podman/docker нужен ТОЛЬКО для cross-compile под mipsle/mips/arm: см. `Makefile`
+- Все go-операции (`build`, `test`, `vet`, `mod tidy`, `lint`) выполняются
+  в podman/docker-контейнере образа `golang:1.25` через `make` (`GO_RUN`).
+  Go на хосте не требуется. Cross-compile под mipsle/mips/arm — там же: см. `Makefile`
   и скилл `go-xbuild`.
 - `CGO_ENABLED=0`, [`GOMIPS=softfloat`](https://pkg.go.dev/cmd/go#hdr-Environment_variables), `-ldflags="-s -w"`, цель ≤ 4 МБ
   после [`upx`](https://upx.github.io/) `--lzma`.
@@ -179,9 +180,10 @@ GitHub Security Advisories, см.
 
 ## Окружение разработки
 
-**Go 1.25.9 на хосте.** Обычные операции go (`build`, `test`, `vet`,
-`mod tidy`, `lint`) запускаются локально. podman/docker — только для
-cross-compile под целевые архитектуры (mipsle/mips/arm):
+**golang:1.25 в контейнере.** Все go-операции (`build`, `test`, `vet`,
+`mod tidy`, `lint`) запускаются через podman/docker (образ `golang:1.25`,
+`make`-переменная `GO_RUN`). Go на хосте не требуется — включая cross-compile
+под целевые архитектуры (mipsle/mips/arm):
 
 ```sh
 # Сборка под текущий arch:

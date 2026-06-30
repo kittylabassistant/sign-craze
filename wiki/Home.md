@@ -2,7 +2,7 @@
 
 # sign-craze
 
-Go-утилита для управления межсетевым экраном на роутерах Keenetic. Поддерживает три прокси-ядра с единым управлением через Web UI: [sing-box](https://github.com/SagerNet/sing-box) (умолчание), **xray** и **mihomo**; дополнительно — supervised peers **[naiveproxy](https://github.com/klzgrad/naiveproxy)** и **[mieru](https://github.com/enfein/mieru)** (process chain через socks5-outbound sing-box). Опционально [nfqws2](https://github.com/nfqws/nfqws2-keenetic) для DPI-обхода. Чистая реализация (clean-room) без переиспользования кода XKeen.
+Go-утилита для управления межсетевым экраном на роутерах [Keenetic](https://help.keenetic.com/hc/ru). Поддерживает три прокси-ядра с единым управлением через Web UI: [sing-box](https://sing-box.sagernet.org/) (умолчание), [xray](https://xtls.github.io/) и [mihomo](https://wiki.metacubex.one/); дополнительно — supervised peers **[naiveproxy](https://github.com/klzgrad/naiveproxy)** и **[mieru](https://github.com/enfein/mieru)** (process chain через socks5-outbound sing-box). Опционально [nfqws2](https://github.com/nfqws/nfqws2-keenetic) для DPI-обхода. Чистая реализация (clean-room) без переиспользования кода XKeen.
 
 > [!WARNING]
 > Материал подготовлен в научно-технических целях. Sign-Craze предназначен для управления межсетевым экраном роутера Keenetic в домашней сети. Разработчик не несёт ответственности за иное использование. Перед применением убедитесь, что ваши действия соответствуют законодательству вашей страны.
@@ -16,7 +16,7 @@ Go-утилита для управления межсетевым экрано�
 
 | Страница | Содержание |
 | ---------- | ----------- |
-| **[Installation](Installation)** | Пошаговая инструкция: от форматирования флешки и opkg/IPK до запуска прокси |
+| **[Installation](Installation)** | Пошаговая инструкция: от форматирования флешки и [opkg](https://openwrt.org/docs/guide-user/additional-software/opkg)/IPK до запуска прокси |
 | **[Install за DPI](Install-Behind-DPI)** | Установка, когда GitHub/CDN недоступны напрямую (offline-метод) |
 | **[Routing](Routing)** | Как работает маршрутизация, порты, пресеты |
 | **[Routing Reference](Routing-Reference)** | Справочник: схема `routing.json`, теги, rule-sets |
@@ -25,22 +25,22 @@ Go-утилита для управления межсетевым экрано�
 
 ## Возможности
 
-- Управление прокси-ядром: установка, запуск, остановка, обновление, откат. Поддерживается три ядра: **sing-box** (умолчание), **xray** (PQ-VLESS/Vision UDP443, xhttp packet-up), **mihomo** (Hysteria2, TUIC, WireGuard)
+- Управление прокси-ядром: установка, запуск, остановка, обновление, откат. Поддерживается три ядра: **sing-box** (умолчание), **xray** (PQ-VLESS/Vision UDP443, xhttp packet-up), **mihomo** ([Hysteria2](https://v2.hysteria.network/), [TUIC](https://github.com/EAimTY/tuic), [WireGuard](https://www.wireguard.com/))
 - **Мульти-ядерность (v1.0.0+)**: Web UI `:9092` полностью унифицирован — routing, inbound, outbound и пресеты работают одинаково для всех трёх ядер. Несовместимые конструкции (например `.srs` URL на mihomo или TUN inbound на xray) отображаются как предупреждения, не блокируя Apply
 - **Supervised peers (v1.3.0)**: дополнительные протоколы **naiveproxy** и **mieru** запускаются как локальный daemon (`127.0.0.1`), sing-box заворачивает их в socks5-outbound (process chain). URL: `naive+https://…`, `mierus://…`. CLI: `--with-naive`, `--update-naive`. Поддерживается только для ядра sing-box
 - Два режима маршрутизации: `policy` (Keenetic IP Policy через RCI, default) и `full` (legacy с собственным fwmark/ipset)
-- Атомарное применение правил iptables/ipset с гарантированным откатом
+- Атомарное применение правил [iptables](https://www.netfilter.org/projects/iptables/index.html)/[ipset](https://ipset.netfilter.org/) с гарантированным откатом
 - DPI bypass через `nfqws2` (opt-in, **off by default**) — включается `sign-craze --dpi on`; selective режим `--dpi-targets` ограничивает desync выбранными доменами (Discord, YouTube) через `nfqws2 --hostlist`
 - Firewall watchdog: автоматическое восстановление правил после ndm reconciliation (защита от "перестаёт проксировать через несколько часов")
-- Гео-фильтрация через SRS rule-set (выборочная загрузка по SHA256)
-- Встроенный Web UI (только из LAN): Zashboard на порту `9090` (реальное дерево прокси и счётчики трафика через Clash API реверс-прокси на sing-box), admin REST API на `9091`, Routing Editor SPA на `9092`
+- Гео-фильтрация через [SRS rule-set](https://sing-box.sagernet.org/configuration/rule-set/) (выборочная загрузка по SHA256)
+- Встроенный Web UI (только из LAN): [Zashboard](https://github.com/Zephyruso/zashboard) на порту `9090` (реальное дерево прокси и счётчики трафика через Clash API реверс-прокси на sing-box), admin REST API на `9091`, Routing Editor SPA на `9092`
 - Routing Editor автоматически инициализируется из `state.outbounds` при первом запуске `--ui` (routing.json bootstrap)
 - Встроенные пресеты роутинга (8 шт.): `sign-craze-default`, `block-ads`, `ru-direct`, `ru-direct-rest-vpn`, `blocked-vpn`, `discord-vpn`, `torrents-direct`, `block-bogon-udp`. Применяются из Web UI `:9092` либо из CLI прямо при установке — `--preset <name>` (список — `--preset-list`, v1.5.0). Отдельно DPI-пресеты `discord`/`youtube`/`discord-youtube`
 - Управление портами и исключениями без перезапуска
 - Резервное копирование и восстановление конфигурации
 - Диагностический режим: `--diag` с PASS/WARN/FAIL по каждому пункту; `--diag --json` — машиночитаемый вывод для скриптов и мониторинга (v1.4.0)
 - ANSI-цветной вывод CLI с opt-out `--no-color` / `NO_COLOR` / `FORCE_COLOR` (v1.2.0)
-- Два канала установки: бинарь из GitHub Releases (`install.sh`) или **opkg/IPK-пакет для Entware** (`opkg install sign-craze`, v1.6.0)
+- Два канала установки: бинарь из GitHub Releases (`install.sh`) или **opkg/IPK-пакет для [Entware](https://entware.net/)** (`opkg install sign-craze`, v1.6.0)
 
 ## Поддерживаемые архитектуры
 
@@ -55,7 +55,7 @@ Go-утилита для управления межсетевым экрано�
 
 ## История версий (ключевое)
 
-Текущая версия — **v1.6.1**. Полный журнал изменений — в [CHANGELOG.md](https://github.com/kittylabassistant/sign-craze/blob/main/CHANGELOG.md).
+Текущая версия — **v1.6.3**. Полный журнал изменений — в [CHANGELOG.md](https://github.com/kittylabassistant/sign-craze/blob/main/CHANGELOG.md).
 
 | Версия | Ключевое |
 | ------ | -------- |

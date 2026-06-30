@@ -1,14 +1,14 @@
 # BEHAVIOR_SPEC.md
 
-> Версия: 2026-06-19. Спецификация v1.6.1.
+> Версия: 2026-07-01. Спецификация v1.6.3.
 
 Функциональная спецификация sign-craze, написанная в режиме clean-room.
 Исходники XKeen не читались. Только публичные источники.
 
-> **Текущая архитектура (TPROXY/IP-policy):** основной режим — перехват трафика
-> через IP-policy Keenetic (fwmark `0xffffaaXX` → `MARK 0x53`) и/или ipset
+> **Текущая архитектура ([TPROXY](https://www.kernel.org/doc/html/latest/networking/tproxy.html)/IP-policy):** основной режим — перехват трафика
+> через IP-policy [Keenetic](https://help.keenetic.com/hc/ru) ([fwmark](https://www.man7.org/linux/man-pages/man7/socket.7.html) `0xffffaaXX` → `MARK 0x53`) и/или [ipset](https://ipset.netfilter.org/)
 > (full-mode), маршрутизация через `ip rule fwmark 0x53 lookup 83` в TUN-интерфейс
-> sing-box. Зафиксировано в ADR-0007. Подробности — §3a (режим policy) и §3b (full).
+> [sing-box](https://sing-box.sagernet.org/). Зафиксировано в ADR-0007. Подробности — §3a (режим policy) и §3b (full).
 
 Использованные источники:
 
@@ -48,7 +48,7 @@
 
 - Скачивает бинарь sing-box с `github.com/SagerNet/sing-box/releases` под текущую архитектуру.
   Для arm64 и amd64 sign-craze предпочитает статически слинкованный musl-вариант ассета
-  (`-musl.tar.gz`) для совместимости с Entware/musl-окружением; fallback на базовый ассет
+  (`-musl.tar.gz`) для совместимости с [Entware](https://entware.net/)/musl-окружением; fallback на базовый ассет
   происходит только если musl-вариант не опубликован в релизе (см. `internal/singbox/download.go`).
 - Устанавливает бинарь в `/opt/sbin/sing-box`, права `0755`.
 - Создаёт директорию конфигов `/opt/etc/sign-craze/`, права `0755`.
@@ -108,10 +108,10 @@
 
 **Эффекты в системе**:
 
-- Захватывает `/opt/var/lock/sign-craze.lock` (flock LOCK_EX|LOCK_NB).
+- Захватывает `/opt/var/lock/sign-craze.lock` ([flock](https://man7.org/linux/man-pages/man2/flock.2.html) LOCK_EX|LOCK_NB).
 - Проверяет установку (`/opt/sbin/sing-box` существует, конфиг существует).
 - Pre-flight firewall: наличие `iptables`/`iptables-restore`/`ipset` (иначе ошибка с подсказкой `opkg install iptables ipset`), kernel TUN (sing-box TUN-mode), match `set` (xt_set), свобода fwmark.
-- Применяет правила iptables (см. §3). `iptables-restore` получает `--wait` только если сборка iptables поддерживает эту опцию; на legacy Entware (iptables ≤1.4.x без `--wait`) флаг опускается.
+- Применяет правила [iptables](https://www.netfilter.org/projects/iptables/index.html) (см. §3). `iptables-restore` получает `--wait` только если сборка iptables поддерживает эту опцию; на legacy Entware (iptables ≤1.4.x без `--wait`) флаг опускается.
 - Запускает `/opt/sbin/sing-box run -c /opt/etc/sign-craze/config.json` в фоне (detached, Setpgid).
 - Записывает PID в `/opt/var/run/sign-craze-singbox.pid`.
 - Опрашивает `/proc/<pid>/status` до 5 с для подтверждения, что процесс жив.
@@ -153,7 +153,7 @@
 <active_core>:  запущен  (pid 1234)
 nfqws2:         остановлен
 режим:          policy
-версия:         sign-craze v1.6.1 / <core> v<core-version>
+версия:         sign-craze v1.6.3 / <core> v<core-version>
 ```
 
 Метка ядра соответствует активному core (`sing-box`, `xray`, `mihomo`) из `--core <name>`.
@@ -170,7 +170,7 @@ nfqws2:         остановлен
 
 ### `--update-geo` / `-g`
 
-Скачивает обновлённые SRS rule-set файлы из манифеста релиза `sign-craze-dat`. Загружает только файлы, чей SHA256 отличается от локального. Сохраняет в `/opt/var/lib/sign-craze/geo/`. Атомарная замена каждого файла.
+Скачивает обновлённые [SRS rule-set](https://sing-box.sagernet.org/configuration/rule-set/) файлы из манифеста релиза `sign-craze-dat`. Загружает только файлы, чей SHA256 отличается от локального. Сохраняет в `/opt/var/lib/sign-craze/geo/`. Атомарная замена каждого файла.
 
 ---
 
@@ -249,7 +249,7 @@ sing-box   v<VERSION>  (установлен в /opt/sbin/sing-box)
 - порт `9091` — admin REST API sign-craze
 - порт `9092` — Routing Editor SPA
 
-Серверы слушают на `0.0.0.0`. Правила в `filter/INPUT` (с owner-комментарием `signcraze:wan-block`, идемпотентно добавляются через `EnsureRule`) дропают входящий трафик на порт 9090 с WAN-интерфейса (определяется через `DetectISPInterface`). Доступ из LAN открыт без аутентификации.
+Серверы привязываются к LAN-bridge IP (автодетект через `DetectLANAddr`; при ошибке детекта запуск прерывается). Правила `filter/INPUT` (комментарий `signcraze:wan-block`, порты 9090/9091/9092 на WAN-интерфейсе, TCP+UDP) добавляются при `--start` как defence-in-depth и снимаются при `--stop`. Доступ из LAN открыт без аутентификации.
 
 `off`: останавливает все HTTP-серверы.
 
@@ -257,7 +257,7 @@ sing-box   v<VERSION>  (установлен в /opt/sbin/sing-box)
 
 ### `--dpi on|off`
 
-Включает или отключает DPI-обход через nfqws2. При включении: скачивает бинарь nfqws2 если отсутствует, генерирует nfqws2.conf, добавляет цепочки NFQUEUE. При отключении: удаляет цепочки NFQUEUE, останавливает nfqws2.
+Включает или отключает DPI-обход через nfqws2. При включении: скачивает бинарь nfqws2 если отсутствует, генерирует nfqws2.conf, добавляет цепочки [NFQUEUE](https://www.netfilter.org/projects/libnetfilter_queue/). При отключении: удаляет цепочки NFQUEUE, останавливает nfqws2.
 
 ### `--dpi-strategy <preset|file://путь>`
 
@@ -357,7 +357,7 @@ resolver без override — пользовательский DNSCrypt/DoH со�
 
 ### `--core-list`
 
-Выводит список зарегистрированных ядер (sing-box / xray / mihomo) с указанием активного.
+Выводит список зарегистрированных ядер (sing-box / [xray](https://xtls.github.io/) / [mihomo](https://wiki.metacubex.one/)) с указанием активного.
 
 ---
 
@@ -458,7 +458,7 @@ Legacy-имена (`proxy`, `dpi`, `hybrid`) принимаются для об�
 Ключевые параметры (настраиваются через sign-craze):
 
 - `interface_name`: всегда `"signbox-tun"` — фиксированное имя TUN-устройства
-- `auto_route`: `false` — маршрутизация управляется sign-craze через ip rule/ip route
+- `auto_route`: `false` — маршрутизация управляется sign-craze через [ip rule](https://www.man7.org/linux/man-pages/man8/ip-rule.8.html)/ip route
 - Уровень логирования: зеркалирует `SIGNCRAZE_LOG_LEVEL`
 - `mark` не нужен для TUN inbound (применяется на уровне iptables fwmark)
 
@@ -932,7 +932,7 @@ POST   /api/dpi/presets/{name}/apply — применить пресет по и
   "nfqws2":   {"running": false, "pid": 0},
   "mode":     "policy",
   "core":     "<active_core>",
-  "version":  {"sign_craze": "v1.6.1", "core": "v<core-version>"},
+  "version":  {"sign_craze": "v1.6.3", "core": "v<core-version>"},
   "uptime_s": 3600
 }
 ```
@@ -941,7 +941,7 @@ POST   /api/dpi/presets/{name}/apply — применить пресет по и
 
 ### Инвариант: LAN-only доступ к Web UI
 
-**Inv-Web-LAN-Only**: web-серверы (9090/9091/9092) слушают на `0.0.0.0`; правила в `filter/INPUT` (owner-комментарий `signcraze:wan-block`, идемпотентно через `EnsureRule`) дропают входящий трафик на порт 9090 от WAN-интерфейса (`DetectISPInterface`). Правила применяются при `--ui on` и снимаются при `--ui off`. Из локальной сети доступ открыт.
+**Inv-Web-LAN-Only**: web-серверы (9090/9091/9092) привязываются к LAN-bridge IP (автодетект `DetectLANAddr`; при ошибке детекта `--ui on` прерывается с ошибкой). Правила `filter/INPUT` (комментарий `signcraze:wan-block`, идемпотентно через `EnsureRule`, порты 9090/9091/9092 на WAN-интерфейсе, TCP+UDP) добавляются при `--start` и снимаются при `--stop`. Из локальной сети доступ открыт.
 
 ---
 
@@ -1112,7 +1112,7 @@ outbounds — Phase 2 (требует port allocator).
 ## §10. opkg lifecycle
 
 Все 4 hook-скрипта (preinst/postinst/prerm/postrm) - POSIX sh,
-никаких bash-isms. Запускаются opkg на роутере с busybox sh.
+никаких bash-isms. Запускаются [opkg](https://openwrt.org/docs/guide-user/additional-software/opkg) на роутере с busybox sh.
 
 ### preinst (install | upgrade)
 

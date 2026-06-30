@@ -1,6 +1,6 @@
 # OWNERSHIP.md — System-state ownership sign-craze
 
-> Версия: 2026-06-19. Автор: @kittylabassistant.
+> Версия: 2026-07-01. Автор: @kittylabassistant.
 
 ---
 
@@ -17,7 +17,7 @@ Sign-craze удаляет только те системные сущности,
 | Chain                  | Режим      | Создаётся в                                             | Jump из системной цепочки | Удаление                        | Источник                                      |
 |------------------------|------------|---------------------------------------------------------|---------------------------|---------------------------------|-----------------------------------------------|
 | `signcraze`            | full       | `applyFullMode`                                         | `PREROUTING`              | `FlushAndDeleteChain` + jump -D | `internal/firewall/applier.go:212`            |
-| `signcraze_full`       | full       | `applyFullMode`                                         | `PREROUTING`              | `FlushAndDeleteChain` + jump -D | `internal/firewall/applier.go:212`            |
+| `signcraze_full`       | legacy     | cleanup-only при upgrade (ghost-цепочка, удалена из Apply с v0.x; в неё нет jump-правил и правил не пишется) | `PREROUTING` (legacy) | `FlushAndDeleteChain` + jump -D | `internal/firewall/applier.go:756`            |
 | `signcraze_dpi`        | full (DPI) | `applyFullMode`                                         | `PREROUTING`              | `FlushAndDeleteChain` + jump -D | `internal/firewall/applier.go:212`            |
 | `signcraze_ports`      | full       | `applyFullMode`, `PortRules`                            | `PREROUTING`              | `FlushAndDeleteChain` + jump -D | `applier.go:212`, `modes/ports.go`            |
 | `signcraze_policy`     | policy     | `applyPolicyMode`                                       | `PREROUTING`              | `FlushAndDeleteChain` + jump -D | `modes/policy.go:8`                           |

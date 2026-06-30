@@ -27,7 +27,7 @@ routing.json
 
 | Порт | Назначение |
 | --- | --- |
-| :9090 | Zashboard UI (proxy → :9094) |
+| :9090 | [Zashboard](https://github.com/Zephyruso/zashboard) UI (proxy → :9094) |
 | :9091 | Admin REST API |
 | :9092 | Routing Editor UI |
 | :9094 | sing-box clash\_api (internal) |
@@ -38,7 +38,7 @@ routing.json
 
 Один `RouteRule` из `routing.json` транслируется в нативные конструкции каждого ядра:
 
-| Поле `RouteRule` | [sing-box](https://sing-box.sagernet.org/) | xray | [mihomo](https://wiki.metacubex.one/) |
+| Поле `RouteRule` | [sing-box](https://sing-box.sagernet.org/) | [xray](https://xtls.github.io/) | [mihomo](https://wiki.metacubex.one/) |
 |---|---|---|---|
 | `domain: ["x.com"]` | `"domain": ["x.com"]` (1:1) | `"domain": ["x.com"]` | `DOMAIN,x.com,<action>` |
 | `domain_suffix: [".x.com"]` | `"domain_suffix": [".x.com"]` | `"domain": ["x.com"]` | `DOMAIN-SUFFIX,x.com,<action>` |
@@ -166,7 +166,7 @@ sign-craze --exclude-add 5.45.192.0/18
 sign-craze --restart
 ```
 
-Меняет `state.json:Excludes`, регенерирует `config.json`, обновляет ipset `signcraze_excludes`. Минус: уровень kernel, sing-box про эти IP не знает; список поддерживается вручную.
+Меняет `state.json:Excludes`, регенерирует `config.json`, обновляет [ipset](https://ipset.netfilter.org/) `signcraze_excludes`. Минус: уровень kernel, sing-box про эти IP не знает; список поддерживается вручную.
 
 ### Прямая правка routing.json через REST :9092
 
@@ -189,7 +189,7 @@ sign-craze --mode policy
 sign-craze --restart
 ```
 
-В policy mode трафик конкретных устройств/подсетей определяется в web-UI Keenetic. Минус: гранулярность по device, не по geo/домену.
+В policy mode трафик конкретных устройств/подсетей определяется в web-UI [Keenetic](https://help.keenetic.com/hc/ru). Минус: гранулярность по device, не по geo/домену.
 
 ---
 
@@ -225,4 +225,4 @@ tail -f /opt/var/log/sign-craze/sign-craze.log | grep -E 'rule_set|geosite|geoip
 
 ## Recipes
 
-Детальный пример «RU-трафик через прямое соединение без SRS-пресетов» — см. [Recipe-RU-Direct.md](Recipe-RU-Direct.md).
+Детальный пример «RU-трафик через прямое соединение без SRS-пресетов» — см. [Recipe-RU-Direct](Recipe-RU-Direct).

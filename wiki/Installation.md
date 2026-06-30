@@ -296,7 +296,7 @@ opkg install sign-craze
 > [!NOTE]
 > **Offline-вариант** (feed недоступен): скачайте `.ipk` на десктопе и скопируйте на роутер:
 > ```sh
-> VER=1.6.1 ARCH=mipsel-3.4
+> VER=1.6.3 ARCH=mipsel-3.4
 > wget "https://github.com/kittylabassistant/sign-craze/releases/download/v${VER}/sign-craze_${VER}_${ARCH}.ipk"
 > scp sign-craze_${VER}_${ARCH}.ipk root@192.168.1.1:/tmp/
 > # На роутере:
@@ -365,7 +365,7 @@ sign-craze --version
 Ожидаемый вывод:
 
 ```
-sign-craze v1.6.1 (commit <актуальный>, built 2026-06-19)
+sign-craze v1.6.3 (commit <актуальный>, built 2026-06-30)
 sing-box: not installed
 ```
 
@@ -520,7 +520,7 @@ sign-craze --start
 
 > **DPI отключён по умолчанию.** После `sign-craze --install` (без `--with-dpi`) режим — `policy`, `nfqws2` не скачан и не запускается, NFQUEUE-правила не добавляются. Для активации DPI:
 >
-> - **Из коробки**: `sign-craze --install --with-dpi` (см. [6.4](#64-с-dpi-обходом-из-коробки---with-dpi)).
+> - **Из коробки**: `sign-craze --install --with-dpi` (см. [6.6](#66-с-dpi-обходом-из-коробки---with-dpi)).
 > - **На существующей установке**: `sign-craze --dpi on && sign-craze --restart` (см. раздел [9a](#9a-selective-dpi-bypass-опционально)).
 
 Проверка статуса:
@@ -535,7 +535,7 @@ sign-craze --status
 sing-box: running (PID 12345)
 nfqws2: running (PID 12346)
 режим: policy
-версия: v1.6.1
+версия: v1.6.3
 ```
 
 ---
@@ -562,7 +562,7 @@ sign-craze --ui on
 sign-craze --update-geo
 ```
 
-Скачивает SRS rule-set файлы с GitHub (manifest-driven, выборочная загрузка по SHA256). После обновления:
+Скачивает [SRS rule-set](https://sing-box.sagernet.org/configuration/rule-set/) файлы с GitHub (manifest-driven, выборочная загрузка по SHA256). После обновления:
 
 ```sh
 sign-craze --restart
