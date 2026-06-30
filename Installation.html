@@ -172,6 +172,11 @@ geo-файлы + swap-файл 1 GB + запас под Entware).</li>
 <code>socks5://...</code>.</li>
 <li>SSH-клиент (встроен в Linux/macOS, для Windows — PuTTY или
 встроенный <code>ssh.exe</code>).</li>
+<li>Пакеты <code>iptables</code> и <code>ipset</code> в Entware
+(<code>opkg install iptables ipset</code>) — нужны для firewall-правил
+sign-craze. При установке sign-craze через opkg ставятся автоматически
+как зависимости; при установке через <code>curl | sh</code> доустановите
+их вручную перед <code>sign-craze --start</code>.</li>
 </ul>
 <hr />
 <h2 id="2-подготовка-флешки-разметка--swap">2. Подготовка флешки:
