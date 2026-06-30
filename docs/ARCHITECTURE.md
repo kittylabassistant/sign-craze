@@ -33,23 +33,23 @@ singbox         dpi             firewall
 │  internal/exectx  (exec + context + структ. лог)    │
 └─────────────────────────────────────────────────────┘
                         │
-          ОС: iptables · ipset · ip · opkg
+          ОС: [iptables](https://www.netfilter.org/projects/iptables/index.html) · [ipset](https://ipset.netfilter.org/) · ip · [opkg](https://openwrt.org/docs/guide-user/additional-software/opkg)
 ```
 
 ## Вспомогательные пакеты
 
 | Пакет | Роль |
 | ----- | ---- |
-| `internal/singbox` | загрузка, установка, генерация конфига, версия sing-box |
-| `internal/naiveproxy` | adapter naiveproxy: download/extract/install/lifecycle (supervised peer) |
-| `internal/peer` | supervised-peer scaffolding + mieru core + port allocator |
-| `internal/core` | registry + абстрактный интерфейс `Core`; регистрирует ядра: sing-box, xray, mihomo |
+| `internal/singbox` | загрузка, установка, генерация конфига, версия [sing-box](https://sing-box.sagernet.org/) |
+| `internal/naiveproxy` | adapter [naiveproxy](https://github.com/klzgrad/naiveproxy): download/extract/install/lifecycle (supervised peer) |
+| `internal/peer` | supervised-peer scaffolding + [mieru](https://github.com/enfein/mieru) core + port allocator |
+| `internal/core` | registry + абстрактный интерфейс `Core`; регистрирует ядра: sing-box, [xray](https://xtls.github.io/), [mihomo](https://wiki.metacubex.one/) |
 | `internal/core/xray` | адаптер ядра xray; translation `RouteRule → xray rules[]`; `RuleSet` с префиксом `geosite-`/`geoip-` → matcher |
 | `internal/core/mihomo` | адаптер ядра mihomo; translation `RouteRule → TYPE,VALUE,ACTION`; `RuleSets` с `.mrs` URL → `rule-providers:` |
 | `internal/service` | генерация init.d shim; интерфейс `Lifecycle`, связывающий singbox и nfqws2 |
-| `internal/geo` | загрузка SRS из sign-craze-dats; конвертация IP-листа → ipset |
+| `internal/geo` | загрузка SRS из sign-craze-dats; конвертация IP-листа → [ipset](https://ipset.netfilter.org/) |
 | `internal/web` | встроенный HTTP-сервер (Zashboard :9090 + admin REST API :9091 + Routing Editor :9092 + DPI targets API) |
-| `internal/locks` | эксклюзивный flock против параллельных запусков |
+| `internal/locks` | эксклюзивный [flock](https://man7.org/linux/man-pages/man2/flock.2.html) против параллельных запусков |
 | `internal/log` | глобальный `slog.Logger` с ротацией по размеру |
 | `internal/atomicfs` | атомарная запись: write → fsync → rename |
 | `internal/version` | встроенная `VERSION`, build info через `runtime/debug` |
@@ -100,6 +100,8 @@ cli/doStart
 на диске core-agnostic: при переключении `--core` файл не мигрирует, несовместимые
 конструкции surfaced через `apiValidate` warnings.
 
+> Архитектурное решение зафиксировано в ADR-0016 и ADR-0025.
+
 ### CoreRenderParams
 
 ```go
@@ -127,7 +129,7 @@ type CoreRenderParams struct {
 | Final | `route.final` | последнее rule без matchers | `MATCH,<tag>` |
 
 **xray translation**: `geosite-<name>` → `geosite:<name>`, `geoip-<cc>` → `geoip:<cc>`.
-xray не имеет rule_set механизма — используются встроенные geosite.dat/geoip.dat.
+xray не имеет rule_set механизма — используются встроенные [geosite.dat/geoip.dat](https://sing-box.sagernet.org/configuration/rule-set/).
 RuleSet без префикса `geosite-`/`geoip-` (например refilter) → warning, пропускается.
 
 **mihomo rule-providers**: URL резолвится через `resolveRuleSetURL(tag, core.GeoMRS)` из
@@ -143,7 +145,7 @@ func needsTUN(c core.Core, st *state.State) bool {
 ```
 
 Инкапсулирует три прежних `if c.Name() == "sing-box"` в `cmd_lifecycle.go`.
-xray/mihomo всегда TProxy (dokodemo-door / tproxy-port), TUN не создают.
+xray/mihomo всегда [TProxy](https://www.kernel.org/doc/html/latest/networking/tproxy.html) (dokodemo-door / tproxy-port), TUN не создают.
 sing-box в режиме tproxy (state.Inbound="tproxy") тоже не создаёт TUN.
 
 ### Per-core preset URLs (`routingui_presets.go`)
@@ -177,161 +179,41 @@ ActiveGeoFormat → c.GeoFormat()    (SRS | DAT | MRS) для preset URL рез�
 
 Все порты слушают на `0.0.0.0`. Правила в `filter/INPUT` (owner-comment, idempotent) дропают входящий трафик на порт 9090 от WAN-интерфейса.
 
-## Поток данных: `--ui on` (watchdog)
+## Поток данных: `--ui on` и firewall watchdog
+
+Web UI и watchdog — независимые процессы.
+
+`--ui on` поднимает только HTTP-серверы:
 
 ```plain
 cli/startUI
-  → go firewall.NewWatchdog(0, reconcileFirewall).Run(ctx)   (фон, 30 с)
-      loop:
-        → IPTables.CheckCriticalRules (iptables -C, дешёвая проверка)
-        → если правила отсутствуют → Applier.Reconcile (idempotent re-apply)
   → web.Server.ListenAndServe (блокирует до SIGTERM/ctx.Done)
+```
+
+`--service-watchdog` — отдельный standalone-демон (запускается init.d shim `S99signcraze`, переживает `--ui off`):
+
+```plain
+cli/handleServiceWatchdog → firewall.NewWatchdog(0, reconcileFirewall).Run(ctx)
+  loop (30 с):
+    → IPTables.CheckCriticalRules (iptables -C, дешёвая проверка)
+    → если правила отсутствуют → Applier.Reconcile (idempotent re-apply)
 ```
 
 ## Режимы маршрутизации
 
-| Режим | sing-box | nfqws2 | iptables |
+| Режим | sing-box | nfqws2 | [iptables](https://www.netfilter.org/projects/iptables/index.html) |
 | ----- | -------- | ------ | -------- |
-| `policy` (default) | да | опционально | fwmark 0xffffaaXX → MARK 0x53 → TUN |
-| `full` | да | опционально | ipset dst-match → MARK 0x53 → TUN |
+| `policy` (default) | да | опционально | [fwmark](https://www.man7.org/linux/man-pages/man7/socket.7.html) 0xffffaaXX → TPROXY :7895 (sing-box) |
+| `full` | да | опционально | ipset dst-match → TPROXY :7895 (sing-box) |
 
 Legacy-имена `proxy`, `dpi`, `hybrid` принимаются для обратной совместимости и автоматически конвертируются.
 
 Приоритет цепочек в `mangle:PREROUTING`:
 
-1. `signcraze_dpi` (NFQUEUE, `--queue-bypass`) — обрабатывается первой (только full+DPI)
+1. `signcraze_dpi` ([NFQUEUE](https://www.netfilter.org/projects/libnetfilter_queue/), `--queue-bypass`) — обрабатывается первой (только full+DPI)
 2. `signcraze` / `signcraze_policy` (mark-маршрутизация) — обрабатывается второй
 
 DPI-цепочка `signcraze_dpi_fwd` устанавливается в `mangle:FORWARD` (`-o $WAN_IFACE -m mark ! --mark 0x53`, начиная с v1.1.0 — ловит все LAN-устройства, см. раздел «DPI chain в FORWARD» ниже). Legacy `signcraze_policy_dpi` (`mangle:POSTROUTING`) сохранён только для cleanup при апгрейде с v1.0.x.
-
-## Packet path: режим policy (TPROXY/REDIRECT) — v0.8.0 (историческое, закрыто в v1.0.0+)
-
-WAN-интерфейс определяется автоматически через `ip route show default` в `applyInternal()` до выбора режима.
-
-```plain
-LAN client ─► br0 (mangle:PREROUTING):
-  ├─ mark==0xffffaab → signcraze_policy → TPROXY 127.0.0.1:7895 mark=0x53
-  │     ├─ ip rule: fwmark 0x53 lookup 83
-  │     ├─ table 83: local default → sing-box socket (userspace)
-  │     └─ sing-box → outbound к VPN-серверу
-  │
-  └─ без mark → main route → eth3 (WAN)
-
-mangle:POSTROUTING  -o $WAN_IFACE  (signcraze_policy_dpi):
-  ├─ -d <DPIExcludeIPs[0]> -j RETURN   ← VPN-эндпоинты: Reality-fingerprint
-  ├─ -d <DPIExcludeIPs[1]> -j RETURN     нельзя десинхать (ISP обнаружит VPN)
-  │   ...
-  └─ -p tcp/udp --dport <DPI-ports> -j NFQUEUE 300
-        nfqws2 десинхает ClientHello → ISP видит модифицированный пакет
-```
-
-**Исключение VPN-эндпоинтов (`DPIExcludeIPs`)**: Reality маскируется под TLS-fingerprint
-реального хоста. nfqws2-десинк ломает этот fingerprint, что позволяет ISP детектировать VPN.
-Кроме того, downstream-клиенты с собственным VPN-клиентом к тому же эндпоинту выйдут из строя.
-Решение: `state.DPIExcludeIPs` + best-effort резолв первого `outbound.Server`.
-Перед каждым блоком NFQUEUE-портов добавляются RETURN-правила для каждого IP из этого списка.
-
-## Auto-update hostlist (v0.8.0) (историческое, закрыто в v1.0.0+)
-
-Подсистема периодического обновления DPI-листа запускается горутиной внутри `--service-watchdog`
-(`cmd_service_watchdog.go`):
-
-```plain
-watchdog loop (горутина):
-  → тикер 1 час
-  → ShouldUpdate(state.DPILastUpdate, IntervalHours)
-      если да → dpi.UpdateHostlist(ctx, urls, extraTargets, dst)
-                   ├─ HTTP-загрузка каждого URL (timeout 30s, max body 2MB)
-                   ├─ парсинг hosts/Adblock-форматов
-                   ├─ merge + deduplicate
-                   └─ atomic write (atomicfs) → dst
-  → ошибка одного URL не прерывает обновление (best-effort)
-```
-
-Ограничения: HTTP timeout 30s учитывает медленный TLS-хендшейк на MIPS; body cap 2MB
-защищает от OOM на роутерах с 128MB RAM.
-
-## Reapply throttle (v0.8.0) (историческое, закрыто в v1.0.0+)
-
-Путь `--reapply` защищён маркером `/opt/var/run/sign-craze-reapply.last` (mtime):
-
-- Throttle-период: **5 секунд**.
-- При срабатывании вызывается `Reconcile` (idempotent re-apply) — без pre-flights и
-  без auto-rollback, в отличие от полного `Apply`.
-- Это исключает каскадный reapply при одновременных внешних событиях (перезапуск
-  init.d shim, watchdog-тик).
-
-## DNS fallback chain (v0.8.1) (историческое, закрыто в v1.0.0+)
-
-Применяется **только** к HTTP-клиенту в `dpi.UpdateHostlist` — не затрагивает DNS,
-используемый sing-box или другими подсистемами sign-craze.
-
-Корень проблемы: на Keenetic DNSCrypt-Entware занимает `127.0.0.1:53` и фильтрует
-`raw.githubusercontent.com` (CDN Fastly попадал в blocklists 2024–2026).
-Стандартный `net.DefaultResolver` молча получал NXDOMAIN, и обновление hostlist падало.
-
-`internal/dpi/update.go::resilientResolver` — кастомный `net.Resolver` с
-`PreferGo: true` и цепочкой fallback-серверов в `Dial`:
-
-```plain
-resilientResolver.LookupHost(host):
-  попытка 1 → системный резолвер (127.0.0.1:53, DNSCrypt-Entware)
-  попытка 2 → 1.1.1.1:53   (Cloudflare)
-  попытка 3 → 9.9.9.9:53   (Quad9)
-  попытка 4 → 8.8.8.8:53   (Google)
-  каждая попытка timeout=5s; первый успешный ответ возвращается немедленно
-```
-
-`http.Client` в `UpdateHostlist` получает кастомный `Transport` с этим резолвером
-через `DialContext`. Исходящие HTTP-запросы идут напрямую (минуя политику sing-box).
-
-Файл: `internal/dpi/update.go`
-
-## Hostlist apply rule (v0.8.2) (историческое, закрыто в v1.0.0+)
-
-`internal/cli/deps.go::hostlistShouldApply()` — предикат, определяющий, нужно ли
-передавать `--hostlist=<path>` в аргументы запуска nfqws2.
-
-Логика:
-
-```plain
-hostlistShouldApply(state, path) bool:
-  state.DPITargets непуст  →  true  (явные цели, hostlist актуален)
-  файл path существует     →  true  (файл уже есть — пусть nfqws2 использует)
-  иначе                    →  false (hostlist не передаётся)
-```
-
-До v0.8.2 `auto-update` мог записать `dpi-hostlist.txt`, но если `state.DPITargets`
-был пуст (цели не настроены), nfqws2 запускался без `--hostlist` и игнорировал файл.
-Теперь наличие файла само по себе является достаточным условием.
-
-Файл: `internal/cli/deps.go`
-
-## Routing config migration (v0.8.3) (историческое, закрыто в v1.0.0+)
-
-`internal/cli/deps.go::configParamsFromState()` выполняет однократную миграцию
-`/opt/etc/sign-craze/routing.json` при обнаружении устаревшей конфигурации.
-
-Корень проблемы: при обновлении v0.6.x → v0.8.x routing.json мог содержать TUN-inbound
-(`"type":"tun"`), оставшийся от bootstrap. Метод `Render()` проверял inbound-режим
-по `state.Inbound` и при `"tproxy"` ожидал TPROXY-inbound, но пропускал инъекцию,
-если TUN-запись уже присутствовала. Результат: sing-box стартовал в TUN-режиме,
-слушал `127.0.0.1:7895` — НИКТО НЕ СЛУШАЛ → TCP reset для всего fwmark-трафика.
-
-```plain
-configParamsFromState(state):
-  если state.Inbound == "tproxy":
-    загрузить routing.json
-    отфильтровать inbounds с type=="tun"
-    если фильтрация что-то удалила:
-      atomicfs.Write(routing.json, обновлённый конфиг)
-      slog.Info("migrated: removed stale tun inbound")
-  вернуть configParams
-```
-
-Миграция идемпотентна: повторный вызов ничего не меняет, если TUN-inbound уже удалён.
-
-Файл: `internal/cli/deps.go`
 
 ## DPI chain в FORWARD (v1.1.0)
 
@@ -347,7 +229,7 @@ NFQUEUE-цепочка `signcraze_dpi_fwd` живёт в `mangle FORWARD`, а н
 
 ## SSH/admin bypass + NDM debounce (v1.1.1)
 
-Проблема: при policy с 10+ устройств Keenetic метил mark и пакетам с `dst=<LAN_IP>:222` — SSH к роутеру попадал в TPROXY, sing-box пытался дозвониться до LAN_IP как до remote, коннект виснул.
+Проблема: при policy с 10+ устройств [Keenetic](https://help.keenetic.com/hc/ru) метил mark и пакетам с `dst=<LAN_IP>:222` — SSH к роутеру попадал в TPROXY, sing-box пытался дозвониться до LAN_IP как до remote, коннект виснул.
 
 Реализация:
 
@@ -358,7 +240,7 @@ NFQUEUE-цепочка `signcraze_dpi_fwd` живёт в `mangle FORWARD`, а н
 
 ## Supervised peers: naive/mieru (v1.3.0)
 
-Naive (`klzgrad/naiveproxy`) и mieru (`enfein/mieru`) — protocol-specific прокси, которые не нативны ни одному из встроенных ядер. Sign-craze запускает их как daemon, sing-box подключается через socks5-outbound:
+[naiveproxy](https://github.com/klzgrad/naiveproxy) (`klzgrad/naiveproxy`) и [mieru](https://github.com/enfein/mieru) (`enfein/mieru`) — protocol-specific прокси, которые не нативны ни одному из встроенных ядер. Sign-craze запускает их как daemon, sing-box подключается через socks5-outbound:
 
 ```
 LAN client → iptables (TPROXY/REDIRECT) → sing-box (socks5 outbound)
@@ -371,10 +253,8 @@ LAN client → iptables (TPROXY/REDIRECT) → sing-box (socks5 outbound)
 - URL-форматы: `naive+https://user:pass@host:port`, `naive+quic://...`, `mieru://`, `mierus://`.
 - Поддерживаемые архитектуры naive: arm64, arm7, mipsle (klzgrad публикует только LE; mips BE отклоняется при `--install`).
 - Mieru cross-build встроен в Makefile под все 4 архитектуры (`make mieru-mipsle` etc).
-- xray и mihomo явно reject naive+mieru с понятной ошибкой (см. `internal/core/{xray,mihomo}/validate.go`).
-- Жизненный цикл peer'ов привязан к sign-craze: `doStart` поднимает naive до sing-box, `doStop` опускает после; `internal/diag` включает health-check.
 
-Связанные файлы: `internal/naiveproxy/`, `internal/peer/`, ADR-0020-supervised-peer, ADR-0021-naiveproxy-process-chain.
+Детальный контракт lifecycle и форматы URL: [BEHAVIOR_SPEC.md](BEHAVIOR_SPEC.md) §7-8.
 
 ## Hardening (v1.4.0)
 
@@ -384,9 +264,8 @@ LAN client → iptables (TPROXY/REDIRECT) → sing-box (socks5 outbound)
 - **WAN cache**: `WANIface` кэшируется, `InvalidateWANCache` при изменении сети. Watchdog tick больше не fork-ит `ip route` каждые 30s.
 - **Watchdog coverage**: REDIRECT (nat PREROUTING) и DPI FORWARD chain помимо TPROXY mangle.
 - **Reproducible builds**: `-buildid=` + `-trimpath` + `SOURCE_DATE_EPOCH` в release.yml. Артефакт байт-в-байт одинаковый при идентичном входе.
-- **Cosign keyless OIDC**: `.sig` + `.pem` рядом с каждым артефактом, идентичность подтверждается через GitHub OIDC issuer + workflow path.
-- **SLSA build provenance**: `actions/attest-build-provenance@v4` (после v1.4.1) — проверка через `gh attestation verify`.
-- **`bcrypt cost`**: build-tagged `auth_cost_lowmem.go` cost=10 для `GOARCH=mips/mipsle`; default cost=12. Login admin UI на slow MIPS: 6 c → 2 c.
+- **[Cosign](https://www.sigstore.dev/) keyless OIDC**: `.sig` + `.pem` рядом с каждым артефактом, идентичность подтверждается через GitHub OIDC issuer + workflow path.
+- **[SLSA](https://slsa.dev/) build provenance**: `actions/attest-build-provenance@v4` (после v1.4.1) — проверка через `gh attestation verify`.
 - **PID-файлы**: `atomicfs.WriteFileAtomic` + `processAlive` с match `/proc/<pid>/comm` (15-байтовый truncation учтён) → PID-reuse guard.
 - **`--diag --json`**: machine-parseable вывод для скриптов и мониторинга.
 - **WebSocket keepalive**: ping 30s (RFC 6455 §5.5.2) — соединения за NAT/UPnP не падают.
@@ -397,16 +276,25 @@ LAN client → iptables (TPROXY/REDIRECT) → sing-box (socks5 outbound)
 
 ## Идентификаторы
 
+Полный канонический реестр — [OWNERSHIP.md](OWNERSHIP.md) §5.
+
 | Элемент | Значение |
 | ----- | -------- |
-| Цепочки iptables | `signcraze`, `signcraze_full`, `signcraze_dpi`, `signcraze_ports`, `signcraze_policy`, `signcraze_policy_dpi` |
-| ipset-наборы | `signcraze_ipv4`, `signcraze_ipv6` |
 | fwmark | `0x53` (= 83 dec) |
-| ID таблицы маршрутизации | `83` (decimal) |
-| Файл блокировки | `/opt/var/lock/sign-craze.lock` |
-| PID-файлы | `/opt/var/run/sign-craze-{singbox,nfqws2}.pid` |
-| init.d shim | `/opt/etc/init.d/S99signcraze` |
-| Корень конфигов | `/opt/etc/sign-craze/` |
-| DPI hostlist | `/opt/etc/sign-craze/dpi-hostlist.txt` |
-| Директория состояния | `/opt/var/lib/sign-craze/` |
-| Директория логов | `/opt/var/log/sign-craze/` |
+| Routing table | `83` |
+| Prefix цепочек iptables | `signcraze_*` |
+| Prefix ipset-наборов | `signcraze_*` |
+| [ip rule](https://www.man7.org/linux/man-pages/man8/ip-rule.8.html) приоритет | `32765` |
+
+---
+
+## Исторические решения
+
+| Версия | Решение | Подробности |
+|--------|---------|-------------|
+| v0.8.0 | Packet path: TPROXY/REDIRECT через mangle POSTROUTING (policy+DPI) | Заменено на FORWARD в v1.1.0; CHANGELOG v0.8.0, ADR-0007 |
+| v0.8.0 | Auto-update hostlist (горутина-тикер в --service-watchdog) | Архитектура актуальна; детали в CHANGELOG v0.8.0 |
+| v0.8.0 | Reapply throttle (маркер mtime + Reconcile, 5 с) | Актуально; детали в CHANGELOG v0.8.0 |
+| v0.8.1 | DNS fallback chain (resilientResolver: system→1.1.1.1→9.9.9.9→8.8.8.8) | Актуально; детали в CHANGELOG v0.8.1 |
+| v0.8.2 | Hostlist apply rule (предикат hostlistShouldApply) | Актуально; детали в CHANGELOG v0.8.2 |
+| v0.8.3 | Routing config migration TUN→TPROXY (фильтрация stale tun inbound) | Актуально; детали в CHANGELOG v0.8.3 |

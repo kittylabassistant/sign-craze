@@ -7,15 +7,29 @@
 
 ## [Unreleased]
 
+---
+
+## [1.6.3] - 2026-06-30
+
+### Fixed
+
+- **iptables-restore `--wait` на legacy Entware**: на сборках iptables без поддержки `--wait` (Entware ≤1.4.x) `--start` падал с `unrecognized option '--wait'` → `Can't open 2` → откат всего Apply (issue #3, проявилось после обхода musl-бага сменой ядра на Xray). Теперь sign-craze определяет поддержку `--wait` функциональной пробой и передаёт флаг только если он поддержан; иначе `iptables-restore` вызывается без `--wait`.
+
+### Added
+
+- **`firewall.CheckRequiredBinaries`**: pre-flight перед применением правил проверяет наличие `iptables`/`iptables-restore`/`ipset` и при отсутствии выдаёт actionable-ошибку `opkg install iptables ipset` вместо криптичного `exec: not found`. Вызывается также как неблокирующее предупреждение в `--install`. Покрывает путь `curl | sh`, минующий opkg-зависимости (issue #3).
+
+---
+
+## [1.6.2] - 2026-06-30
+
 ### Fixed
 
 - **sing-box arm64/amd64: выбор статического musl-ассета** вместо динамического glibc-бинаря (issue #3).
   SagerNet с v1.13.x публикует базовый `linux-arm64.tar.gz` / `linux-amd64.tar.gz` с CGO/libcronet.so
-  (интерпретатор `/lib/ld-linux-aarch64.so.1`), несовместимым с Entware/musl.
+  (интерпретатор `/lib/ld-linux-aarch64.so.1`), несовместимым с Entware/[musl](https://musl.libc.org/).
   `--install`/`--update-core` на Keenetic arm64 падали с `fork/exec .../sing-box: no such file or directory`.
   Теперь sign-craze предпочитает статический `linux-arm64-musl.tar.gz` (fallback на базовый).
-
-- **iptables-restore `--wait` на legacy Entware**: на сборках iptables без поддержки `--wait` (Entware ≤1.4.x) `--start` падал с `unrecognized option '--wait'` → `Can't open 2` → откат всего Apply (issue #3, проявилось после обхода musl-бага сменой ядра на Xray). Теперь sign-craze определяет поддержку `--wait` функциональной пробой и передаёт флаг только если он поддержан; иначе `iptables-restore` вызывается без `--wait`.
 
 ### Changed
 
@@ -29,8 +43,6 @@
   `debug/elf` + `os.Stat` до запуска ядра. Статический бинарь → nil; отсутствующий интерпретатор →
   понятная ошибка вместо криптичного fork/exec ENOENT. Вызывается из `PrepareAndValidate` после
   распаковки, до `sing-box check`. Нераспарсиваемый/не-ELF файл → nil (best-effort).
-
-- **`firewall.CheckRequiredBinaries`**: pre-flight перед применением правил проверяет наличие `iptables`/`iptables-restore`/`ipset` и при отсутствии выдаёт actionable-ошибку `opkg install iptables ipset` вместо криптичного `exec: not found`. Вызывается также как неблокирующее предупреждение в `--install`. Покрывает путь `curl | sh`, минующий opkg-зависимости (issue #3).
 
 ---
 
@@ -79,7 +91,7 @@
 
 ---
 
-## [1.6.0] - (unreleased)
+## [1.6.0] - 2026-05-27
 
 ### Added
 

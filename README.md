@@ -25,45 +25,67 @@ Go-утилита для управления межсетевым экрано�
 
 ![sign-craze](img/banner_release.jpg)
 
+## Содержание
+
+- [TL;DR / Быстрый старт](#tldr--быстрый-старт)
+- [Возможности](#возможности)
+- [Поддерживаемые архитектуры](#поддерживаемые-архитектуры)
+- [Требования](#требования)
+- [Установка](#установка)
+- [Quick Routing](#quick-routing)
+- [Мульти-ядерность](#мульти-ядерность-v100)
+- [DPI: auto-update hostlist и VPN-исключения](#dpi-auto-update-hostlist-и-vpn-исключения-v080)
+- [Web UI](#web-ui)
+- [Команды](#команды)
+- [Сборка из исходников](#сборка-из-исходников)
+- [Архитектура](#архитектура)
+- [Verifying the release](#verifying-the-release)
+- [Контакты](#контакты)
+
+## TL;DR / Быстрый старт
+
+Sign-craze управляет firewall-правилами на роутере [Keenetic](https://help.keenetic.com/hc/ru) и запускает прокси-ядро ([sing-box](https://sing-box.sagernet.org/), [xray](https://xtls.github.io/) или [mihomo](https://wiki.metacubex.one/)) для обхода DPI. Установка через [opkg](https://openwrt.org/docs/guide-user/additional-software/opkg) ([Entware](https://entware.net/)) — рекомендуемый способ:
+
+```sh
+# Определить arch роутера
+opkg print-architecture | grep -v all   # пример: mipsel-3.4
+ARCH=mipsel-3.4
+
+# Добавить feed и установить
+echo "src/gz signcraze https://kittylabassistant.github.io/sign-craze/entware/${ARCH}" >> /opt/etc/opkg.conf
+opkg update && opkg install sign-craze
+
+# Настроить (запросит URL прокси, ядро, режим)
+sign-craze --install
+```
+
+Подробная инструкция: [wiki/Installation](https://github.com/kittylabassistant/sign-craze/wiki) · [Способ 2: curl | sh](#способ-2-curl--sh-альтернатива) · [Способ 3: offline bundle](#способ-3-offline-bundle-альтернатива).
+
 ## Возможности
 
-- **Мульти-ядерность (v1.0.0)**: поддержка sing-box, xray и mihomo с автодетектом ядра по URL outbound при `--install`. Переключение: `--core <name>`, список: `--core-list`, загрузка: `--core-install <name>`.
-- **Supervised peers (v1.3.0)**: naiveproxy и mieru подключаются как daemon на 127.0.0.1, sing-box заворачивает в socks5-outbound (process chain). URL: `naive+https://...`, `mierus://...`. CLI: `--with-naive`, `--update-naive`.
-- **Унифицированный Routing Editor (v1.0.0)**: Web UI на `:9092` принимает inbound / outbound / rules / rule_sets и presets для любого активного ядра. Apply регенерирует конфиг нужного ядра без перезапуска процесса UI.
-- **Routing UI: пресеты AS-IS/TO-BE + клиентский буфер (v1.1.0)**: «+ Добавить» (аддитивно) и «⟳ Заменить» (очистка Rules + force-set Final). Изменения буферизуются в браузере; Action-bar Сохранить/Отмена. Apply при unsaved требует подтверждения.
-- **Светлая тема Routing UI (v1.1.2)**: переключатель ☀/☾, persist через localStorage, дефолт по `prefers-color-scheme`.
-- **Per-core presets**: при применении пресета URL rule_sets подбираются автоматически под ядро: `.srs` для sing-box (SagerNet), `.mrs` для mihomo (MetaCubeX), geosite:/geoip: matcher для xray (встроенный `.dat`).
-- **Протоколы по ядрам** (актуально на 19.06.2026: sing-box 1.13.13, xray 26.3.27, mihomo 1.19.27; полная таблица ниже):
-  - Все три ядра: VLESS Reality, VMess, Trojan, Shadowsocks legacy + 2022, XHTTP basic, транспорты WS/gRPC/QUIC/h2, uTLS-фингерпринт
-  - sing-box + mihomo: Hysteria 2 (obfs-salamander, brutal CC), TUIC v5, WireGuard, AnyTLS
-  - xray only: Vision UDP443 (`flow=*-udp443`), PQ-VLESS (`mlkem768x25519plus`), XHTTP `stream-up`/`stream-one`/`packet-up`
-  - sing-box only через peer-chain: naiveproxy, mieru
-- Управление sing-box / xray / mihomo / naive / mieru: установка, запуск, остановка, обновление, откат
-- Два режима маршрутизации: `policy` - выборочная маркировка (default), `full` - весь LAN-трафик через прокси. DPI работает в обоих режимах через nfqws2 + NFQUEUE.
-- **DPI в mangle FORWARD (v1.1.0)**: `signcraze_dpi_fwd` ловит трафик всех LAN-устройств (не только policy), desync YouTube/Discord работает для TV/гостей/IoT.
-- **Защита SSH/admin при policy (v1.1.1)**: LAN-bypass `-d <LAN_IP> -j RETURN` на pos=1 + admin-ports (22/222) bypass; `--uninstall` отвязывает host-policy в startup-config (factory reset больше не нужен).
-- **ANSI-цветной CLI и логи (v1.2.0)**: `--status`/`--diag`/`--core-list`/`--install`/`--help` раскрашены; opt-out: `--no-color`, `NO_COLOR`, `TERM=dumb`. Кастомный `colorTextHandler` для slog stderr (файловый JSON не меняется).
-- **Hardening (v1.4.0)**: `iptables-restore --noflush` batching (24 fork до 3), WAN cache, watchdog покрывает REDIRECT + DPI FORWARD, reproducible builds (`-buildid=` + `SOURCE_DATE_EPOCH`), cosign keyless OIDC + SLSA provenance, `--diag --json`, WebSocket keepalive 30s, bcrypt cost=10 для MIPS (login 6s до 2s).
-- Атомарное применение правил iptables/ipset с гарантированным откатом
-- Гео-фильтрация через SRS rule-set (выборочная загрузка по SHA256, streaming)
-- Встроенный Web UI (только из LAN): Zashboard `:9090`, admin API `:9091`, Routing Editor `:9092` (vanilla Preact + htm SPA)
-- Selective DPI: desync только для выбранных доменов/SNI через `--dpi-targets`
-- WAN-фильтр в DPI-правилах: NFQUEUE захватывает только ISP-трафик (`-o $WAN_IFACE`), не трогая LAN-bridge и TUN
-- VPN-exclude (`--dpi-exclude-ips`): RETURN перед NFQUEUE для заданных IP - сохраняет TLS-маскировку Reality-handshake к собственному серверу и downstream-VPN-клиентов на том же эндпоинте
-- Auto-update hostlist (`--dpi-update-interval 24`): автообновление списка DPI-доменов раз в 24 ч из upstream-источников (zapret, Flowseal discord/youtube); `--dpi-update-now` - принудительный запуск
-- Firewall watchdog: автовосстановление iptables-правил каждые 30 с при работающем `--ui on`
-- Управление портами и исключениями без перезапуска
-- Резервное копирование и восстановление конфигурации
-- Диагностический режим (`--diag`, опционально `--diag --json`)
+**Управление прокси-ядром**
+- Три ядра: sing-box / xray / mihomo — автодетект по URL outbound при `--install`, переключение `--core <name>`. Supervised peers naiveproxy и mieru через process chain sing-box (CLI: `--with-naive`).
+- Полная матрица поддерживаемых протоколов по ядрам: [`docs/COMPATIBILITY_MATRIX.md`](docs/COMPATIBILITY_MATRIX.md). Коротко: VLESS Reality / VMess / Trojan / Shadowsocks — все три ядра; Hysteria 2 / TUIC v5 / WireGuard — sing-box и mihomo; xray-only: Vision UDP443, PQ-VLESS, XHTTP stream-up.
+
+**Маршрутизация**
+- Два режима: `policy` (выборочная маркировка) и `full` (весь LAN-трафик через прокси).
+- Core-agnostic `routing.json`: единые правила транслируются в натив-форматы sing-box/xray/mihomo. Routing Editor `:9092` (Web UI) с пресетами (`block-ads`, `ru-direct`, `blocked-vpn` и др.), клиентским буфером и режимами AS-IS/TO-BE.
+- Гео-фильтрация через SRS rule-set (SHA256, streaming); атомарное применение iptables/ipset с гарантированным откатом.
+
+**DPI-обход (nfqws2)**
+- `signcraze_dpi_fwd` в mangle FORWARD: desync для всех LAN-устройств (TV, гости, IoT), а не только policy.
+- Selective DPI по SNI (`--dpi-targets`), VPN-exclude (`--dpi-exclude-ips`), auto-update hostlist раз в N часов из upstream.
+
+**Web UI и диагностика**
+- Только из LAN: Zashboard `:9090`, admin REST `:9091`, Routing Editor `:9092`. Без HTTP-аутентификации by design; WAN-доступ блокируется NDM INPUT DROP.
+- ANSI-цветной CLI (`--status`, `--diag`, `--core-list`); `--diag --json` для скриптов.
+
+**Безопасность релизов**
+- Reproducible builds, cosign keyless OIDC + SLSA provenance, SHA-256 checksums. Firewall watchdog: автовосстановление правил каждые 30 с.
 
 ## Поддерживаемые архитектуры
 
-| Платформа | GOARCH | Примечание |
-| ----------- | -------- | ----------- |
-| Keenetic (MIPS LE) | `mipsle` | GOMIPS=softfloat |
-| Keenetic (MIPS BE) | `mips` | GOMIPS=softfloat |
-| Keenetic / RPi (ARM 32) | `arm` | GOARM=7 |
-| Keenetic Ultra / RPi 4 | `arm64` | |
+Поддерживаются `mipsle` и `mips` (GOMIPS=softfloat), `arm` (GOARM=7) и `arm64`. Полная матрица совместимости по железу, прошивкам и Entware-суффиксам: [`docs/COMPATIBILITY_MATRIX.md`](docs/COMPATIBILITY_MATRIX.md).
 
 ## Требования
 
@@ -251,38 +273,13 @@ sign-craze --restart
 
 ### Поддерживаемые протоколы
 
-Актуально на 19.06.2026: sing-box 1.13.13 (1.13.x), xray-core 26.3.27 (26.x; именно эта сборка не стартует на mips/mipsle — см. ²), mihomo 1.19.27 (1.19.x). Версии ядер ставятся из latest GitHub release. Полная матрица с разбивкой по транспортам, uTLS, ECH, sniffing: [`docs/COMPATIBILITY_MATRIX.md`](docs/COMPATIBILITY_MATRIX.md) (раздел «Матрица протокол × ядро»).
+Полная матрица с разбивкой по транспортам, uTLS, ECH и sniffing: [`docs/COMPATIBILITY_MATRIX.md`](docs/COMPATIBILITY_MATRIX.md). Коротко (актуально на 19.06.2026: sing-box 1.13.13, xray-core 26.3.27, mihomo 1.19.27):
 
-| Протокол / режим | sing-box | xray | mihomo |
-|------------------|:--------:|:----:|:------:|
-| VLESS Reality (PublicKey + ShortID)   | ✓ | ✓ | ✓ |
-| VLESS Vision (`xtls-rprx-vision`, TCP/TLS) | ⚠ | ✓ | ✓ |
-| VLESS Vision UDP443 (`*-udp443`)      | ✗ | ✓ | ✗ |
-| VLESS XHTTP (basic, без `mode`)       | ✓ | ✓ | ✓ |
-| VLESS XHTTP `stream-up` / `stream-one` / `packet-up` | ✗ | ✓ | ✓ |
-| PQ-VLESS (`mlkem768x25519plus`)       | ✗ | ✓ | ✗ |
-| VMess (AEAD)                          | ✓ | ✓ | ✓ |
-| Trojan                                | ✓ | ✓ | ✓ |
-| Shadowsocks legacy (AEAD)             | ✓ | ✓ | ✓ |
-| Shadowsocks 2022 (`2022-blake3-*`)    | ✓ | ✓ | ✓ |
-| Hysteria 2 (obfs-salamander, brutal CC) | ✓ | ✗ | ✓ |
-| TUIC v5 (unified)                     | ✓ | ✗ | ✓ |
-| WireGuard outbound                    | ✓ | ✗ | ✓ |
-| AnyTLS                                | ✓ | ✗ | ✓ |
-| Transport WebSocket / gRPC / QUIC / h2 | ✓ | ✓ | ✓ |
-| uTLS fingerprint (chrome/firefox/safari/ios/random) | ✓ | ✓ | ✓ |
-| ECH (Encrypted ClientHello)           | ⚠ | ⚠ | ⚠ |
-| Socks5 / HTTP CONNECT                 | ✓ | ✓ | ✓ |
-| naiveproxy (supervised peer)          | ✓ ¹ | ✗ | ✗ |
-| mieru (supervised peer)               | ✓ ¹ | ✗ | ✗ |
-
-> ✓ - полная поддержка · ⚠ - частичная / экспериментальная (см. примечания в COMPATIBILITY_MATRIX) · ✗ - не поддерживается, `Validate` отвергнет конфиг.
->
-> ¹ naive/mieru - supervised peer (process chain). sign-craze запускает daemon на `127.0.0.1`, sing-box подключается через socks5-outbound. xray/mihomo явно отклоняют такие конфиги с подсказкой `--core sing-box`. mips (big-endian) для naive не поддерживается: klzgrad публикует только linux-mipsel (LE).
->
-> **Ограничения mihomo** (источник: `internal/core/mihomo/validate.go`): Vision UDP443 и PQ-VLESS отклоняются с подсказкой `--core xray`. **Ограничения xray** (источник: `internal/core/xray/validate.go`): TUIC v5, WireGuard, Hysteria 2 отклоняются с подсказкой `--core sing-box` / `--core mihomo`.
->
-> ² **mips/mipsle**: из ветки xray-core 26.* при старте падает ТОЛЬКО сборка **26.3.27** (текущий latest) — `runtime.futexwakeup ... returned -89` (ENOSYS) на старых ядрах Keenetic (3.4–4.x), регрессия конкретного релиза. Остальные 26.* (более ранние) работают. На mips/mipsle sign-craze ставит pinned custom-build xray v25.12.8 (репо `kittylabassistant/sign-craze-xray`, источник `internal/core/xray/download.go`).
+- **Все три ядра:** VLESS Reality, VMess, Trojan, Shadowsocks (legacy + 2022), XHTTP basic, транспорты WS/gRPC/QUIC/h2, uTLS-фингерпринт.
+- **sing-box + mihomo:** Hysteria 2, TUIC v5, WireGuard, AnyTLS.
+- **xray only:** Vision UDP443, PQ-VLESS (`mlkem768x25519plus`), XHTTP `stream-up`/`stream-one`.
+- **sing-box only (peer-chain):** naiveproxy, mieru.
+- На mips/mipsle используется pinned custom-build xray v25.12.8 (регрессия в 26.3.27).
 
 ### Унифицированный Routing Editor
 
@@ -403,7 +400,7 @@ sign-craze --uninstall          Полное удаление: sing-box, кон�
 sign-craze --version / -v       Показать версии sign-craze и sing-box
 ```
 
-Полное описание каждой команды, инварианты iptables и форматы конфигов: [`BEHAVIOR_SPEC.md`](BEHAVIOR_SPEC.md).
+Полное описание каждой команды, инварианты iptables и форматы конфигов: [`BEHAVIOR_SPEC.md`](docs/BEHAVIOR_SPEC.md).
 
 ## Сборка из исходников
 

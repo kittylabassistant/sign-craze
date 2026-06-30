@@ -6,8 +6,8 @@
 
 ### В чём отличие режимов `policy` и `full`?
 
-- **`policy` (по умолчанию)** — sign-craze создаёт IP-policy `sign-craze` в Keenetic через RCI, читает присвоенный Keenetic fwmark и ставит iptables-правила с фильтром по этому mark. **Выбор устройств** — через штатный web-UI Keenetic «Приоритеты подключений». Никакого собственного ipset не требуется. Безопасный default.
-- **`full` (legacy)** — sign-craze управляет всем: создаёт ipset `signcraze_ipv4`/`signcraze_ipv6`/`signcraze_excludes`, ставит свой fwmark `0x53` и маршрутизирует **весь** транзитный трафик через TUN. Полезен на не-Keenetic-роутерах или если нужен fine-grained контроль через ipset.
+- **`policy` (по умолчанию)** — sign-craze создаёт IP-policy `sign-craze` в Keenetic через RCI, читает присвоенный Keenetic [fwmark](https://www.man7.org/linux/man-pages/man7/socket.7.html) и ставит [iptables](https://www.netfilter.org/projects/iptables/index.html)-правила с фильтром по этому mark. **Выбор устройств** — через штатный web-UI Keenetic «Приоритеты подключений». Никакого собственного ipset не требуется. Безопасный default.
+- **`full` (legacy)** — sign-craze управляет всем: создаёт [ipset](https://ipset.netfilter.org/) `signcraze_ipv4`/`signcraze_ipv6`/`signcraze_excludes`, ставит свой fwmark `0x53` и маршрутизирует **весь** транзитный трафик через TUN. Полезен на не-Keenetic-роутерах или если нужен fine-grained контроль через ipset.
 
 Переключение: `sign-craze --mode policy --restart` или `sign-craze --mode full --restart`.
 
@@ -31,12 +31,12 @@ grep watchdog /opt/var/log/sign-craze/sign-craze.log | tail -10
 
 ### Работает ли DPI/nfqws2 из коробки?
 
-Нет. После `--install` / `--install-auto` запущен только `sing-box` (режим `policy`), `nfqws2` **не скачан**, NFQUEUE-правила в iptables не добавлены, `state.json` хранит `dpi_enabled=false`. DPI-обход — opt-in.
+Нет. После `--install` / `--install-auto` запущен только `sing-box` (режим `policy`), `nfqws2` **не скачан**, [NFQUEUE](https://www.netfilter.org/projects/libnetfilter_queue/)-правила в iptables не добавлены, `state.json` хранит `dpi_enabled=false`. DPI-обход — opt-in.
 
 Минимум для активации:
 
 ```sh
-sign-craze --dpi on        # качает nfqws2 в /opt/sbin/, генерит /opt/etc/sign-craze/nfqws2.conf, ставит DPIEnabled=true
+sign-craze --dpi on        # качает [nfqws2](https://github.com/nfqws/nfqws2-keenetic) в /opt/sbin/, генерит /opt/etc/sign-craze/nfqws2.conf, ставит DPIEnabled=true
 sign-craze --restart       # applier добавляет NFQUEUE-правила, lifecycle поднимает nfqws2
 ```
 
@@ -93,9 +93,9 @@ sign-craze поддерживает три взаимозаменяемых пр
 
 | Ядро | Когда использовать |
 |---|---|
-| **sing-box** (умолчание) | Большинство конфигураций: VLESS/VMess/Trojan/Shadowsocks, TUN-режим на стоковом ядре Keenetic |
-| **xray** | PQ-VLESS (постквантовое шифрование), Vision UDP443, xhttp packet-up режимы — сценарии жёсткого DPI |
-| **mihomo** | Hysteria2, TUIC, WireGuard — протоколы, нативно реализованные в mihomo/Meta |
+| **[sing-box](https://sing-box.sagernet.org/)** (умолчание) | Большинство конфигураций: VLESS/VMess/Trojan/Shadowsocks, TUN-режим на стоковом ядре Keenetic |
+| **[xray](https://xtls.github.io/)** | PQ-VLESS (постквантовое шифрование), Vision UDP443, xhttp packet-up режимы — сценарии жёсткого DPI |
+| **[mihomo](https://wiki.metacubex.one/)** | [Hysteria2](https://v2.hysteria.network/), [TUIC](https://github.com/EAimTY/tuic), [WireGuard](https://www.wireguard.com/) — протоколы, нативно реализованные в mihomo/Meta |
 
 Переключение ядра:
 
@@ -157,7 +157,7 @@ sign-craze --restart
 
 ### Как открыть веб-интерфейс?
 
-Откройте в браузере `http://<ROUTER_IP>:9090/` из локальной сети. Это Zashboard — Clash-совместимый dashboard, который показывает реальное дерево прокси, живые счётчики трафика, активные соединения и логи в реальном времени. Данные берутся напрямую из sing-box через Clash API реверс-прокси (sign-craze проксирует `/proxies`, `/connections`, `/traffic`, `/logs` и пр. на внутренний порт sing-box `9094`). Стриминговые эндпоинты (`/traffic`, `/logs`, `/connections`) передаются без буферизации. Предварительно запустите: `sign-craze --ui on`.
+Откройте в браузере `http://<ROUTER_IP>:9090/` из локальной сети. Это [Zashboard](https://github.com/Zephyruso/zashboard) — Clash-совместимый dashboard, который показывает реальное дерево прокси, живые счётчики трафика, активные соединения и логи в реальном времени. Данные берутся напрямую из sing-box через Clash API реверс-прокси (sign-craze проксирует `/proxies`, `/connections`, `/traffic`, `/logs` и пр. на внутренний порт sing-box `9094`). Стриминговые эндпоинты (`/traffic`, `/logs`, `/connections`) передаются без буферизации. Предварительно запустите: `sign-craze --ui on`.
 
 Выбор активного прокси сохраняется через `experimental.cache_file.path` (`/opt/var/lib/sign-craze/cache.db`); поле `store_mode` удалено в sing-box ≥ 1.10.
 

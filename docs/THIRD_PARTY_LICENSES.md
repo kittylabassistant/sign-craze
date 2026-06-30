@@ -7,7 +7,7 @@ Sign-Craze использует следующие сторонние компо
 
 ---
 
-## sing-box
+## [sing-box](https://sing-box.sagernet.org/)
 
 - **Репозиторий**: <https://github.com/SagerNet/sing-box>
 - **Использование**: загружается в рантайме как отдельный исполняемый файл,
@@ -148,8 +148,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ---
 
----
-
 ## golang.org/x/sys
 
 - **Репозиторий**: <https://github.com/golang/sys>
@@ -194,7 +192,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 - **Репозиторий**: <https://github.com/golang/term>
 - **Версия**: v0.42.0 (зафиксировано в go.mod)
-- **Использование**: работа с терминалом (чтение пароля без echo);
+- **Использование**: определение TTY и поддержка `--no-color`/`NO_COLOR`
+  (`internal/cli/color.go`, `internal/log/log.go`);
   статически компилируется в бинарь Sign-Craze.
 - **Лицензия**: BSD 3-Clause «New» or «Revised» License
 

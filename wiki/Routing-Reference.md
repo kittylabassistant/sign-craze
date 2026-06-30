@@ -38,7 +38,7 @@ routing.json
 
 Один `RouteRule` из `routing.json` транслируется в нативные конструкции каждого ядра:
 
-| Поле `RouteRule` | sing-box | xray | mihomo |
+| Поле `RouteRule` | [sing-box](https://sing-box.sagernet.org/) | xray | [mihomo](https://wiki.metacubex.one/) |
 |---|---|---|---|
 | `domain: ["x.com"]` | `"domain": ["x.com"]` (1:1) | `"domain": ["x.com"]` | `DOMAIN,x.com,<action>` |
 | `domain_suffix: [".x.com"]` | `"domain_suffix": [".x.com"]` | `"domain": ["x.com"]` | `DOMAIN-SUFFIX,x.com,<action>` |
@@ -78,7 +78,7 @@ routing.json
 
 **Вкладки:**
 
-- **Inbounds** — tun, tproxy, mixed, socks, http
+- **Inbounds** — tun, [tproxy](https://www.kernel.org/doc/html/latest/networking/tproxy.html), mixed, socks, http
 - **Outbounds** — vless / vmess / trojan / shadowsocks / direct / block
 - **Routing** — список правил с drag-n-drop reorder; полная схема sing-box rule (domain, ip\_cidr, port, port\_range, protocol, rule\_set, invert)
 - **Rule Sets** — кастомные удалённые SRS-источники

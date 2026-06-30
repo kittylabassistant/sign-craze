@@ -41,7 +41,7 @@ sign-craze --install-auto --core sing-box --with-dpi --proxy \
   'vless://UUID@host:port?type=grpc&encryption=none&security=reality&pbk=PBK&fp=chrome&sni=SNI&sid=SID#tag'
 ```
 
-Sing-box скачает с GitHub через тот же mirror chain. Если упадёт на degraded-state (предыдущая установка не завершилась):
+[Sing-box](https://sing-box.sagernet.org/) скачает с GitHub через тот же mirror chain. Если упадёт на degraded-state (предыдущая установка не завершилась):
 
 ```sh
 sign-craze --reinstall --proxy '<URL>'
@@ -56,7 +56,7 @@ sign-craze --dpi on
 sign-craze --restart
 ```
 
-Бинарь nfqws2 + lua/blob-ассеты (скрипты обхода, payload-blobs) скачиваются из `nfqws/nfqws2-keenetic`. С v0.6.2 install проверяет наличие ассетов, не только бинаря.
+Бинарь [nfqws2](https://github.com/nfqws/nfqws2-keenetic) + lua/blob-ассеты (скрипты обхода, payload-blobs) скачиваются из `nfqws/nfqws2-keenetic`. С v0.6.2 install проверяет наличие ассетов, не только бинаря.
 
 ## Если ничего не скачивается — offline
 
@@ -101,7 +101,7 @@ sign-craze --restart
 
 ## Xray при жёстком DPI
 
-Если sing-box не пробивается через DPI (VLESS/VMess детектируются провайдером), xray предлагает дополнительные транспортные опции:
+Если sing-box не пробивается через DPI (VLESS/VMess детектируются провайдером), [xray](https://xtls.github.io/) предлагает дополнительные транспортные опции:
 
 - **XHTTP packet-up режимы** (`xhttpMode: packet-up`) — маскировка под обычный HTTP-загрузчик, менее детектируем чем grpc/ws
 - **PQ-VLESS** (постквантовое шифрование) — дополнительный уровень обфускации
@@ -117,7 +117,7 @@ sign-craze --install --core xray --proxy 'vless://UUID@host:443?type=xhttp&secur
 sign-craze --start
 ```
 
-Xray использует TProxy inbound (не TUN), поэтому требует `xt_TPROXY` модуль в ядре. На Keenetic с прошивкой 4.9+ модули `xt_TPROXY.ko` и `xt_socket.ko` присутствуют в `/lib/modules/` и загружаются автоматически через `insmod`. На более старых прошивках может понадобиться `--core sing-box` как fallback.
+Xray использует [TProxy](https://www.kernel.org/doc/html/latest/networking/tproxy.html) inbound (не TUN), поэтому требует `xt_TPROXY` модуль в ядре. На Keenetic с прошивкой 4.9+ модули `xt_TPROXY.ko` и `xt_socket.ko` присутствуют в `/lib/modules/` и загружаются автоматически через `insmod`. На более старых прошивках может понадобиться `--core sing-box` как fallback.
 
 ## VLESS URL: spx и выбор ядра
 
@@ -130,7 +130,7 @@ Xray использует TProxy inbound (не TUN), поэтому требуе
 
 **Рекомендация:** убирай `spx=%2F` из URL — это default REALITY `/`, серверу всё равно. Тогда sign-craze автоматически выберет sing-box (TUN-mode firewall — стабильнее xray TPROXY на стоковом ядре Keenetic, у которого нет `xt_TPROXY`).
 
-Если URL содержит `spx`, sign-craze принудительно выберет xray. **Известное ограничение:** xray policy-mode firewall в sign-craze не имеет TPROXY-правил, трафик не маршрутизируется через xray на стоковом ядре. Чтобы использовать REALITY с custom spider-path — потребуется ядро с `xt_TPROXY` (нестандартная прошивка).
+Если URL содержит `spx`, sign-craze принудительно выберет xray. **Известное ограничение:** xray policy-mode firewall в sign-craze не имеет TPROXY-правил, трафик не маршрутизируется через xray на стоковом ядре. Чтобы использовать [REALITY](https://github.com/XTLS/REALITY) с custom spider-path — потребуется ядро с `xt_TPROXY` (нестандартная прошивка).
 
 ## Override mirror chain
 

@@ -13,6 +13,7 @@
 - [README](https://github.com/kittylabassistant/sign-craze/blob/main/README.md)
 - [CHANGELOG](https://github.com/kittylabassistant/sign-craze/blob/main/CHANGELOG.md)
 - [ARCHITECTURE](https://github.com/kittylabassistant/sign-craze/blob/main/docs/ARCHITECTURE.md)
+- [BEHAVIOR_SPEC](https://github.com/kittylabassistant/sign-craze/blob/main/docs/BEHAVIOR_SPEC.md)
 
 **Ссылки**
 

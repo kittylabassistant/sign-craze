@@ -6,11 +6,11 @@
 
 ## 1. Принцип ownership
 
-Sign-craze удаляет только те системные сущности, которые создал сам — определяемые по точному префиксу имени, полному пути или PID из собственного pidfile. Никаких широких операций: нет `iptables -F`, нет `ipset destroy` без имени, нет `rm -rf /opt/var/run/*`. Если сущность создана другим инструментом (XKeen, Entware-пакеты, ручная настройка) — sign-craze её не трогает, даже если она «выглядит похоже». Правило одно: нет префикса `signcraze_` или известного пути из этого документа — не удалять.
+Sign-craze удаляет только те системные сущности, которые создал сам — определяемые по точному префиксу имени, полному пути или PID из собственного pidfile. Никаких широких операций: нет `iptables -F`, нет `ipset destroy` без имени, нет `rm -rf /opt/var/run/*`. Если сущность создана другим инструментом (XKeen, [Entware](https://entware.net/)-пакеты, ручная настройка) — sign-craze её не трогает, даже если она «выглядит похоже». Правило одно: нет префикса `signcraze_` или известного пути из этого документа — не удалять.
 
 ---
 
-## 2. iptables chains (таблица mangle)
+## 2. [iptables](https://www.netfilter.org/projects/iptables/index.html) chains (таблица mangle)
 
 Все user-defined chains sign-craze живут исключительно в таблице **mangle**.
 
@@ -70,7 +70,7 @@ Sign-craze устанавливает jump-правила в `mangle PREROUTING`
 
 ---
 
-## 4. ipset
+## 4. [ipset](https://ipset.netfilter.org/)
 
 | Набор                | Тип        | Family         | Используется                                       | Источник                                      |
 |----------------------|------------|----------------|----------------------------------------------------|-----------------------------------------------|
@@ -85,16 +85,16 @@ Sign-craze устанавливает jump-правила в `mangle PREROUTING`
 
 ---
 
-## 5. Routing (ip rule / ip route)
+## 5. Routing ([ip rule](https://www.man7.org/linux/man-pages/man8/ip-rule.8.html) / ip route)
 
 | Сущность                                       | Значение                  | Владелец              | Удаление                                  | Источник                              |
 |------------------------------------------------|---------------------------|-----------------------|-------------------------------------------|---------------------------------------|
-| fwmark                                         | `0x53` (83 dec)           | sign-craze            | `DeleteIPRule` при Remove                 | `applier.go:35`, `route.go:64`        |
+| [fwmark](https://www.man7.org/linux/man-pages/man7/socket.7.html)                                         | `0x53` (83 dec)           | sign-craze            | `DeleteIPRule` при Remove                 | `applier.go:35`, `route.go:64`        |
 | Routing table                                  | `83`                      | sign-craze            | маршрут удаляется, таблица не создаётся явно | `applier.go:36`                    |
 | `ip rule fwmark 0x53 lookup 83 priority 32765` | —                         | sign-craze            | `ip rule del fwmark 0x53 table 83`        | `route.go:46-60`                      |
 | `ip route table 83 default dev signbox-tun`    | loop-prevention           | sign-craze            | `DeleteTUNRoute` при Remove               | `route.go:100-117`                    |
-| TUN netdev `signbox-tun`                       | создаётся sing-box при старте | sign-craze (managed) | `ForceDeleteTUNDevice` перед/после Stop  | `route.go:131`                        |
-| `0xffffaaXX` marks                             | Keenetic policy marks     | Keenetic              | **НЕ ТРОГАТЬ** — только через RCI API     | `ndm/policy.go`                       |
+| TUN netdev `signbox-tun`                       | создаётся [sing-box](https://sing-box.sagernet.org/) при старте | sign-craze (managed) | `ForceDeleteTUNDevice` перед/после Stop  | `route.go:131`                        |
+| `0xffffaaXX` marks                             | [Keenetic](https://help.keenetic.com/hc/ru) policy marks     | Keenetic              | **НЕ ТРОГАТЬ** — только через RCI API     | `ndm/policy.go`                       |
 
 **Pre-flight:** перед Apply — `CheckFWMarkAvailable`. Если fwmark `0x53` уже использует другую таблицу (XKeen или кастом) — Apply прерывается с `ErrFWMarkConflict`, не перезаписывая чужое правило. Источник: `internal/firewall/route.go:14-43`.
 
@@ -106,7 +106,7 @@ Sign-craze устанавливает jump-правила в `mangle PREROUTING`
 
 | Путь                                   | Содержимое                                          | Удаляется при   | Источник                                           |
 |----------------------------------------|-----------------------------------------------------|------------------|----------------------------------------------------|
-| `/opt/etc/sign-craze/`                 | `state.json`, sing-box `config.json`, `nfqws2.conf`, `admin.creds` | `--uninstall` | `state/state.go:18`, `singbox/install.go:27`, `dpi/install.go:19` |
+| `/opt/etc/sign-craze/`                 | `state.json`, sing-box `config.json`, `nfqws2.conf` | `--uninstall` | `state/state.go:18`, `singbox/install.go:27`, `dpi/install.go:19` |
 | `/opt/var/lib/sign-craze/`             | `cache/`, `geo/` (.srs), `backups/`                 | `--uninstall`   | `singbox/install.go:30`, `geo/srs.go:21`, `backup/backup.go:15` |
 | `/opt/var/log/sign-craze/`             | `sing-box.log`, `sing-box.stderr.log`, `boot.log`   | `--uninstall`   | `singbox/lifecycle.go:14`, `cli/cmd_lifecycle.go:231` |
 | `/opt/share/sign-craze/ipset.dump`     | Дамп ipset для восстановления после ребута          | `--uninstall`   | `firewall/ipset_persist.go:16`                     |
@@ -117,7 +117,7 @@ Sign-craze устанавливает jump-правила в `mangle PREROUTING`
 |--------------------------------------------|---------------------------|------------------------------|-------------------------------------------------|
 | `/opt/var/run/sign-craze-singbox.pid`      | PID процесса sing-box     | stop, uninstall, stale cleanup | `singbox/lifecycle.go:9`, `cli/cmd_uninstall.go:79` |
 | `/opt/var/run/sign-craze-nfqws2.pid`       | PID процесса nfqws2       | stop, uninstall              | `dpi/lifecycle.go:9`, `cli/cmd_uninstall.go:80` |
-| `/opt/var/lock/sign-craze.lock`            | flock-файл (не удаляется, снимается блокировка) | процесс завершается | `locks/file.go:16` |
+| `/opt/var/lock/sign-craze.lock`            | [flock](https://man7.org/linux/man-pages/man2/flock.2.html)-файл (не удаляется, снимается блокировка) | процесс завершается | `locks/file.go:16` |
 
 ### 6.3 Binaries
 
@@ -145,8 +145,8 @@ Sign-craze устанавливает jump-правила в `mangle PREROUTING`
 
 | Путь                                       | Содержимое                 | Удаляется при                 |
 |--------------------------------------------|----------------------------|-------------------------------|
-| `/opt/var/run/sign-craze-naive.pid`        | PID процесса naive daemon   | stop, uninstall, stale cleanup |
-| `/opt/var/run/sign-craze-mieru.pid`        | PID процесса mieru daemon   | stop, uninstall, stale cleanup |
+| `/opt/var/run/sign-craze-naive.pid`        | PID процесса [naive](https://github.com/klzgrad/naiveproxy) daemon   | stop, uninstall, stale cleanup |
+| `/opt/var/run/sign-craze-mieru.pid`        | PID процесса [mieru](https://github.com/enfein/mieru) daemon   | stop, uninstall, stale cleanup |
 
 ---
 

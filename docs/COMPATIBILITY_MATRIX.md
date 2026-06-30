@@ -1,6 +1,6 @@
 # Матрица совместимости sign-craze
 
-Этот документ является единым справочником по поддерживаемым архитектурам, прошивкам, устройствам, kernel-модулям и внешним зависимостям. Он заменяет разрозненные упоминания в README. Актуален для sign-craze v0.3.x+ (TUN-режим, без TPROXY как dependency на ядро).
+Этот документ является единым справочником по поддерживаемым архитектурам, прошивкам, устройствам, kernel-модулям и внешним зависимостям. Он заменяет разрозненные упоминания в README. Актуален для sign-craze v0.3.x+ (TUN-режим, без [TPROXY](https://www.kernel.org/doc/html/latest/networking/tproxy.html) как dependency на ядро).
 
 Последнее обновление: v1.6.1 (2026-06-19).
 
@@ -10,7 +10,7 @@
 
 | Суффикс релиза      | GOARCH   | GOARM | GOMIPS      | Порядок байт  | UPX (`--lzma`) | Примеры устройств                         |
 |---------------------|----------|-------|-------------|---------------|----------------|------------------------------------------ |
-| `sign-craze-mipsle` | `mipsle` | —     | `softfloat` | Little-endian | Да             | Keenetic KN-1810, KN-1012, KN-2510        |
+| `sign-craze-mipsle` | `mipsle` | —     | `softfloat` | Little-endian | [UPX](https://upx.github.io/) (`--lzma`) | [Keenetic](https://help.keenetic.com/hc/ru) KN-1810, KN-1012, KN-2510        |
 | `sign-craze-mips`   | `mips`   | —     | `softfloat` | Big-endian    | Нет¹           | Некоторые старые Keenetic/TP-Link MIPS BE |
 | `sign-craze-arm7`   | `arm`    | `7`   | —           | Little-endian | Да             | Keenetic Giga / Speed X (ARMv7)           |
 | `sign-craze-arm64`  | `arm64`  | —     | —           | Little-endian | Да             | Keenetic Ultra KN-1811, Raspberry Pi 4    |
@@ -19,7 +19,7 @@
 
 Все цели собираются с `CGO_ENABLED=0`, `-trimpath`, `-s -w`. Версия Go ≥ 1.25 (`go.mod`). Бинарь single-static — без внешних `.so` зависимостей.
 
-**Требование softfloat**: KN-1810 (и большинство Keenetic на MIPS) не имеет FPU. `GOMIPS=hardfloat` → `SIGILL` при первом запуске.
+**Требование softfloat**: KN-1810 (и большинство Keenetic на MIPS) не имеет FPU. [`GOMIPS=hardfloat`](https://pkg.go.dev/cmd/go#hdr-Environment_variables) → `SIGILL` при первом запуске.
 
 ---
 
@@ -70,7 +70,7 @@
 | `ipset` (userspace)         | только `full`         | `ipset --version`                                  | `opkg install ipset`                          |
 | `kmod-nfnetlink-queue`      | только `--dpi on`     | `lsmod \| grep nfnetlink_queue`                    | `opkg install kmod-nfnetlink-queue`           |
 | `iptables-mod-nfqueue`      | только `--dpi on`     | `iptables -j NFQUEUE --help`                       | `opkg install iptables-mod-nfqueue`           |
-| `ip rule` / `ip route`      | `policy` и `full`     | `ip rule show \| grep 0x53`                        | Встроен (iproute2 в Entware/busybox)          |
+| `ip rule` / `ip route`      | `policy` и `full`     | `ip rule show \| grep 0x53`                        | Встроен (iproute2 в [Entware](https://entware.net/)/[busybox](https://busybox.net/))          |
 
 **Важно**: `xt_TPROXY` больше не требуется как kernel-зависимость начиная с v0.3.0 — sing-craze использует TUN-mode для inbound (sing-box).
 
@@ -84,10 +84,10 @@
 
 | Бинарь      | Мин. версия | GitHub-репозиторий                          | Путь установки          | Загружается при              |
 |-------------|-------------|---------------------------------------------|-------------------------|------------------------------|
-| `sing-box`     | **1.13.0**  | `github.com/SagerNet/sing-box`              | `/opt/sbin/sing-box`    | `--install`, `--update-core`              |
+| [sing-box](https://sing-box.sagernet.org/)     | **1.13.0**  | `github.com/SagerNet/sing-box`              | `/opt/sbin/sing-box`    | `--install`, `--update-core`              |
 | `nfqws2`       | latest      | `github.com/nfqws/nfqws2-keenetic`          | `/opt/sbin/nfqws2`      | `--dpi on`                                |
-| `naiveproxy`   | latest      | `github.com/klzgrad/naiveproxy`             | `/opt/sbin/naive`       | `--with-naive`, `--install --with-naive`  |
-| `mieru`        | latest      | `github.com/enfein/mieru`                   | `/opt/sbin/mieru`       | supervised peer при подключении mieru     |
+| [naiveproxy](https://github.com/klzgrad/naiveproxy)   | latest      | `github.com/klzgrad/naiveproxy`             | `/opt/sbin/naive`       | `--with-naive`, `--install --with-naive`  |
+| [mieru](https://github.com/enfein/mieru)        | latest      | `github.com/enfein/mieru`                   | `/opt/sbin/mieru`       | supervised peer при подключении mieru     |
 
 **sing-box 1.13** — минимальная версия: начиная с 1.13 DNS-сервер использует тип `local` (системный resolver); тип `udp` с `detour: direct` запрещён. Генератор конфига в `internal/singbox/config.go` опирается на это поведение.
 
@@ -161,11 +161,13 @@
 - **KeeneticOS 4.x и ниже**: отсутствует `/rci/show/ip/policy`. Режим `policy` недоступен. Режим `full` теоретически применим, не тестировался.
 - **IPv6 без kernel-модулей**: ip6tables-цепочки создаются по аналогии. Если провайдер не предоставляет IPv6 — цепочки пустые (не ломают работу).
 - **Проксирование трафика самого роутера в режиме `policy`**: Keenetic ставит mark только на пакеты LAN-устройств, привязанных к политике. Трафик с роутера (SSH, `curl` из shell) mark не получает.
-- **Conntrack и уже открытые соединения**: после `--start` соединения, открытые до применения правил, продолжают идти напрямую. Применение ко всем соединениям: `conntrack -F` или реконнект клиента.
+- **[conntrack](https://www.netfilter.org/projects/conntrack-tools/) и уже открытые соединения**: после `--start` соединения, открытые до применения правил, продолжают идти напрямую. Применение ко всем соединениям: `conntrack -F` или реконнект клиента.
 
 ---
 
 ## Матрица протокол × ядро
+
+> Выбор ядра при установке (`sign-craze --core <name>`) зависит от используемых протоколов, транспортов и формата geo-данных. Таблицы ниже позволяют быстро определить, какое ядро поддерживает нужные функции, и избежать incompatibility-предупреждений при `Apply`.
 
 Sign-craze поддерживает три взаимозаменяемых прокси-ядра: `sing-box` (по умолчанию), `xray` и `mihomo`. Переключение через `--core <name>`. Протоколы и их параметры покрываются ядрами неравномерно: выбор конкретного ядра зависит от используемых функций — режима XHTTP, наличия Vision flow, PQ-шифрования, формата geo-данных и нативного Clash API.
 
@@ -178,9 +180,9 @@ Sign-craze поддерживает три взаимозаменяемых пр
 | Shadowsocks (legacy) | ✅ | ✅ | ✅ | aes-256-gcm, chacha20-poly1305 |
 | Shadowsocks 2022 | ✅ | ✅ | ✅ | 2022-blake3-aes-{128,256}-gcm, 2022-blake3-chacha20-poly1305 |
 | Trojan | ✅ | ✅ | ✅ | TLS обязателен |
-| Hysteria 2 | ✅ | ❌ | ✅ | xray не имеет нативного outbound |
-| TUIC v5 | ✅ | ❌ | ✅ | unified-mode mihomo, xray не имеет |
-| WireGuard | ✅ | ⚠️ | ✅ | xray частично через outbound, рекомендуется sing-box/mihomo |
+| [Hysteria2](https://v2.hysteria.network/) | ✅ | ❌ | ✅ | xray не имеет нативного outbound |
+| [TUIC](https://github.com/EAimTY/tuic) v5 | ✅ | ❌ | ✅ | unified-mode mihomo, xray не имеет |
+| [WireGuard](https://www.wireguard.com/) | ✅ | ⚠️ | ✅ | xray частично через outbound, рекомендуется sing-box/mihomo |
 | Socks5 | ✅ | ✅ | ✅ | |
 | HTTP CONNECT | ✅ | ✅ | ✅ | |
 
@@ -188,7 +190,7 @@ Sign-craze поддерживает три взаимозаменяемых пр
 
 | Параметр | sing-box | xray | mihomo | Назначение |
 | -------- | -------- | ---- | ------ | ------- |
-| Reality (PublicKey + ShortID) | ✅ | ✅ | ✅ | TLS-маскировка под чужой домен |
+| [Reality](https://github.com/XTLS/REALITY) (PublicKey + ShortID) | ✅ | ✅ | ✅ | TLS-маскировка под чужой домен |
 | Vision (`flow=xtls-rprx-vision`) | ⚠️ | ✅ | ✅ | TLS-passthrough, splice |
 | Vision UDP443 (`flow=xtls-rprx-vision-udp443`) | ❌ | ✅ | ❌ | Splice over UDP/443 — только xray |
 | XHTTP (basic, без mode) | ✅ | ✅ | ✅ | HTTP-маскированный транспорт |
@@ -208,8 +210,8 @@ Sign-craze поддерживает три взаимозаменяемых пр
 | Функция | sing-box | xray | mihomo | Заметки |
 | ------- | -------- | ---- | ------ | ------- |
 | TUN inbound | ✅ | ❌ | ✅ | xray использует tproxy через dokodemo-door |
-| TPROXY inbound | ✅ | ✅ | ✅ | sign-craze стандарт через fwmark 0x53 |
-| Native Clash API | ⚠️ | ❌ | ✅ | sing-box даёт compat-stub; xray не имеет; mihomo native |
+| TPROXY inbound | ✅ | ✅ | ✅ | sign-craze стандарт через [fwmark/SO_MARK](https://www.man7.org/linux/man-pages/man7/socket.7.html) 0x53 |
+| Native Clash API | ⚠️ | ❌ | ✅ | sing-box даёт compat-stub; xray не имеет; [mihomo](https://wiki.metacubex.one/) native |
 | Proxy-providers (URL-импорт списка) | ❌ | ❌ | ✅ | Clash native |
 | Rule-providers | ❌ | ❌ | ✅ | Clash native |
 | SRS rule-set (geo бинарный формат) | ✅ | ❌ | ❌ | sing-box native |
@@ -238,7 +240,7 @@ Sign-craze поддерживает три взаимозаменяемых пр
 
 ### Источники
 
-- Официальные репозитории: `XTLS/Xray-core`, `MetaCubeX/mihomo`, `SagerNet/sing-box`
+- Официальные репозитории: [`XTLS/Xray-core`](https://xtls.github.io/), `MetaCubeX/mihomo`, `SagerNet/sing-box`
 
 ---
 
@@ -258,7 +260,7 @@ Sign-craze поддерживает три взаимозаменяемых пр
 
 **Обратная совместимость**: `state.json` без новых полей (`dpi_exclude_ips`, `dpi_update_urls`, `dpi_update_interval`) мигрирует автоматически при первом старте v0.8.0 — отсутствующие поля инициализируются нулевыми значениями, данные существующей конфигурации не теряются.
 
-### 7.3 Naive/Mieru (v1.3.0+)
+### 7.2 Naive/Mieru (v1.3.0+)
 
 | Команда            | Где применяется             | Описание                                                                                   |
 |--------------------|-----------------------------|--------------------------------------------------------------------------------------------|
@@ -267,43 +269,16 @@ Sign-craze поддерживает три взаимозаменяемых пр
 
 **Совместимость ядер:** `xray` и `mihomo` отклоняют naive/mieru с понятной ошибкой. Supervised peers поддерживаются только при активном ядре `sing-box`.
 
-### 7.4 Hardening flags (v1.4.0+)
+### 7.3 Hardening flags (v1.4.0+)
 
 | Команда / флаг     | Описание                                                                                   |
 |--------------------|--------------------------------------------------------------------------------------------|
 | `--diag --json`    | Машинно-читаемый JSON-вывод диагностики (sign-craze doctor).                              |
 | `--no-color`       | Отключить ANSI-цвет в выводе. Альтернативы: переменная `NO_COLOR`, `TERM=dumb`.           |
 
-### 7.2 Артефакты релиза v0.8.0
-
-| Архитектура | Суффикс артефакта       | Сжатие (UPX)  |
-|-------------|-------------------------|---------------|
-| `arm64`     | `sign-craze-arm64`      | `--lzma`      |
-| `arm7`      | `sign-craze-arm7`       | `--lzma`      |
-| `mipsle`    | `sign-craze-mipsle`     | `--lzma`      |
-| `mips`      | `sign-craze-mips`       | Нет¹          |
-
-> ¹ UPX 4.x не поддерживает MIPS big-endian — см. §1.
-
----
-
 ## 8. Поведение по версиям
 
-| Версия    | Изменение                                                                                           |
-|-----------|-----------------------------------------------------------------------------------------------------|
-| **v0.8.0** | WAN-фильтр DPI (`--dpi-exclude-ips`), VPN-exclude, авто-обновление hostlist (`--dpi-update-urls`, `--dpi-update-interval`). |
-| **v0.8.1** | Fallback DNS для `UpdateHostlist` — при недоступности системного resolver используется запасной DNS. |
-| **v0.8.2** | Применение hostlist без `DPITargets` — `--dpi on` не требует заранее заданных хостов.               |
-| **v0.8.3** | Миграция `routing.json`: TUN → TPROXY. При старте на конфиге с TUN-inbound автоматически переводит routing.json в TPROXY-схему. |
-| **v1.0.0** | Unified multi-core routing: Web UI `:9092` и Apply работают с любым активным ядром. routing.json core-agnostic. Presets per-core с автотрансляцией URL. Несовместимости (TUN/xray, .srs/xray, .dat/sing-box) surfaced как warnings в `/api/validate`. `state.ValidCores` — канонический список ядер. |
-| **v1.1.0** | Routing UI: пресеты AS-IS («+Добавить») и TO-BE («Заменить») + клиентский буфер изменений (Save/Cancel + dirty-confirm). DPI NFQUEUE-цепочка переехала из mangle POSTROUTING в mangle FORWARD (`signcraze_dpi_fwd`) — desync покрывает все LAN-устройства. |
-| **v1.1.1** | Защита SSH/admin при режиме policy: LAN-bypass `-d <LAN_IP> -j RETURN` на pos=1 в `signcraze_policy`; admin-ports 22/222 bypass; `--uninstall` отвязывает host-policy через RCI `UnsetHostPolicy`. netfilter.d hook с flock+debounce: пачка 10 NDM-событий генерирует 2 reapply вместо 10. |
-| **v1.1.2** | Routing UI: светлая тема + переключатель (persist в localStorage, дефолт по `prefers-color-scheme`). |
-| **v1.2.0** | ANSI-цвет CLI и логов (`internal/cli/color.go` без внешних зависимостей; `colorTextHandler` для slog stderr). Opt-out: `--no-color` > `NO_COLOR` > `FORCE_COLOR` > `TERM=dumb`. |
-| **v1.3.0** | naiveproxy (klzgrad) + mieru (enfein) supervised peers через process chain: sign-craze запускает daemon, sing-box подключается через socks5. `--with-naive`, `--update-naive`. arm64/arm7/mipsle поддерживаются; mips BE отклоняется. xray/mihomo отклоняют naive/mieru с понятной ошибкой. |
-| **v1.4.0** | Hardening: `iptables-restore --noflush` batch (24 fork → 3), WAN cache, watchdog покрывает REDIRECT/DPI-FORWARD, reproducible builds, cosign keyless OIDC + SLSA, `--diag --json`, WebSocket keepalive 30s, bcrypt cost=10 для MIPS, SHA256 streaming geo, IPK streaming. Регрессионные тесты: SSH-bypass, S99-shim, geosite no-dat, FuzzMieruWireProto. |
-| **v1.4.1** | CI fix: `actions/attest-build-provenance` v2 → v4, `golangci-lint-action v9` + golangci-lint v2.12.2. |
-| **v1.4.2** | CI: `NODE_OPTIONS=--no-deprecation` (подавление предупреждений Node 24 в lint+publish jobs). |
+> История изменений по версиям — [CHANGELOG.md](../CHANGELOG.md).
 
 ---
 

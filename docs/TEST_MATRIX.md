@@ -11,7 +11,7 @@
 |--------------------|------------------------------------------------|-----------------|---------------------------------------------------------------|
 | **Unit**           | локально / CI                                  | — (без тега)    | `go test -race ./...`                                         |
 | **Integration**    | Docker `--privileged` / локально с NET_ADMIN   | `integration`   | `go test -tags=integration ./internal/firewall/...`           |
-| **E2E hardware**   | Keenetic KN-1810 (mipsle, живое железо)        | —               | вручную по `tasks/test-roadmap.md`                            |
+| **E2E hardware**   | [Keenetic](https://help.keenetic.com/hc/ru) KN-1810 (mipsle, живое железо)        | —               | вручную по `tasks/test-roadmap.md`                            |
 | **Manual smoke**   | SSH на роутере                                 | —               | CLI-команды из `tasks/test-roadmap.md`                        |
 
 **Политика TDD** (из `.claude/CLAUDE.md`): тест пишется до реализации; интеграционные тесты для firewall-логики используют Docker `--privileged` или network namespace. Все юнит-тесты обязаны проходить без root.
@@ -64,7 +64,7 @@
 | `TestIntegration_IPTables_EnsureAndDeleteRule`      | EnsureChain, EnsureRule (idempotent ×2), ListRules, DeleteRule (idempotent ×2) |
 | `TestIntegration_IPSet_AtomicReplace`               | EnsureSet, AtomicReplace (×2), DestroySet                                      |
 | `TestIntegration_Applier_ApplyAndRemove_Full`       | Apply(ModeFull), Remove (idempotent ×2)                                        |
-| `TestIntegration_IPRule_EnsureAndDelete`            | EnsureIPRule (fwmark 0x53, table 83), DeleteIPRule (idempotent ×2)             |
+| `TestIntegration_IPRule_EnsureAndDelete`            | EnsureIPRule ([fwmark/SO_MARK](https://www.man7.org/linux/man-pages/man7/socket.7.html) 0x53, table 83), DeleteIPRule (idempotent ×2)             |
 
 ### Docker harness
 
@@ -128,7 +128,7 @@ go test -tags=integration -v -timeout 60s ./internal/firewall/...
 
 ---
 
-## 4а. Unit-тесты DPI (v0.8.0)
+## 4.1. Unit-тесты DPI (v0.8.0)
 
 **Файл:** `internal/dpi/update_test.go`
 
@@ -144,7 +144,7 @@ go test -tags=integration -v -timeout 60s ./internal/firewall/...
 
 ---
 
-## 4б. Unit-тесты `firewall/modes` — Policy+DPI (v0.8.0)
+## 4.2. Unit-тесты `firewall/modes` — Policy+DPI (v0.8.0)
 
 **Файл:** `internal/firewall/modes/policy_dpi_test.go`
 
@@ -152,13 +152,13 @@ go test -tags=integration -v -timeout 60s ./internal/firewall/...
 |-----------------------------------------------------------|------------------------------------------------------------------|
 | `TestPolicyDPIRules_HasWANInterfaceFilter`                | Jump-правило содержит флаг `-o $WAN_IFACE`                       |
 | `TestPolicyDPIRules_BackwardCompat_EmptyWAN`              | Пустой wanIface → jump без флага `-o` (back-compat)              |
-| `TestPolicyDPIRules_VPNExcludeIPsBeforeNFQUEUE`          | RETURN-правила для VPN-exclude генерируются перед NFQUEUE        |
+| `TestPolicyDPIRules_VPNExcludeIPsBeforeNFQUEUE`          | RETURN-правила для VPN-exclude генерируются перед [NFQUEUE](https://www.netfilter.org/projects/libnetfilter_queue/)        |
 | `TestPolicyDPIRules_VPNExcludeIPsEmpty`                   | Без exclude-IP цепочка не содержит лишних RETURN-правил          |
 | `TestPolicyDPIRules_OrderInvariant`                       | Порядок: все RETURN строго до NFQUEUE-правил                     |
 
 ---
 
-## 4в. E2E тесты multi-core routing (v1.0.0)
+## 4.3. E2E тесты multi-core routing (v1.0.0)
 
 **Файл:** `internal/web/routingui_multicore_test.go`
 
@@ -177,7 +177,7 @@ go test -tags=integration -v -timeout 60s ./internal/firewall/...
 
 ---
 
-## 4г. Unit-тесты naive/peer (v1.3.0)
+## 4.4. Unit-тесты naive/peer (v1.3.0)
 
 **Файл:** `internal/naiveproxy/*_test.go`, `internal/peer/*_test.go`
 
@@ -192,7 +192,7 @@ go test -tags=integration -v -timeout 60s ./internal/firewall/...
 
 ---
 
-## 4д. Регрессии и hardening-тесты (v1.4.0)
+## 4.5. Регрессии и hardening-тесты (v1.4.0)
 
 **Файл:** `internal/firewall/applier_test.go`, `internal/service/lifecycle_test.go`, `internal/core/xray/render_test.go`
 
@@ -204,7 +204,7 @@ go test -tags=integration -v -timeout 60s ./internal/firewall/...
 | `TestRender_Geoip_NoDat_ReturnsError`            | xray без `geoip.dat` возвращает ошибку с подсказкой `--update-geo --core xray`                 |
 | `TestRender_GeoAssets_DatPresent_OK`             | Успешный путь: оба dat-файла присутствуют → рендер без ошибок                                  |
 | `TestFilterUnreferencedRuleSets`                 | (skipped — fix отложен) фильтрация неиспользуемых rule-set из routing.json                     |
-| `FuzzMieruWireProto`                             | Fuzz-корпус: 3 файла в `internal/peer/testdata/fuzz/` — см. §4г                                |
+| `FuzzMieruWireProto`                             | Fuzz-корпус: 3 файла в `internal/peer/testdata/fuzz/` — см. §4.4                                |
 
 ---
 
@@ -221,7 +221,7 @@ go test -tags=integration -v -timeout 60s ./internal/firewall/...
 | № | Сценарий                                                                                  | Источник                          |
 |---|--------------------------------------------------------------------------------------------|-----------------------------------|
 | 1 | `--install` → policy создана в RCI, description=`sign-craze`                              | `todo.md:147`                     |
-| 2 | `--start` → PolicyMark из RCI, iptables применены, sing-box PID                           | `todo.md:148`, roadmap §4         |
+| 2 | `--start` → PolicyMark из RCI, iptables применены, [sing-box](https://sing-box.sagernet.org/) PID                           | `todo.md:148`, roadmap §4         |
 | 3 | Привязка устройства в Keenetic «Приоритеты» → трафик через прокси (IP меняется)           | `todo.md:149`, roadmap §6         |
 | 4 | Другое устройство (без policy) → прямой выход                                              | `todo.md:150`                     |
 | 5 | `--mode full --restart` → переход на legacy, ipset заполнен                                | `todo.md:151`, roadmap §9         |
@@ -260,7 +260,7 @@ go test -tags=integration -v -timeout 60s ./internal/firewall/...
 ### Что НЕ запускается в CI (ручная процедура)
 
 - E2E на железе (Keenetic KN-1810): `scripts/e2e/run.sh` — оркестрованный прогон на устройстве
-- UPX-сжатие (только в `make release` / `release.yml` по тегу)
+- [UPX](https://upx.github.io/)-сжатие (только в `make release` / `release.yml` по тегу)
 
 ### Release workflow (.github/workflows/release.yml)
 
@@ -284,17 +284,17 @@ go test -tags=integration -v -timeout 60s ./internal/firewall/...
 | Phase 3 — firewall | ✅ | `firewall/*_test.go` (6 unit + 1 integration), `firewall/modes/*_test.go` |
 | Phase 4 — DPI/nfqws2 | ✅ | `dpi/*_test.go` |
 | Phase 5 — geo | ✅ | `geo/*_test.go` |
-| Phase 6 — web UI | ✅ | `web/*_test.go`, `web/auth_test.go` (bcrypt) |
+| Phase 6 — web UI | ✅ | `web/*_test.go` (api/clash/embed/portfind/routingui/server) |
 | Phase 7 — release | ✅ | cross-compile build matrix в CI |
 | Phase 8 — CLI-команды | ✅ | `cli/smoke_test.go`, `backup/`, `diag/`, `state/`, `ndm/`, `ghrelease/`, `selfupdate/`, `proxyparse/`, `service/netfilter_hook_test.go` |
 | Phase 9 — policy mode | 🚧 | `ndm/policy_test.go`, `ndm/wan_test.go` — unit. **E2E hardware: ❌** |
 | v0.8.0 — DPI update + policy-DPI rules + reapply throttle | ✅ | `dpi/update_test.go` (5 unit), `firewall/modes/policy_dpi_test.go` (5 unit), `cli/cmd_reapply_test.go` (4 unit) — все pass |
-| v1.0.0 — unified multi-core routing | ✅ | `web/routingui_multicore_test.go` (e2e), `state/cores_sync_test.go` (unit) — см. §4в |
+| v1.0.0 — unified multi-core routing | ✅ | `web/routingui_multicore_test.go` (e2e), `state/cores_sync_test.go` (unit) — см. §4.3 |
 | v1.1.0 — DPI FORWARD chain + routing UI presets AS-IS/TO-BE | ✅ | `firewall/modes/policy_dpi_test.go` (переписан под FORWARD + `! --mark`), `web/routingui_handlers_test.go` (+12 backend-тестов: preview+commit) |
 | v1.1.1 — SSH/admin bypass + NDM debounce | ✅ | `firewall/modes/excludes_test.go` (LAN-bypass + admin-ports), `firewall/applier_test.go` (bypass order regression) |
 | v1.2.0 — ANSI color | ✅ | `cli/color_test.go` (~10 unit-тестов: opt-out priority, no-op при выкл, semantic helpers) |
-| v1.3.0 — naive/mieru supervised peers | ✅ | `naiveproxy/*_test.go` + `peer/*_test.go`, mihomo/xray reject-тесты — см. §4г |
-| v1.4.0 — hardening (iptables batch, watchdog REDIRECT/DPI, repro builds, cosign, SLSA, regressions) | ✅ | см. §4д + `firewall/batch_test.go` |
+| v1.3.0 — naive/mieru supervised peers | ✅ | `naiveproxy/*_test.go` + `peer/*_test.go`, mihomo/xray reject-тесты — см. §4.4 |
+| v1.4.0 — hardening (iptables batch, watchdog REDIRECT/DPI, repro builds, cosign, SLSA, regressions) | ✅ | см. §4.5 + `firewall/batch_test.go` |
 
 ---
 

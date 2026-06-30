@@ -5,9 +5,10 @@
 Функциональная спецификация sign-craze, написанная в режиме clean-room.
 Исходники XKeen не читались. Только публичные источники.
 
-> **Текущая архитектура (TUN-mode):** sign-craze использует TPROXY-аналог через
-> TUN-интерфейс sing-box. Routing к `signbox-tun` идёт через fwmark `0x53` →
-> table `83` → default route. Описание ниже отражает текущую TUN-mode архитектуру.
+> **Текущая архитектура (TPROXY/IP-policy):** основной режим — перехват трафика
+> через IP-policy Keenetic (fwmark `0xffffaaXX` → `MARK 0x53`) и/или ipset
+> (full-mode), маршрутизация через `ip rule fwmark 0x53 lookup 83` в TUN-интерфейс
+> sing-box. Зафиксировано в ADR-0007. Подробности — §3a (режим policy) и §3b (full).
 
 Использованные источники:
 
@@ -17,6 +18,23 @@
 - <https://www.kernel.org/doc/html/latest/networking/netfilter.html>
 - README nfqws2-keenetic (MIT, публичный)
 - Документация zapret2 (MIT, публичная)
+
+---
+
+## Содержание
+
+- [1. CLI-команды](#1-cli-команды)
+- [2. Объекты конфигурации](#2-объекты-конфигурации)
+- [3. Системные инварианты (после --install + --start)](#3-системные-инварианты-после---install----start)
+  - [3a. Режим policy (default)](#3a-режим-policy-default)
+  - [3b. Режим full (legacy)](#3b-режим-full-legacy)
+  - [3c. NDM netfilter.d hook (persistence)](#3c-ndm-netfilterd-hook-persistence)
+- [4. Жизненный цикл](#4-жизненный-цикл)
+- [5. Файловая система (полная схема)](#5-файловая-система-полная-схема)
+- [6. Web UI API](#6-web-ui-api)
+- [7. Supervised peers — внешние процессы, управляемые sign-craze](#7-supervised-peers--внешние-процессы-управляемые-sign-craze)
+- [8. Supervised peers — naiveproxy](#8-supervised-peers--naiveproxy)
+- [§10. opkg lifecycle](#10-opkg-lifecycle)
 
 ---
 
