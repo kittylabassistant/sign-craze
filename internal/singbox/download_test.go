@@ -121,6 +121,108 @@ func TestDownload_ETagSkipsRedownload(t *testing.T) {
 	}
 }
 
+// TestDownload_ARM64_PrefersMuslOverBase — релиз содержит base+musl, причём base
+// идёт ПЕРВЫМ в списке assets. Matcher для arm64 = [musl, base] обязан выбрать
+// статический musl-вариант (issue #3), а не первый в API-ответе base (glibc).
+func TestDownload_ARM64_PrefersMuslOverBase(t *testing.T) {
+	content := []byte("musl-static")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/releases/latest"):
+			rel := types.Release{
+				TagName: "v1.13.14",
+				Assets: []types.Asset{
+					{Name: "sing-box-v1.13.14-linux-arm64.tar.gz", BrowserDownloadURL: "http://" + r.Host + "/dl/base"},
+					{Name: "sing-box-v1.13.14-linux-arm64-musl.tar.gz", BrowserDownloadURL: "http://" + r.Host + "/dl/musl"},
+				},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(rel)
+		default:
+			_, _ = w.Write(content)
+		}
+	}))
+	defer srv.Close()
+
+	orig := ghrelease.APIBaseURL
+	ghrelease.APIBaseURL = srv.URL
+	defer func() { ghrelease.APIBaseURL = orig }()
+
+	res, err := Download(context.Background(), types.ArchARM64, t.TempDir())
+	if err != nil {
+		t.Fatalf("Download: %v", err)
+	}
+	if !strings.Contains(res.Path, "arm64-musl.tar.gz") {
+		t.Errorf("res.Path = %q, ожидался musl-вариант (приоритет над base glibc)", res.Path)
+	}
+}
+
+// TestDownload_ARM64_FallsBackToBase — релиз содержит ТОЛЬКО базовый ассет
+// (musl отсутствует). Matcher [musl, base] должен через fallback выбрать base.
+func TestDownload_ARM64_FallsBackToBase(t *testing.T) {
+	content := []byte("base-binary")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/releases/latest"):
+			rel := types.Release{
+				TagName: "v1.13.14",
+				Assets:  []types.Asset{{Name: "sing-box-v1.13.14-linux-arm64.tar.gz", BrowserDownloadURL: "http://" + r.Host + "/dl/base"}},
+			}
+			_ = json.NewEncoder(w).Encode(rel)
+		default:
+			_, _ = w.Write(content)
+		}
+	}))
+	defer srv.Close()
+
+	orig := ghrelease.APIBaseURL
+	ghrelease.APIBaseURL = srv.URL
+	defer func() { ghrelease.APIBaseURL = orig }()
+
+	res, err := Download(context.Background(), types.ArchARM64, t.TempDir())
+	if err != nil {
+		t.Fatalf("Download (fallback): %v", err)
+	}
+	if strings.Contains(res.Path, "musl") || !strings.Contains(res.Path, "arm64.tar.gz") {
+		t.Errorf("res.Path = %q, ожидался базовый ассет (fallback)", res.Path)
+	}
+}
+
+// TestDownload_MIPS_NoMuslVariant — для mips musl-вариант upstream не публикует.
+// Релиз содержит mipsle+mips; arch=MIPS должен выбрать mips-softfloat (не mipsle —
+// проверка отсутствия коллизии подстрок).
+func TestDownload_MIPS_NoMuslVariant(t *testing.T) {
+	content := []byte("mips-static")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/releases/latest"):
+			rel := types.Release{
+				TagName: "v1.13.14",
+				Assets: []types.Asset{
+					{Name: "sing-box-v1.13.14-linux-mipsle-softfloat.tar.gz", BrowserDownloadURL: "http://" + r.Host + "/dl/mipsle"},
+					{Name: "sing-box-v1.13.14-linux-mips-softfloat.tar.gz", BrowserDownloadURL: "http://" + r.Host + "/dl/mips"},
+				},
+			}
+			_ = json.NewEncoder(w).Encode(rel)
+		default:
+			_, _ = w.Write(content)
+		}
+	}))
+	defer srv.Close()
+
+	orig := ghrelease.APIBaseURL
+	ghrelease.APIBaseURL = srv.URL
+	defer func() { ghrelease.APIBaseURL = orig }()
+
+	res, err := Download(context.Background(), types.ArchMIPS, t.TempDir())
+	if err != nil {
+		t.Fatalf("Download (mips): %v", err)
+	}
+	if !strings.Contains(res.Path, "linux-mips-softfloat.tar.gz") || strings.Contains(res.Path, "mipsle") {
+		t.Errorf("res.Path = %q, ожидался mips-softfloat (без коллизии с mipsle)", res.Path)
+	}
+}
+
 func TestDownload_ServerError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/releases/latest") {
@@ -212,5 +314,18 @@ func TestMatchByContains(t *testing.T) {
 		if got.Name != tt.wantName {
 			t.Errorf("MatchByContains(%q): Name = %q, ожидалось %q", tt.pattern, got.Name, tt.wantName)
 		}
+	}
+
+	// Инвариант отсутствия коллизий подстрок (критично для приоритета musl→base).
+	muslAsset := types.Asset{Name: "sing-box-v1.13.14-linux-arm64-musl.tar.gz"}
+	if ghrelease.MatchByContains("linux-arm64.tar.gz")(muslAsset) {
+		t.Error("базовый паттерн 'linux-arm64.tar.gz' не должен матчить musl-вариант")
+	}
+	if !ghrelease.MatchByContains("linux-arm64-musl.tar.gz")(muslAsset) {
+		t.Error("musl-паттерн должен матчить musl-вариант")
+	}
+	mipsleAsset := types.Asset{Name: "sing-box-v1.13.14-linux-mipsle-softfloat.tar.gz"}
+	if ghrelease.MatchByContains("linux-mips-softfloat.tar.gz")(mipsleAsset) {
+		t.Error("паттерн 'linux-mips-softfloat.tar.gz' не должен матчить mipsle")
 	}
 }

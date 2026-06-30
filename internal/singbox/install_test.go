@@ -5,9 +5,12 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"debug/elf"
+	"encoding/binary"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
@@ -138,6 +141,63 @@ func TestExtractBinary_Found(t *testing.T) {
 	info, _ := os.Stat(dstPath)
 	if info.Mode().Perm() != 0o755 {
 		t.Errorf("права = %o, ожидалось 0755", info.Mode().Perm())
+	}
+}
+
+// makeDynamicELF создаёт минимальный валидный ELF64 LE с PT_INTERP → interpPath.
+// Дубликат helper'а из internal/elfcheck (разные пакеты) — ~25 строк приемлемо.
+func makeDynamicELF(interpPath string) []byte {
+	interp := append([]byte(interpPath), 0)
+	var ident [16]byte
+	copy(ident[:], []byte{0x7f, 'E', 'L', 'F', byte(elf.ELFCLASS64), byte(elf.ELFDATA2LSB), byte(elf.EV_CURRENT), 0})
+	const phoff = 64
+	hdr := elf.Header64{
+		Ident: ident, Type: uint16(elf.ET_DYN), Machine: uint16(elf.EM_AARCH64),
+		Version: uint32(elf.EV_CURRENT), Phoff: phoff, Ehsize: 64,
+		Phentsize: 56, Phnum: 1, Shentsize: 64, Shnum: 0,
+	}
+	ph := elf.Prog64{
+		Type: uint32(elf.PT_INTERP), Flags: uint32(elf.PF_R), Off: phoff + 56,
+		Filesz: uint64(len(interp)), Memsz: uint64(len(interp)), Align: 1,
+	}
+	var buf bytes.Buffer
+	_ = binary.Write(&buf, binary.LittleEndian, hdr)
+	_ = binary.Write(&buf, binary.LittleEndian, ph)
+	buf.Write(interp)
+	return buf.Bytes()
+}
+
+// TestPrepareAndValidate_DynamicBinaryRejected — распакованный бинарь динамически
+// слинкован с отсутствующим интерпретатором (glibc-сборка на musl, issue #3).
+// PrepareAndValidate обязан отклонить его ДО `sing-box check` с понятной ошибкой.
+func TestPrepareAndValidate_DynamicBinaryRejected(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "absent-ld.so") // гарантированно не существует
+	tarPath := filepath.Join(t.TempDir(), "sb.tar.gz")
+	_ = os.WriteFile(tarPath, makeTarballRaw(makeDynamicELF(missing)), 0o644)
+
+	configPath := filepath.Join(t.TempDir(), "config.json")
+
+	checkCalled := false
+	r := exectx.MockMatcher(func(_ string, args ...string) (exectx.Result, error) {
+		if len(args) > 0 && args[0] == "check" {
+			checkCalled = true
+		}
+		return exectx.Result{ExitCode: 0}, nil
+	})
+
+	params := DefaultConfigParams()
+	params.Outbounds = []types.Outbound{{Tag: "direct", Type: "direct"}}
+	params.DefaultOutboundTag = "direct"
+
+	_, err := PrepareAndValidate(context.Background(), r, t.TempDir(), tarPath, configPath, params)
+	if err == nil {
+		t.Fatal("ожидалась ошибка для динамического бинаря с отсутствующим интерпретатором")
+	}
+	if !strings.Contains(err.Error(), "несовместимый") {
+		t.Errorf("сообщение = %q, ожидалось содержащее 'несовместимый'", err.Error())
+	}
+	if checkCalled {
+		t.Error("sing-box check не должен вызываться — отклонение до валидации конфига")
 	}
 }
 

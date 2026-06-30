@@ -29,6 +29,9 @@
 **Эффекты в системе**:
 
 - Скачивает бинарь sing-box с `github.com/SagerNet/sing-box/releases` под текущую архитектуру.
+  Для arm64 и amd64 sign-craze предпочитает статически слинкованный musl-вариант ассета
+  (`-musl.tar.gz`) для совместимости с Entware/musl-окружением; fallback на базовый ассет
+  происходит только если musl-вариант не опубликован в релизе (см. `internal/singbox/download.go`).
 - Устанавливает бинарь в `/opt/sbin/sing-box`, права `0755`.
 - Создаёт директорию конфигов `/opt/etc/sign-craze/`, права `0755`.
 - Генерирует `/opt/etc/sign-craze/config.json` (tproxy inbound на порту `7895`, fwmark `0x53`).

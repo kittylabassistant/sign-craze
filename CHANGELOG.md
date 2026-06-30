@@ -5,6 +5,31 @@
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **sing-box arm64/amd64: выбор статического musl-ассета** вместо динамического glibc-бинаря (issue #3).
+  SagerNet с v1.13.x публикует базовый `linux-arm64.tar.gz` / `linux-amd64.tar.gz` с CGO/libcronet.so
+  (интерпретатор `/lib/ld-linux-aarch64.so.1`), несовместимым с Entware/musl.
+  `--install`/`--update-core` на Keenetic arm64 падали с `fork/exec .../sing-box: no such file or directory`.
+  Теперь sign-craze предпочитает статический `linux-arm64-musl.tar.gz` (fallback на базовый).
+
+### Changed
+
+- **`ghrelease.FetchOptions.AssetMatchers`**: новое поле — приоритетный список matcher'ов (первый давший
+  asset выигрывает). Обратно совместимо: одиночный `AssetMatch` продолжают использовать dpi/naiveproxy/xray.
+  Внутренняя функция `matchAssetPriority` обходит список по порядку.
+
+### Added
+
+- **`elfcheck.CheckInterpCompatibility`** (пакет `internal/elfcheck`): проверка ELF PT_INTERP через
+  `debug/elf` + `os.Stat` до запуска ядра. Статический бинарь → nil; отсутствующий интерпретатор →
+  понятная ошибка вместо криптичного fork/exec ENOENT. Вызывается из `PrepareAndValidate` после
+  распаковки, до `sing-box check`. Нераспарсиваемый/не-ELF файл → nil (best-effort).
+
+---
+
 ## [1.6.1] - 2026-06-15
 
 ### Removed

@@ -99,12 +99,21 @@
 
 **Паттерны asset-файлов** при автозагрузке:
 
-| Arch     | sing-box asset                         | nfqws2 asset              |
-|----------|----------------------------------------|---------------------------|
-| `mipsle` | `linux-mipsle-softfloat.tar.gz`        | `mipsel-3.4.ipk`          |
-| `mips`   | `linux-mips-softfloat.tar.gz`          | `mips-3.4.ipk`            |
-| `arm7`   | `linux-armv7.tar.gz`                   | `armv7-3.2.ipk`           |
-| `arm64`  | `linux-arm64.tar.gz`                   | `aarch64-3.10.ipk`        |
+| Arch     | sing-box asset (предпочтительный)          | Fallback                     | nfqws2 asset         |
+|----------|--------------------------------------------|------------------------------|----------------------|
+| `mipsle` | `linux-mipsle-softfloat.tar.gz` (статичн.) | —                            | `mipsel-3.4.ipk`     |
+| `mips`   | `linux-mips-softfloat.tar.gz` (статичн.)   | —                            | `mips-3.4.ipk`       |
+| `arm7`   | `linux-armv7.tar.gz` (статичн.)            | —                            | `armv7-3.2.ipk`      |
+| `arm64`  | `linux-arm64-musl.tar.gz` (статичн. musl)  | `linux-arm64.tar.gz` (glibc) | `aarch64-3.10.ipk`   |
+| `amd64`  | `linux-amd64-musl.tar.gz` (статичн. musl)  | `linux-amd64.tar.gz` (glibc) | —                    |
+
+> **Примечание (sing-box arm64/amd64):** SagerNet начиная с v1.13.x публикует базовый ассет
+> `linux-arm64.tar.gz` / `linux-amd64.tar.gz` с CGO/libcronet.so (динамическая линковка glibc,
+> интерпретатор `/lib/ld-linux-aarch64.so.1`). На Entware/musl этот интерпретатор отсутствует →
+> `exec` завершается с ENOENT. Sign-craze предпочитает статически слинкованный `-musl.tar.gz`;
+> fallback на базовый ассет происходит только если musl-вариант не опубликован в релизе.
+> Для mips musl-вариант upstream не публикует — базовый ассет исторически статичен.
+> Источник: `internal/singbox/download.go`. Ветка ARM7/MIPSLE/MIPS изменений не требует (issue #3).
 
 Источник: `internal/singbox/download.go`, `internal/dpi/download.go`. Загрузка использует ETag-кэширование. SHA256 верификация sing-box отключена (safety-fixes Issue #4).
 
