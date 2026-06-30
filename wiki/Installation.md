@@ -29,6 +29,7 @@
 - ПК с Linux, macOS или Windows.
 - Подписка на VPN/прокси-сервис: URL формата `vless://...`, `vmess://...`, `ss://...`, `trojan://...`, `http://...` или `socks5://...`.
 - SSH-клиент (встроен в Linux/macOS, для Windows — PuTTY или встроенный `ssh.exe`).
+- Пакеты `iptables` и `ipset` в Entware (`opkg install iptables ipset`) — нужны для firewall-правил sign-craze. При установке sign-craze через opkg ставятся автоматически как зависимости; при установке через `curl | sh` доустановите их вручную перед `sign-craze --start`.
 
 ---
 
