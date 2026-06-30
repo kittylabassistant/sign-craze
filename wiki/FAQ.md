@@ -189,7 +189,7 @@ sign-craze --reinstall --proxy 'vless://...'
 sign-craze --restart
 ```
 
-Флаг принимает те же форматы, что и интерактивный wizard: `vless://`, `vmess://`, `ss://`, `trojan://`, `http://`, `socks5://`. При `--reinstall` завершение говорит `--restart`, а не `--start` — sing-box не останавливается при переустановке.
+Флаг принимает те же форматы, что и интерактивный wizard: `vless://`, `vmess://`, `ss://`, `trojan://`, `http://`, `socks5://`. Начиная с v1.3.0 также поддерживаются supervised-peer схемы: `naive+https://` (naiveproxy) и `mieru://` / `mierus://` (mieru) — только sing-box. При `--reinstall` завершение говорит `--restart`, а не `--start` — sing-box не останавливается при переустановке.
 
 ### Где живёт state.json?
 
@@ -211,6 +211,7 @@ sign-craze --restart
 - `vmess://`, `vless://`, `trojan://`, `ss://`, `ssr://` — sing-box (default).
 - PQ-VLESS / Vision UDP443 — xray (более полная поддержка).
 - Clash YAML / специфичные outbound'ы — mihomo.
+- `naive+https://`, `mieru://`, `mierus://` — sing-box (supervised peers, v1.3.0+; xray/mihomo не поддерживаются). Дополнительно: `--with-naive` для активации naiveproxy-демона.
 
 Явный выбор: `--install --proxy <URL> --core <sing-box|xray|mihomo>`.
 Список ядер: `sign-craze --core-list`. Смена ядра в установленной системе:

@@ -11,6 +11,7 @@
 **Документация**
 
 - [README](https://github.com/kittylabassistant/sign-craze/blob/main/README.md)
+- [CHANGELOG](https://github.com/kittylabassistant/sign-craze/blob/main/CHANGELOG.md)
 - [ARCHITECTURE](https://github.com/kittylabassistant/sign-craze/blob/main/docs/ARCHITECTURE.md)
 
 **Ссылки**

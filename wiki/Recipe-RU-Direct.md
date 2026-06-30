@@ -1,6 +1,6 @@
 # Рецепт: IPRU + DomainRU → direct, остальное → proxy
 
-> **Совместимость:** рецепт работает одинаково на всех трёх ядрах (sing-box, xray, mihomo) начиная с v1.0.0. sign-craze автоматически транслирует `geoip-ru` / `geosite-ru` в нативный формат активного ядра при Apply.
+> **Совместимость:** шаги с `geoip-ru` работают на всех трёх ядрах (sing-box, xray, mihomo) — sign-craze транслирует правило в нативный формат при Apply. Шаги с `geosite-ru` (A.5–A.6, B.3, B-альтернатива) используют источник из sign-craze-dat и применимы только с ядром sing-box; для mihomo/xray Validate покажет предупреждение.
 
 ## Цель
 
@@ -27,6 +27,24 @@
 
 ---
 
+## Быстрый старт (v1.5.0+)
+
+Если достаточно правила `geoip-ru → direct` + весь остальной трафик через VPN без ручной настройки, пресет `ru-direct-rest-vpn` применяется одной командой при установке:
+
+```sh
+sign-craze --install <url> --preset ru-direct-rest-vpn
+```
+
+Это эквивалентно шагам A.4 + A.7 ниже (mode=replace, полная замена Rules/Final). Правило `geosite-ru → direct` (шаги A.5–A.6) пресет не включает — добавьте вручную при необходимости.
+
+Посмотреть все встроенные пресеты:
+
+```sh
+sign-craze --preset-list
+```
+
+---
+
 ## Recipe A — через WebUI :9092
 
 Для пользователей, которым удобнее GUI.
@@ -50,10 +68,10 @@ ssh -p 222 root@172.16.0.1 'sign-craze --status'
 
 Tab **Outbounds** → запомнить tag (например `vless-out`).
 
-### A.4 Применить пресет ru-direct
+### A.4 Применить пресет ru-direct-rest-vpn
 
-Tab **Routing** → кнопка **"Пресеты ▾"** → выбрать `ru-direct`.
-Пресет добавит правило `geoip-ru → direct` и соответствующий RuleSetRef.
+Tab **Routing** → кнопка **«Пресеты ▾»** → выбрать **`ru-direct-rest-vpn`** → **«Заменить»** (TO-BE).
+Пресет добавит правило `geoip-ru → direct`, RuleSetRef для `geoip-ru` и установит Final на VPN-outbound (шаг A.7 выполняется автоматически, если Final ещё не задан). Если нужен только geoip-блок без изменения Final — выберите `ru-direct` → **«+ Добавить»**.
 
 <!-- TODO screenshot: routing tab presets dropdown -->
 
@@ -117,10 +135,10 @@ ssh -p 222 root@172.16.0.1 'sign-craze --restart && sign-craze --status'
 ssh -p 222 root@172.16.0.1 'jq -r ".outbounds[].tag" /opt/etc/sign-craze/state.json'
 ```
 
-### B.2 Применить пресет ru-direct через REST
+### B.2 Применить пресет ru-direct-rest-vpn через REST
 
 ```sh
-curl -sX POST http://172.16.0.1:9092/api/presets/ru-direct/apply
+curl -sX POST http://172.16.0.1:9092/api/presets/ru-direct-rest-vpn/apply
 ```
 
 ### B.3 Добавить geosite-ru rule_set и rule

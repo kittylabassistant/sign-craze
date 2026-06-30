@@ -44,4 +44,6 @@ jobs:
             exit 0
           fi
           git commit -m "wiki: sync from main@${GITHUB_SHA::7}"
-          git push origin master
+          # push в ту же ветку, что отдал clone wiki-репо (сейчас master);
+          # HEAD вместо хардкода — не сломается, если GitHub переинициализирует wiki на main
+          git push origin HEAD

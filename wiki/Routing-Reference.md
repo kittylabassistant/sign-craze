@@ -84,17 +84,23 @@ routing.json
 - **Rule Sets** — кастомные удалённые SRS-источники
 - **Preview** — rendered config.json; кнопки Validate / Apply
 
-**Встроенные пресеты** (POST `/api/presets/<name>/apply`):
+**Встроенные пресеты** (v1.5.0+) — POST `/api/presets/<name>/apply` или CLI `--preset <name>` при `--install`:
+
+```sh
+sign-craze --preset-list                          # список пресетов с описаниями
+sign-craze --install --proxy 'vless://...' --preset ru-direct-rest-vpn
+```
 
 | Имя | Что делает | Источник SRS |
 | --- | --- | --- |
 | `sign-craze-default` | bittorrent→direct, youtube→direct, discord→direct, refilter-blocked→{vpn}, final=direct | ruleset-domain-refilter_domains.srs (1andrevich/Re-filter-lists) |
 | `block-ads` | geosite-category-ads-all → reject | SagerNet/sing-geosite |
 | `ru-direct` | geoip-ru → direct | SagerNet/sing-geoip (`geoip-ru.srs`) |
+| `ru-direct-rest-vpn` | geoip-ru → direct; final={vpn} — всё остальное через VPN | SagerNet/sing-geoip (`geoip-ru.srs`) |
 | `blocked-vpn` | refilter-blocked-domains → {vpn} | 1andrevich/Re-filter-lists |
 | `discord-vpn` | geosite-discord → {vpn} | SagerNet/sing-geosite |
 | `torrents-direct` | protocol bittorrent → direct | sniff-based, без SRS |
-| `block-bogon-udp` | UDP 135/137-139 → reject | фиксированные порты, без SRS |
+| `block-bogon-udp` | UDP 135/137–139 → reject | фиксированные порты, без SRS |
 
 Placeholder `{vpn}` резолвится в `state.Outbounds[0].Tag` автоматически.
 
