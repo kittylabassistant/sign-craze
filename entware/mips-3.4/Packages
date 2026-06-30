@@ -1,5 +1,5 @@
 Package: sign-craze
-Version: 1.6.1
+Version: 1.6.2
 Architecture: mips-3.4
 Maintainer: kittylabassistant <noreply@github.com>
 Section: net
@@ -7,12 +7,12 @@ Priority: optional
 License: BSD-3-Clause
 Source: https://github.com/kittylabassistant/sign-craze
 Depends: ipset, iptables, iptables-mod-conntrack-extra, iptables-mod-tproxy, kmod-nfnetlink-queue, curl
-Installed-Size: 13072
+Installed-Size: 13712
 Description: Keenetic firewall manager (sing-box / xray / mihomo)
  Управляет iptables/ipset-правилами для обхода DPI через nfqws2,
  интегрируется с Keenetic IP Policy и поддерживает несколько прокси-ядер
  (sing-box, xray, mihomo). Единый бинарь без внешних зависимостей при runtime.
-Filename: ./sign-craze_1.6.1_mips-3.4.ipk
-Size: 4573564
-SHA256sum: e2f22f977577714dc7b393b12f91629f45498c0772f4e2aa4d4a51de1ee9a9d6
+Filename: ./sign-craze_1.6.2_mips-3.4.ipk
+Size: 5058104
+SHA256sum: 1a4171f943379b1e3dbf6f4370fa6ec7c00a46a83c51393d9019d47f28bf7aea
 
