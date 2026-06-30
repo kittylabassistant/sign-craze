@@ -47,6 +47,8 @@ DPI/блокировкой</a></li>
 <li><a
 href="https://github.com/kittylabassistant/sign-craze/blob/main/README.md">README</a></li>
 <li><a
+href="https://github.com/kittylabassistant/sign-craze/blob/main/CHANGELOG.md">CHANGELOG</a></li>
+<li><a
 href="https://github.com/kittylabassistant/sign-craze/blob/main/docs/ARCHITECTURE.md">ARCHITECTURE</a></li>
 </ul>
 <p><strong>Ссылки</strong></p>
@@ -66,8 +68,11 @@ src="https://raw.githubusercontent.com/kittylabassistant/sign-craze/main/img/ban
 alt="sign-craze" /></p>
 <h1 id="sign-craze">sign-craze</h1>
 <p>Go-утилита для управления межсетевым экраном на роутерах Keenetic.
-Использует <a href="https://github.com/SagerNet/sing-box">sing-box</a>
-как прокси-ядро и опционально <a
+Поддерживает три прокси-ядра с единым управлением через Web UI: <a
+href="https://github.com/SagerNet/sing-box">sing-box</a> (умолчание),
+<strong>xray</strong> и <strong>mihomo</strong>; дополнительно —
+supervised peers <strong>naiveproxy</strong> и <strong>mieru</strong>
+(process chain через socks5-outbound sing-box). Опционально <a
 href="https://github.com/nfqws/nfqws2-keenetic">nfqws2</a> для
 DPI-обхода. Чистая реализация (clean-room) без переиспользования кода
 XKeen.</p>
@@ -102,16 +107,31 @@ href="https://github.com/kittylabassistant/sign-craze/blob/main/docs/LICENSE.ru.
 <tbody>
 <tr class="odd">
 <td><strong><a href="Installation.html">Installation</a></strong></td>
-<td>Пошаговая инструкция: от форматирования флешки до запуска
+<td>Пошаговая инструкция: от форматирования флешки и opkg/IPK до запуска
 прокси</td>
 </tr>
 <tr class="even">
-<td><strong><a href="Routing.html">Routing</a></strong></td>
-<td>Как работает маршрутизация, порты, пресеты, рецепты</td>
+<td><strong><a href="Install-Behind-DPI.html">Install за
+DPI</a></strong></td>
+<td>Установка, когда GitHub/CDN недоступны напрямую (offline-метод)</td>
 </tr>
 <tr class="odd">
+<td><strong><a href="Routing.html">Routing</a></strong></td>
+<td>Как работает маршрутизация, порты, пресеты</td>
+</tr>
+<tr class="even">
+<td><strong><a href="Routing-Reference.html">Routing
+Reference</a></strong></td>
+<td>Справочник: схема <code>routing.json</code>, теги, rule-sets</td>
+</tr>
+<tr class="odd">
+<td><strong><a href="Recipes.html">Recipes</a></strong></td>
+<td>Готовые сценарии конфигурации (например «РФ direct, остальное
+VPN»)</td>
+</tr>
+<tr class="even">
 <td><strong><a href="FAQ.html">FAQ</a></strong></td>
-<td>Частые вопросы (в разработке)</td>
+<td>Частые вопросы</td>
 </tr>
 </tbody>
 </table>
@@ -126,6 +146,13 @@ href="https://github.com/kittylabassistant/sign-craze/blob/main/docs/LICENSE.ru.
 пресеты работают одинаково для всех трёх ядер. Несовместимые конструкции
 (например <code>.srs</code> URL на mihomo или TUN inbound на xray)
 отображаются как предупреждения, не блокируя Apply</li>
+<li><strong>Supervised peers (v1.3.0)</strong>: дополнительные протоколы
+<strong>naiveproxy</strong> и <strong>mieru</strong> запускаются как
+локальный daemon (<code>127.0.0.1</code>), sing-box заворачивает их в
+socks5-outbound (process chain). URL: <code>naive+https://…</code>,
+<code>mierus://…</code>. CLI: <code>--with-naive</code>,
+<code>--update-naive</code>. Поддерживается только для ядра
+sing-box</li>
 <li>Два режима маршрутизации: <code>policy</code> (Keenetic IP Policy
 через RCI, default) и <code>full</code> (legacy с собственным
 fwmark/ipset)</li>
@@ -148,14 +175,25 @@ Routing Editor SPA на <code>9092</code></li>
 <li>Routing Editor автоматически инициализируется из
 <code>state.outbounds</code> при первом запуске <code>--ui</code>
 (routing.json bootstrap)</li>
-<li>Встроенные пресеты роутинга: <code>block-ads</code>,
-<code>ru-direct</code>, <code>blocked-vpn</code>,
-<code>discord-vpn</code>, <code>torrents-direct</code> и DPI-пресеты
+<li>Встроенные пресеты роутинга (8 шт.):
+<code>sign-craze-default</code>, <code>block-ads</code>,
+<code>ru-direct</code>, <code>ru-direct-rest-vpn</code>,
+<code>blocked-vpn</code>, <code>discord-vpn</code>,
+<code>torrents-direct</code>, <code>block-bogon-udp</code>. Применяются
+из Web UI <code>:9092</code> либо из CLI прямо при установке —
+<code>--preset &lt;name&gt;</code> (список — <code>--preset-list</code>,
+v1.5.0). Отдельно DPI-пресеты
 <code>discord</code>/<code>youtube</code>/<code>discord-youtube</code></li>
 <li>Управление портами и исключениями без перезапуска</li>
 <li>Резервное копирование и восстановление конфигурации</li>
-<li>Диагностический режим (<code>--diag</code>) с PASS/WARN/FAIL по
-каждому пункту</li>
+<li>Диагностический режим: <code>--diag</code> с PASS/WARN/FAIL по
+каждому пункту; <code>--diag --json</code> — машиночитаемый вывод для
+скриптов и мониторинга (v1.4.0)</li>
+<li>ANSI-цветной вывод CLI с opt-out <code>--no-color</code> /
+<code>NO_COLOR</code> / <code>FORCE_COLOR</code> (v1.2.0)</li>
+<li>Два канала установки: бинарь из GitHub Releases
+(<code>install.sh</code>) или <strong>opkg/IPK-пакет для
+Entware</strong> (<code>opkg install sign-craze</code>, v1.6.0)</li>
 </ul>
 <h2 id="поддерживаемые-архитектуры">Поддерживаемые архитектуры</h2>
 <table>
@@ -191,78 +229,53 @@ Routing Editor SPA на <code>9092</code></li>
 </table>
 <p>Целевой размер бинаря после <code>upx --lzma</code>: ≤ 4 МБ.
 RAM-бюджет: 128 МБ (общий RSS sing-box + sign-craze + nfqws2).</p>
-<h2 id="состояние-разработки">Состояние разработки</h2>
+<h2 id="история-версий-ключевое">История версий (ключевое)</h2>
+<p>Текущая версия — <strong>v1.6.1</strong>. Полный журнал изменений — в
+<a
+href="https://github.com/kittylabassistant/sign-craze/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 <table>
 <thead>
 <tr class="header">
-<th>Фаза</th>
-<th>Статус</th>
-<th>Содержание</th>
+<th>Версия</th>
+<th>Ключевое</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>Phase 0 — подготовка</td>
-<td>✅</td>
-<td>go.mod, Makefile, CI, BEHAVIOR_SPEC.md, docs</td>
+<td>v1.0.0</td>
+<td>Унифицированная мульти-ядерность (sing-box / xray / mihomo), единый
+Routing Editor</td>
 </tr>
 <tr class="even">
-<td>Phase 1 — scaffold</td>
-<td>✅</td>
-<td>cli, log, locks, exectx, errors, atomicfs, version, types</td>
+<td>v1.1.x</td>
+<td>Routing UI: пресеты AS-IS/TO-BE, клиентский буфер Save/Cancel,
+светлая тема ☀/☾</td>
 </tr>
 <tr class="odd">
-<td>Phase 2 — sing-box</td>
-<td>✅</td>
-<td>download, install, config template, service shim, lifecycle</td>
+<td>v1.2.0</td>
+<td>ANSI-цветной CLI + opt-out <code>--no-color</code> /
+<code>NO_COLOR</code> / <code>FORCE_COLOR</code></td>
 </tr>
 <tr class="even">
-<td>Phase 3 — firewall</td>
-<td>✅</td>
-<td>iptables/ipset, режимы tproxy/redirect/hybrid, Docker-тесты</td>
+<td>v1.3.0</td>
+<td>Supervised peers: naiveproxy + mieru (process chain через
+sing-box)</td>
 </tr>
 <tr class="odd">
-<td>Phase 4 — DPI/nfqws2</td>
-<td>✅</td>
-<td>download, config, NFQUEUE lifecycle</td>
+<td>v1.4.x</td>
+<td>Пост-аудитный hardening: firewall batching,
+<code>--diag --json</code>, cosign/SLSA provenance, reproducible
+builds</td>
 </tr>
 <tr class="even">
-<td>Phase 5 — гео-файлы</td>
-<td>✅</td>
-<td>SRS manifest, выборочная загрузка, ipset</td>
+<td>v1.5.0</td>
+<td>CLI <code>--preset &lt;name&gt;</code> / <code>--preset-list</code>
+— пресеты роутинга прямо при установке</td>
 </tr>
 <tr class="odd">
-<td>Phase 6 — Web UI</td>
-<td>✅</td>
-<td>HTTP-сервер, REST API, Routing Editor</td>
-</tr>
-<tr class="even">
-<td>Phase 7 — release</td>
-<td>✅</td>
-<td>GitHub Actions pipeline, install.sh, multi-arch UPX</td>
-</tr>
-<tr class="odd">
-<td>Phase 8 — CLI команды</td>
-<td>✅</td>
-<td>install/start/stop/status/diag/update/uninstall/dpi/mode/ports/excludes/backup</td>
-</tr>
-<tr class="even">
-<td>Phase 9 — <code>--mode policy</code></td>
-<td>✅</td>
-<td>Keenetic IP Policy через RCI (TUN-mode), legacy режимы →
-<code>full</code></td>
-</tr>
-<tr class="odd">
-<td>Phase 10 — Selective DPI</td>
-<td>✅</td>
-<td><code>nfqws2 --hostlist</code>, <code>--dpi-targets</code>,
-web-пресеты Discord/YouTube</td>
-</tr>
-<tr class="even">
-<td>Phase 11 — Firewall watchdog</td>
-<td>✅</td>
-<td>Standalone <code>--service-watchdog</code> daemon, переживает ребут
-через init.d shim</td>
+<td>v1.6.x</td>
+<td>opkg/IPK канал дистрибуции для Entware; удаление мёртвого кода и
+bcrypt auth-каркаса</td>
 </tr>
 </tbody>
 </table>
@@ -271,6 +284,8 @@ web-пресеты Discord/YouTube</td>
 /opt/sbin/sing-box                         — прокси-ядро (sing-box, умолчание)
 /opt/sbin/xray                             — прокси-ядро (xray, если установлено через --core xray)
 /opt/sbin/mihomo                           — прокси-ядро (mihomo, если установлено через --core mihomo)
+/opt/sbin/naive                            — supervised peer naiveproxy (если установлен через --with-naive)
+/opt/sbin/mieru                            — supervised peer mieru (если установлен)
 /opt/sbin/nfqws2                           — DPI desync (если включён)
 /opt/etc/sign-craze/config.json            — конфиг sing-box (TUN/TProxy, fwmark 0x53)
 /opt/etc/sign-craze/xray/config.json       — конфиг xray (TProxy, dokodemo-door)
@@ -279,7 +294,6 @@ web-пресеты Discord/YouTube</td>
 /opt/etc/sign-craze/routing.json           — пользовательские routing-правила (Web UI, core-agnostic)
 /opt/etc/sign-craze/nfqws2.conf            — конфиг nfqws2 (если DPI включён)
 /opt/etc/sign-craze/dpi-hostlist.txt       — список доменов для selective DPI desync
-/opt/etc/sign-craze/admin.creds            — bcrypt-хэш (reserved; basic auth не применяется с v0.5.2)
 /opt/etc/init.d/S99signcraze               — init.d shim (автозапуск sing-box + watchdog)
 /opt/etc/ndm/netfilter.d/50-sign-craze     — NDM hook: реапплай правил после rebuild
 /opt/var/lib/sign-craze/geo/               — гео-файлы (*.srs)
@@ -288,6 +302,7 @@ web-пресеты Discord/YouTube</td>
 /opt/var/log/sign-craze/sing-box.log       — лог sing-box
 /opt/var/log/sign-craze/boot.log           — stderr init.d shim
 /opt/var/run/sign-craze-singbox.pid        — PID sing-box
+/opt/var/run/sign-craze-naive.pid          — PID naiveproxy (если включён)
 /opt/var/run/sign-craze-nfqws2.pid         — PID nfqws2
 /opt/var/run/sign-craze-watchdog.pid       — PID firewall watchdog
 /opt/var/lock/sign-craze.lock              — эксклюзивная блокировка операций</code></pre>

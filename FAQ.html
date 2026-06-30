@@ -111,6 +111,8 @@ DPI/блокировкой</a></li>
 <li><a
 href="https://github.com/kittylabassistant/sign-craze/blob/main/README.md">README</a></li>
 <li><a
+href="https://github.com/kittylabassistant/sign-craze/blob/main/CHANGELOG.md">CHANGELOG</a></li>
+<li><a
 href="https://github.com/kittylabassistant/sign-craze/blob/main/docs/ARCHITECTURE.md">ARCHITECTURE</a></li>
 </ul>
 <p><strong>Ссылки</strong></p>
@@ -418,8 +420,11 @@ id="можно-ли-передать-прокси-url-сразу-при-уста
 <p>Флаг принимает те же форматы, что и интерактивный wizard:
 <code>vless://</code>, <code>vmess://</code>, <code>ss://</code>,
 <code>trojan://</code>, <code>http://</code>, <code>socks5://</code>.
-При <code>--reinstall</code> завершение говорит <code>--restart</code>,
-а не <code>--start</code> — sing-box не останавливается при
+Начиная с v1.3.0 также поддерживаются supervised-peer схемы:
+<code>naive+https://</code> (naiveproxy) и <code>mieru://</code> /
+<code>mierus://</code> (mieru) — только sing-box. При
+<code>--reinstall</code> завершение говорит <code>--restart</code>, а не
+<code>--start</code> — sing-box не останавливается при
 переустановке.</p>
 <h3 id="где-живёт-statejson">Где живёт state.json?</h3>
 <p><code>/opt/etc/sign-craze/state.json</code>, права <code>0600</code>
@@ -442,6 +447,10 @@ state не трогает.</p>
 sing-box (default).</li>
 <li>PQ-VLESS / Vision UDP443 — xray (более полная поддержка).</li>
 <li>Clash YAML / специфичные outbound'ы — mihomo.</li>
+<li><code>naive+https://</code>, <code>mieru://</code>,
+<code>mierus://</code> — sing-box (supervised peers, v1.3.0+;
+xray/mihomo не поддерживаются). Дополнительно: <code>--with-naive</code>
+для активации naiveproxy-демона.</li>
 </ul>
 <p>Явный выбор:
 <code>--install --proxy &lt;URL&gt; --core &lt;sing-box|xray|mihomo&gt;</code>.

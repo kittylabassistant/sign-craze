@@ -111,6 +111,8 @@ DPI/блокировкой</a></li>
 <li><a
 href="https://github.com/kittylabassistant/sign-craze/blob/main/README.md">README</a></li>
 <li><a
+href="https://github.com/kittylabassistant/sign-craze/blob/main/CHANGELOG.md">CHANGELOG</a></li>
+<li><a
 href="https://github.com/kittylabassistant/sign-craze/blob/main/docs/ARCHITECTURE.md">ARCHITECTURE</a></li>
 </ul>
 <p><strong>Ссылки</strong></p>
@@ -229,7 +231,15 @@ final выбрать VPN-outbound, нажать Apply. После — выпол
 <code>sign-craze --restart</code> в SSH. Полный пошаговый рецепт с
 примерами JSON — в <a
 href="Recipe-RU-Direct.html">Recipe-RU-Direct.md</a>.</p>
-<h2 id="встроенные-пресеты">Встроенные пресеты</h2>
+<h2 id="встроенные-пресеты-v150">Встроенные пресеты (v1.5.0+)</h2>
+<p>Доступны через web UI <code>:9092</code> («Пресеты ▾»), REST API
+(<code>POST /api/presets/&lt;name&gt;/apply</code>) и CLI при
+установке:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--preset-list</span>                          <span class="co"># показать все 8 пресетов с описаниями</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--install</span> <span class="at">--proxy</span> <span class="st">&#39;vless://...&#39;</span> <span class="at">--preset</span> ru-direct-rest-vpn</span></code></pre></div>
+<p>Флаг <code>--preset</code> применяется в режиме replace (полностью
+перезаписывает Rules/Final). Без <code>--preset</code> routing не
+трогается.</p>
 <table>
 <thead>
 <tr class="header">
@@ -253,21 +263,27 @@ block</td>
 <td>РФ-адреса (geoip-ru) → direct, минует VPN</td>
 </tr>
 <tr class="even">
+<td><code>ru-direct-rest-vpn</code></td>
+<td>geoip-ru → direct, остальной трафик → VPN (final={vpn}).
+Инвертированный «всё через VPN, кроме РФ»</td>
+</tr>
+<tr class="odd">
 <td><code>blocked-vpn</code></td>
 <td>Заблокированные домены (refilter-blocked-domains) →
 прокси-outbound</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>discord-vpn</code></td>
 <td>Discord (geosite-discord) → прокси-outbound</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>torrents-direct</code></td>
 <td>BitTorrent-трафик → direct, не тратит VPN-квоту</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>block-bogon-udp</code></td>
-<td>Bogon-диапазоны в UDP → drop, защита от спуфинга</td>
+<td>UDP-порты 135, 137–139 (NetBIOS/SMB) → reject, защита от шума
+LAN</td>
 </tr>
 </tbody>
 </table>
@@ -299,18 +315,18 @@ validate: проверяет теги outbound, синтаксис rule_set, д�
 пропускается для xray</li>
 </ul>
 <p>Ручная валидация через API:</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Validate с показом предупреждений</span></span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-sX</span> POST http://router:9092/api/validate <span class="kw">|</span> <span class="ex">jq</span> <span class="st">&#39;{ok, errors, warnings}&#39;</span></span></code></pre></div>
+<div class="sourceCode" id="cb3"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Validate с показом предупреждений</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-sX</span> POST http://router:9092/api/validate <span class="kw">|</span> <span class="ex">jq</span> <span class="st">&#39;{ok, errors, warnings}&#39;</span></span></code></pre></div>
 <p>Ручная валидация конфига ядра напрямую:</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># sing-box</span></span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="ex">sing-box</span> check <span class="at">-c</span> /opt/etc/sign-craze/config.json</span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="co"># xray</span></span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="ex">xray</span> test <span class="at">-c</span> /opt/etc/sign-craze/xray/config.json</span>
-<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="co"># mihomo</span></span>
-<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="ex">mihomo</span> <span class="at">-t</span> <span class="at">-d</span> /opt/etc/sign-craze/mihomo/</span></code></pre></div>
+<div class="sourceCode" id="cb4"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># sing-box</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="ex">sing-box</span> check <span class="at">-c</span> /opt/etc/sign-craze/config.json</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="co"># xray</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="ex">xray</span> test <span class="at">-c</span> /opt/etc/sign-craze/xray/config.json</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="co"># mihomo</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="ex">mihomo</span> <span class="at">-t</span> <span class="at">-d</span> /opt/etc/sign-craze/mihomo/</span></code></pre></div>
 <h2 id="применение-изменений">Применение изменений</h2>
-<div class="sourceCode" id="cb4"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Из SSH на роутере:</span></span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--restart</span></span></code></pre></div>
+<div class="sourceCode" id="cb5"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Из SSH на роутере:</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--restart</span></span></code></pre></div>
 <p>Команда атомарно останавливает sing-box, применяет новый
 <code>config.json</code> и запускает его снова. Watchdog
 (<code>--service-watchdog</code>) пересинхронизирует firewall-правила
