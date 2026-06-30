@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>sign-craze</title>
+  <style>
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="layout">
+<nav class="sidebar">
+<p><strong>Навигация</strong></p>
+<ul>
+<li><a href="index.html">Home</a></li>
+<li><a href="Installation.html">Installation</a>
+<ul>
+<li><a href="Install-Behind-DPI.html">Установка за
+DPI/блокировкой</a></li>
+</ul></li>
+<li><a href="Routing.html">Routing</a>
+<ul>
+<li><a href="Routing-Reference.html">Reference</a></li>
+<li><a href="Recipes.html">Recipes</a></li>
+</ul></li>
+<li><a href="FAQ.html">FAQ</a></li>
+</ul>
+<p><strong>Документация</strong></p>
+<ul>
+<li><a
+href="https://github.com/kittylabassistant/sign-craze/blob/main/README.md">README</a></li>
+<li><a
+href="https://github.com/kittylabassistant/sign-craze/blob/main/docs/ARCHITECTURE.md">ARCHITECTURE</a></li>
+</ul>
+<p><strong>Ссылки</strong></p>
+<ul>
+<li><a
+href="https://github.com/kittylabassistant/sign-craze/releases">Releases</a></li>
+<li><a
+href="https://github.com/kittylabassistant/sign-craze/issues">Issues</a></li>
+<li><a
+href="https://github.com/kittylabassistant/sign-craze/blob/main/LICENSE">Лицензия</a></li>
+</ul>
+
+</nav>
+<main class="content">
+<p><img
+src="https://raw.githubusercontent.com/kittylabassistant/sign-craze/main/img/banner_release.jpg"
+alt="sign-craze" /></p>
+<h1 id="sign-craze">sign-craze</h1>
+<p>Go-утилита для управления межсетевым экраном на роутерах Keenetic.
+Использует <a href="https://github.com/SagerNet/sing-box">sing-box</a>
+как прокси-ядро и опционально <a
+href="https://github.com/nfqws/nfqws2-keenetic">nfqws2</a> для
+DPI-обхода. Чистая реализация (clean-room) без переиспользования кода
+XKeen.</p>
+<blockquote>
+<p>[!WARNING] Материал подготовлен в научно-технических целях.
+Sign-Craze предназначен для управления межсетевым экраном роутера
+Keenetic в домашней сети. Разработчик не несёт ответственности за иное
+использование. Перед применением убедитесь, что ваши действия
+соответствуют законодательству вашей страны.</p>
+</blockquote>
+<blockquote>
+<p>[!IMPORTANT] <strong>Юридические условия использования:</strong>
+проект распространяется на условиях <a
+href="https://github.com/kittylabassistant/sign-craze/blob/main/LICENSE">BSD
+3-Clause</a>. ПО предоставляется «КАК ЕСТЬ» (AS IS), без гарантий.
+Применять допустимо только на оборудовании и в сетях, которыми вы
+владеете либо имеете явное письменное разрешение владельца. Полный текст
+— в <a
+href="https://github.com/kittylabassistant/sign-craze/blob/main/LICENSE">LICENSE</a>
+и <a
+href="https://github.com/kittylabassistant/sign-craze/blob/main/docs/LICENSE.ru.md">LICENSE.ru.md</a>.</p>
+</blockquote>
+<hr />
+<h2 id="навигация-по-wiki">Навигация по wiki</h2>
+<table>
+<thead>
+<tr class="header">
+<th>Страница</th>
+<th>Содержание</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong><a href="Installation.html">Installation</a></strong></td>
+<td>Пошаговая инструкция: от форматирования флешки до запуска
+прокси</td>
+</tr>
+<tr class="even">
+<td><strong><a href="Routing.html">Routing</a></strong></td>
+<td>Как работает маршрутизация, порты, пресеты, рецепты</td>
+</tr>
+<tr class="odd">
+<td><strong><a href="FAQ.html">FAQ</a></strong></td>
+<td>Частые вопросы (в разработке)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="возможности">Возможности</h2>
+<ul>
+<li>Управление прокси-ядром: установка, запуск, остановка, обновление,
+откат. Поддерживается три ядра: <strong>sing-box</strong> (умолчание),
+<strong>xray</strong> (PQ-VLESS/Vision UDP443, xhttp packet-up),
+<strong>mihomo</strong> (Hysteria2, TUIC, WireGuard)</li>
+<li><strong>Мульти-ядерность (v1.0.0+)</strong>: Web UI
+<code>:9092</code> полностью унифицирован — routing, inbound, outbound и
+пресеты работают одинаково для всех трёх ядер. Несовместимые конструкции
+(например <code>.srs</code> URL на mihomo или TUN inbound на xray)
+отображаются как предупреждения, не блокируя Apply</li>
+<li>Два режима маршрутизации: <code>policy</code> (Keenetic IP Policy
+через RCI, default) и <code>full</code> (legacy с собственным
+fwmark/ipset)</li>
+<li>Атомарное применение правил iptables/ipset с гарантированным
+откатом</li>
+<li>DPI bypass через <code>nfqws2</code> (opt-in, <strong>off by
+default</strong>) — включается <code>sign-craze --dpi on</code>;
+selective режим <code>--dpi-targets</code> ограничивает desync
+выбранными доменами (Discord, YouTube) через
+<code>nfqws2 --hostlist</code></li>
+<li>Firewall watchdog: автоматическое восстановление правил после ndm
+reconciliation (защита от "перестаёт проксировать через несколько
+часов")</li>
+<li>Гео-фильтрация через SRS rule-set (выборочная загрузка по
+SHA256)</li>
+<li>Встроенный Web UI (только из LAN): Zashboard на порту
+<code>9090</code> (реальное дерево прокси и счётчики трафика через Clash
+API реверс-прокси на sing-box), admin REST API на <code>9091</code>,
+Routing Editor SPA на <code>9092</code></li>
+<li>Routing Editor автоматически инициализируется из
+<code>state.outbounds</code> при первом запуске <code>--ui</code>
+(routing.json bootstrap)</li>
+<li>Встроенные пресеты роутинга: <code>block-ads</code>,
+<code>ru-direct</code>, <code>blocked-vpn</code>,
+<code>discord-vpn</code>, <code>torrents-direct</code> и DPI-пресеты
+<code>discord</code>/<code>youtube</code>/<code>discord-youtube</code></li>
+<li>Управление портами и исключениями без перезапуска</li>
+<li>Резервное копирование и восстановление конфигурации</li>
+<li>Диагностический режим (<code>--diag</code>) с PASS/WARN/FAIL по
+каждому пункту</li>
+</ul>
+<h2 id="поддерживаемые-архитектуры">Поддерживаемые архитектуры</h2>
+<table>
+<thead>
+<tr class="header">
+<th>Платформа</th>
+<th>GOARCH</th>
+<th>Примечание</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Keenetic (MIPS LE)</td>
+<td><code>mipsle</code></td>
+<td>GOMIPS=softfloat</td>
+</tr>
+<tr class="even">
+<td>Keenetic (MIPS BE)</td>
+<td><code>mips</code></td>
+<td>GOMIPS=softfloat</td>
+</tr>
+<tr class="odd">
+<td>Keenetic / RPi (ARM 32)</td>
+<td><code>arm</code></td>
+<td>GOARM=7</td>
+</tr>
+<tr class="even">
+<td>Keenetic Ultra / RPi 4</td>
+<td><code>arm64</code></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>Целевой размер бинаря после <code>upx --lzma</code>: ≤ 4 МБ.
+RAM-бюджет: 128 МБ (общий RSS sing-box + sign-craze + nfqws2).</p>
+<h2 id="состояние-разработки">Состояние разработки</h2>
+<table>
+<thead>
+<tr class="header">
+<th>Фаза</th>
+<th>Статус</th>
+<th>Содержание</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Phase 0 — подготовка</td>
+<td>✅</td>
+<td>go.mod, Makefile, CI, BEHAVIOR_SPEC.md, docs</td>
+</tr>
+<tr class="even">
+<td>Phase 1 — scaffold</td>
+<td>✅</td>
+<td>cli, log, locks, exectx, errors, atomicfs, version, types</td>
+</tr>
+<tr class="odd">
+<td>Phase 2 — sing-box</td>
+<td>✅</td>
+<td>download, install, config template, service shim, lifecycle</td>
+</tr>
+<tr class="even">
+<td>Phase 3 — firewall</td>
+<td>✅</td>
+<td>iptables/ipset, режимы tproxy/redirect/hybrid, Docker-тесты</td>
+</tr>
+<tr class="odd">
+<td>Phase 4 — DPI/nfqws2</td>
+<td>✅</td>
+<td>download, config, NFQUEUE lifecycle</td>
+</tr>
+<tr class="even">
+<td>Phase 5 — гео-файлы</td>
+<td>✅</td>
+<td>SRS manifest, выборочная загрузка, ipset</td>
+</tr>
+<tr class="odd">
+<td>Phase 6 — Web UI</td>
+<td>✅</td>
+<td>HTTP-сервер, REST API, Routing Editor</td>
+</tr>
+<tr class="even">
+<td>Phase 7 — release</td>
+<td>✅</td>
+<td>GitHub Actions pipeline, install.sh, multi-arch UPX</td>
+</tr>
+<tr class="odd">
+<td>Phase 8 — CLI команды</td>
+<td>✅</td>
+<td>install/start/stop/status/diag/update/uninstall/dpi/mode/ports/excludes/backup</td>
+</tr>
+<tr class="even">
+<td>Phase 9 — <code>--mode policy</code></td>
+<td>✅</td>
+<td>Keenetic IP Policy через RCI (TUN-mode), legacy режимы →
+<code>full</code></td>
+</tr>
+<tr class="odd">
+<td>Phase 10 — Selective DPI</td>
+<td>✅</td>
+<td><code>nfqws2 --hostlist</code>, <code>--dpi-targets</code>,
+web-пресеты Discord/YouTube</td>
+</tr>
+<tr class="even">
+<td>Phase 11 — Firewall watchdog</td>
+<td>✅</td>
+<td>Standalone <code>--service-watchdog</code> daemon, переживает ребут
+через init.d shim</td>
+</tr>
+</tbody>
+</table>
+<h2 id="структура-файлов-на-роутере">Структура файлов на роутере</h2>
+<pre class="plain"><code>/opt/sbin/sign-craze                       — основной бинарь
+/opt/sbin/sing-box                         — прокси-ядро (sing-box, умолчание)
+/opt/sbin/xray                             — прокси-ядро (xray, если установлено через --core xray)
+/opt/sbin/mihomo                           — прокси-ядро (mihomo, если установлено через --core mihomo)
+/opt/sbin/nfqws2                           — DPI desync (если включён)
+/opt/etc/sign-craze/config.json            — конфиг sing-box (TUN/TProxy, fwmark 0x53)
+/opt/etc/sign-craze/xray/config.json       — конфиг xray (TProxy, dokodemo-door)
+/opt/etc/sign-craze/mihomo/config.yaml     — конфиг mihomo (TProxy)
+/opt/etc/sign-craze/state.json             — состояние sign-craze (core, mode, outbounds, ports, dpi_targets, ...)
+/opt/etc/sign-craze/routing.json           — пользовательские routing-правила (Web UI, core-agnostic)
+/opt/etc/sign-craze/nfqws2.conf            — конфиг nfqws2 (если DPI включён)
+/opt/etc/sign-craze/dpi-hostlist.txt       — список доменов для selective DPI desync
+/opt/etc/sign-craze/admin.creds            — bcrypt-хэш (reserved; basic auth не применяется с v0.5.2)
+/opt/etc/init.d/S99signcraze               — init.d shim (автозапуск sing-box + watchdog)
+/opt/etc/ndm/netfilter.d/50-sign-craze     — NDM hook: реапплай правил после rebuild
+/opt/var/lib/sign-craze/geo/               — гео-файлы (*.srs)
+/opt/var/lib/sign-craze/backups/           — снимки tar.gz
+/opt/var/log/sign-craze/sign-craze.log     — структурированные логи (slog JSON, ротация)
+/opt/var/log/sign-craze/sing-box.log       — лог sing-box
+/opt/var/log/sign-craze/boot.log           — stderr init.d shim
+/opt/var/run/sign-craze-singbox.pid        — PID sing-box
+/opt/var/run/sign-craze-nfqws2.pid         — PID nfqws2
+/opt/var/run/sign-craze-watchdog.pid       — PID firewall watchdog
+/opt/var/lock/sign-craze.lock              — эксклюзивная блокировка операций</code></pre>
+<h2 id="полезные-ссылки">Полезные ссылки</h2>
+<ul>
+<li><strong>Репозиторий:</strong> <a
+href="https://github.com/kittylabassistant/sign-craze">https://github.com/kittylabassistant/sign-craze</a></li>
+<li><strong>Releases:</strong> <a
+href="https://github.com/kittylabassistant/sign-craze/releases">https://github.com/kittylabassistant/sign-craze/releases</a></li>
+<li><strong>Issues:</strong> <a
+href="https://github.com/kittylabassistant/sign-craze/issues">https://github.com/kittylabassistant/sign-craze/issues</a></li>
+<li><strong>README:</strong> <a
+href="https://github.com/kittylabassistant/sign-craze/blob/main/README.md">README.md</a></li>
+<li><strong>Поведенческая спецификация:</strong> <a
+href="https://github.com/kittylabassistant/sign-craze/blob/main/BEHAVIOR_SPEC.md">BEHAVIOR_SPEC.md</a></li>
+<li><strong>Архитектура:</strong> <a
+href="https://github.com/kittylabassistant/sign-craze/blob/main/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a></li>
+<li><strong>Лицензия:</strong> <a
+href="https://github.com/kittylabassistant/sign-craze/blob/main/LICENSE">LICENSE</a>
+(BSD 3-Clause)</li>
+</ul>
+<h2 id="контакты">Контакты</h2>
+<ul>
+<li>E-Mail: <a
+href="mailto:kittylabassistant@protonmail.com"><span>kittylabassistant@protonmail.com</span></a></li>
+</ul>
+
+</main>
+</div>
+</body>
+</html>

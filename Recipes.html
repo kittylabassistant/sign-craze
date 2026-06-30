@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>Recipes · sign-craze</title>
+  <style>
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="layout">
+<nav class="sidebar">
+<p><strong>Навигация</strong></p>
+<ul>
+<li><a href="index.html">Home</a></li>
+<li><a href="Installation.html">Installation</a>
+<ul>
+<li><a href="Install-Behind-DPI.html">Установка за
+DPI/блокировкой</a></li>
+</ul></li>
+<li><a href="Routing.html">Routing</a>
+<ul>
+<li><a href="Routing-Reference.html">Reference</a></li>
+<li><a href="Recipes.html">Recipes</a></li>
+</ul></li>
+<li><a href="FAQ.html">FAQ</a></li>
+</ul>
+<p><strong>Документация</strong></p>
+<ul>
+<li><a
+href="https://github.com/kittylabassistant/sign-craze/blob/main/README.md">README</a></li>
+<li><a
+href="https://github.com/kittylabassistant/sign-craze/blob/main/docs/ARCHITECTURE.md">ARCHITECTURE</a></li>
+</ul>
+<p><strong>Ссылки</strong></p>
+<ul>
+<li><a
+href="https://github.com/kittylabassistant/sign-craze/releases">Releases</a></li>
+<li><a
+href="https://github.com/kittylabassistant/sign-craze/issues">Issues</a></li>
+<li><a
+href="https://github.com/kittylabassistant/sign-craze/blob/main/LICENSE">Лицензия</a></li>
+</ul>
+
+</nav>
+<main class="content">
+<h1 id="рецепты-sign-craze">Рецепты sign-craze</h1>
+<p>Готовые сценарии конфигурации routing/firewall для типовых задач.</p>
+<blockquote>
+<p><strong>Все рецепты совместимы со всеми ядрами (v1.0.0+).</strong>
+Описанные шаги работают одинаково для sing-box, xray и mihomo —
+sign-craze автоматически транслирует правила из
+<code>routing.json</code> в нативный формат активного ядра. Если после
+смены ядра Validate показывает предупреждения — повторно примените
+пресет.</p>
+</blockquote>
+<table>
+<thead>
+<tr class="header">
+<th>Рецепт</th>
+<th>Цель</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><a
+href="Recipe-RU-Direct.html"><code>Recipe-RU-Direct.md</code></a></td>
+<td>РФ-домены и IP идут direct, всё остальное через VPN</td>
+</tr>
+</tbody>
+</table>
+<h2 id="структура-рецепта">Структура рецепта</h2>
+<p>Каждый рецепт следует единому шаблону:</p>
+<ul>
+<li><strong>Цель</strong> — что решает рецепт и когда применимо.</li>
+<li><strong>Prerequisites</strong> — что должно быть настроено до
+начала.</li>
+<li><strong>Recipe A (UI)</strong> — пошаговый сценарий через WebUI
+:9092.</li>
+<li><strong>Recipe B (консоль)</strong> — те же шаги через REST API и
+SSH.</li>
+<li><strong>Verification</strong> — как убедиться, что всё
+работает.</li>
+<li><strong>Rollback</strong> — как отменить изменения.</li>
+</ul>
+
+</main>
+</div>
+</body>
+</html>

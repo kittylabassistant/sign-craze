@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>Routing-Reference · sign-craze</title>
+  <style>
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+    /* CSS for syntax highlighting */
+    pre > code.sourceCode { white-space: pre; position: relative; }
+    pre > code.sourceCode > span { line-height: 1.25; }
+    pre > code.sourceCode > span:empty { height: 1.2em; }
+    .sourceCode { overflow: visible; }
+    code.sourceCode > span { color: inherit; text-decoration: inherit; }
+    div.sourceCode { margin: 1em 0; }
+    pre.sourceCode { margin: 0; }
+    @media screen {
+    div.sourceCode { overflow: auto; }
+    }
+    @media print {
+    pre > code.sourceCode { white-space: pre-wrap; }
+    pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+    }
+    pre.numberSource code
+      { counter-reset: source-line 0; }
+    pre.numberSource code > span
+      { position: relative; left: -4em; counter-increment: source-line; }
+    pre.numberSource code > span > a:first-child::before
+      { content: counter(source-line);
+        position: relative; left: -1em; text-align: right; vertical-align: baseline;
+        border: none; display: inline-block;
+        -webkit-touch-callout: none; -webkit-user-select: none;
+        -khtml-user-select: none; -moz-user-select: none;
+        -ms-user-select: none; user-select: none;
+        padding: 0 4px; width: 4em;
+        color: #aaaaaa;
+      }
+    pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+    div.sourceCode
+      {   }
+    @media screen {
+    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+    }
+    code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+    code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+    code span.at { color: #7d9029; } /* Attribute */
+    code span.bn { color: #40a070; } /* BaseN */
+    code span.bu { color: #008000; } /* BuiltIn */
+    code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+    code span.ch { color: #4070a0; } /* Char */
+    code span.cn { color: #880000; } /* Constant */
+    code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+    code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+    code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+    code span.dt { color: #902000; } /* DataType */
+    code span.dv { color: #40a070; } /* DecVal */
+    code span.er { color: #ff0000; font-weight: bold; } /* Error */
+    code span.ex { } /* Extension */
+    code span.fl { color: #40a070; } /* Float */
+    code span.fu { color: #06287e; } /* Function */
+    code span.im { color: #008000; font-weight: bold; } /* Import */
+    code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+    code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+    code span.op { color: #666666; } /* Operator */
+    code span.ot { color: #007020; } /* Other */
+    code span.pp { color: #bc7a00; } /* Preprocessor */
+    code span.sc { color: #4070a0; } /* SpecialChar */
+    code span.ss { color: #bb6688; } /* SpecialString */
+    code span.st { color: #4070a0; } /* String */
+    code span.va { color: #19177c; } /* Variable */
+    code span.vs { color: #4070a0; } /* VerbatimString */
+    code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+  </style>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="layout">
+<nav class="sidebar">
+<p><strong>Навигация</strong></p>
+<ul>
+<li><a href="index.html">Home</a></li>
+<li><a href="Installation.html">Installation</a>
+<ul>
+<li><a href="Install-Behind-DPI.html">Установка за
+DPI/блокировкой</a></li>
+</ul></li>
+<li><a href="Routing.html">Routing</a>
+<ul>
+<li><a href="Routing-Reference.html">Reference</a></li>
+<li><a href="Recipes.html">Recipes</a></li>
+</ul></li>
+<li><a href="FAQ.html">FAQ</a></li>
+</ul>
+<p><strong>Документация</strong></p>
+<ul>
+<li><a
+href="https://github.com/kittylabassistant/sign-craze/blob/main/README.md">README</a></li>
+<li><a
+href="https://github.com/kittylabassistant/sign-craze/blob/main/docs/ARCHITECTURE.md">ARCHITECTURE</a></li>
+</ul>
+<p><strong>Ссылки</strong></p>
+<ul>
+<li><a
+href="https://github.com/kittylabassistant/sign-craze/releases">Releases</a></li>
+<li><a
+href="https://github.com/kittylabassistant/sign-craze/issues">Issues</a></li>
+<li><a
+href="https://github.com/kittylabassistant/sign-craze/blob/main/LICENSE">Лицензия</a></li>
+</ul>
+
+</nav>
+<main class="content">
+<h1 id="routing-в-sign-craze">Routing в sign-craze</h1>
+<h2 id="pipeline-и-порты">Pipeline и порты</h2>
+<pre class="plain"><code>routing.json
+  └─ ensureConfigFreshForCore()    internal/cli/deps.go
+       └─ buildEffectiveModel()    internal/singbox/render_rules.go:102
+            ├─ BaseRules (hardcoded): resolve + sniff + hijack-dns
+            └─ UserRules (cfg.Rules[], final = cfg.Final)
+                 └─ c.RenderConfig(CoreRenderParams{RoutingConfig: ...})
+                      ├─ sing-box: tun.json.tmpl → config.json
+                      ├─ xray:     renderXrayRoutingRules → xray/config.json
+                      └─ mihomo:   rules/rule-providers → mihomo/config.yaml</code></pre>
+<p>Файлы на роутере:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Файл</th>
+<th>Путь</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Routing config</td>
+<td><code>/opt/etc/sign-craze/routing.json</code> (JSON-поле
+<code>"version": 1</code>, Go-константа <code>SchemaVersion</code>,
+<code>internal/routing/store.go:25</code>).
+<strong>Core-agnostic</strong> — единый файл для всех ядер.</td>
+</tr>
+<tr class="even">
+<td>Sing-box config</td>
+<td><code>/opt/etc/sign-craze/config.json</code>
+(<code>internal/singbox/coreadapter.go:25</code>)</td>
+</tr>
+<tr class="odd">
+<td>Xray config</td>
+<td><code>/opt/etc/sign-craze/xray/config.json</code>
+(<code>internal/core/xray/coreadapter.go</code>)</td>
+</tr>
+<tr class="even">
+<td>Mihomo config</td>
+<td><code>/opt/etc/sign-craze/mihomo/config.yaml</code>
+(<code>internal/core/mihomo/coreadapter.go</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>Порты:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Порт</th>
+<th>Назначение</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>:9090</td>
+<td>Zashboard UI (proxy → :9094)</td>
+</tr>
+<tr class="even">
+<td>:9091</td>
+<td>Admin REST API</td>
+</tr>
+<tr class="odd">
+<td>:9092</td>
+<td>Routing Editor UI</td>
+</tr>
+<tr class="even">
+<td>:9094</td>
+<td>sing-box clash_api (internal)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="translation-matrix-routerule--нативный-формат-ядра">Translation
+matrix: RouteRule → нативный формат ядра</h2>
+<p>Один <code>RouteRule</code> из <code>routing.json</code>
+транслируется в нативные конструкции каждого ядра:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Поле <code>RouteRule</code></th>
+<th>sing-box</th>
+<th>xray</th>
+<th>mihomo</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>domain: ["x.com"]</code></td>
+<td><code>"domain": ["x.com"]</code> (1:1)</td>
+<td><code>"domain": ["x.com"]</code></td>
+<td><code>DOMAIN,x.com,&lt;action&gt;</code></td>
+</tr>
+<tr class="even">
+<td><code>domain_suffix: [".x.com"]</code></td>
+<td><code>"domain_suffix": [".x.com"]</code></td>
+<td><code>"domain": ["x.com"]</code></td>
+<td><code>DOMAIN-SUFFIX,x.com,&lt;action&gt;</code></td>
+</tr>
+<tr class="odd">
+<td><code>domain_keyword: ["x"]</code></td>
+<td><code>"domain_keyword": ["x"]</code></td>
+<td><code>"domain": ["keyword:x"]</code></td>
+<td><code>DOMAIN-KEYWORD,x,&lt;action&gt;</code></td>
+</tr>
+<tr class="even">
+<td><code>domain_regex: ["^x\\."]</code></td>
+<td><code>"domain_regex": [...]</code></td>
+<td><code>"domain": ["regexp:^x\\."]</code></td>
+<td>(не поддерживается, warning)</td>
+</tr>
+<tr class="odd">
+<td><code>ip_cidr: ["10.0.0.0/8"]</code></td>
+<td><code>"ip_cidr": [...]</code></td>
+<td><code>"ip": ["10.0.0.0/8"]</code></td>
+<td><code>IP-CIDR,10.0.0.0/8,&lt;action&gt;,no-resolve</code></td>
+</tr>
+<tr class="even">
+<td><code>port: [80, 443]</code></td>
+<td><code>"port": [80, 443]</code></td>
+<td><code>"port": "80,443"</code></td>
+<td><code>DST-PORT,80,&lt;action&gt;</code> (по одному)</td>
+</tr>
+<tr class="odd">
+<td><code>port_range: ["1000:2000"]</code></td>
+<td><code>"port_range": [...]</code></td>
+<td><code>"port": "1000-2000"</code></td>
+<td><code>DST-PORT,1000-2000,&lt;action&gt;</code></td>
+</tr>
+<tr class="even">
+<td><code>network: "udp"</code></td>
+<td><code>"network": "udp"</code></td>
+<td><code>"network": "udp"</code></td>
+<td><code>NETWORK,udp,&lt;action&gt;</code></td>
+</tr>
+<tr class="odd">
+<td><code>protocol: ["bittorrent"]</code></td>
+<td><code>"protocol": ["bittorrent"]</code></td>
+<td><code>"protocol": ["bittorrent"]</code></td>
+<td>(warning, skip)</td>
+</tr>
+<tr class="even">
+<td><code>source_ip_cidr: [...]</code></td>
+<td><code>"source_ip_cidr": [...]</code></td>
+<td><code>"source": [...]</code></td>
+<td>(не поддерживается, warning)</td>
+</tr>
+<tr class="odd">
+<td><code>inbound: ["tproxy-in"]</code></td>
+<td><code>"inbound": [...]</code></td>
+<td><code>"inboundTag": [...]</code></td>
+<td>(игнорируется)</td>
+</tr>
+<tr class="even">
+<td><code>rule_set: ["geosite-youtube"]</code></td>
+<td><code>"rule_set": ["geosite-youtube"]</code></td>
+<td>translation → <code>"domain": ["geosite:youtube"]</code></td>
+<td><code>RULE-SET,geosite-youtube,&lt;action&gt;</code> +
+rule-providers</td>
+</tr>
+<tr class="odd">
+<td><code>rule_set: ["geoip-ru"]</code></td>
+<td><code>"rule_set": ["geoip-ru"]</code></td>
+<td>translation → <code>"ip": ["geoip:ru"]</code></td>
+<td><code>RULE-SET,geoip-ru,&lt;action&gt;</code> + rule-providers</td>
+</tr>
+<tr class="even">
+<td><code>rule_set: ["refilter-blocked-domains"]</code></td>
+<td><code>"rule_set": [...]</code></td>
+<td>warning — нет .dat-эквивалента</td>
+<td><code>RULE-SET,refilter-blocked-domains,&lt;action&gt;</code> + .mrs
+rule-provider</td>
+</tr>
+<tr class="odd">
+<td><code>action: "reject"</code> / outbound <code>block</code></td>
+<td><code>"action": "reject"</code></td>
+<td>outbound <code>blackhole</code> автодобавляется</td>
+<td><code>,REJECT</code></td>
+</tr>
+<tr class="even">
+<td><code>action: "route"</code>, outbound <code>direct</code></td>
+<td><code>"outbound": "direct"</code></td>
+<td><code>"outboundTag": "direct"</code> (freedom автодобавляется)</td>
+<td><code>,DIRECT</code></td>
+</tr>
+<tr class="odd">
+<td>Final rule</td>
+<td><code>"final": "&lt;tag&gt;"</code></td>
+<td>последнее правило без матчеров</td>
+<td><code>MATCH,&lt;tag&gt;</code> в конце <code>rules:</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="per-core-preset-urls">Per-core preset URLs</h3>
+<p>При <code>POST /api/presets/&lt;name&gt;/apply</code> URL rule_set
+резолвится под формат активного ядра:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Ядро</th>
+<th>Формат</th>
+<th>Источник</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>sing-box</td>
+<td><code>.srs</code></td>
+<td>SagerNet/sing-geosite, SagerNet/sing-geoip</td>
+</tr>
+<tr class="even">
+<td>mihomo</td>
+<td><code>.mrs</code></td>
+<td>MetaCubeX/meta-rules-dat</td>
+</tr>
+<tr class="odd">
+<td>xray</td>
+<td>translation в matcher</td>
+<td>URL не нужен — geosite:/geoip: данные встроены в xray</td>
+</tr>
+</tbody>
+</table>
+<p>Если переключили ядро и в <code>routing.json</code> остались URL
+старого формата — Validate покажет предупреждение. Чтобы обновить URL:
+повторно применить пресет (кнопка <strong>Пресеты ▾</strong> в UI или
+<code>POST /api/presets/&lt;name&gt;/apply</code>).</p>
+<hr />
+<h2 id="ui-editor-9092">UI Editor :9092</h2>
+<p><strong>Запуск:</strong> <code>sign-craze --ui on</code>. Доступ:
+<code>http://&lt;router-ip&gt;:9092</code> без аутентификации.</p>
+<p><strong>Вкладки:</strong></p>
+<ul>
+<li><strong>Inbounds</strong> — tun, tproxy, mixed, socks, http</li>
+<li><strong>Outbounds</strong> — vless / vmess / trojan / shadowsocks /
+direct / block</li>
+<li><strong>Routing</strong> — список правил с drag-n-drop reorder;
+полная схема sing-box rule (domain, ip_cidr, port, port_range, protocol,
+rule_set, invert)</li>
+<li><strong>Rule Sets</strong> — кастомные удалённые SRS-источники</li>
+<li><strong>Preview</strong> — rendered config.json; кнопки Validate /
+Apply</li>
+</ul>
+<p><strong>Встроенные пресеты</strong> (POST
+<code>/api/presets/&lt;name&gt;/apply</code>):</p>
+<table>
+<thead>
+<tr class="header">
+<th>Имя</th>
+<th>Что делает</th>
+<th>Источник SRS</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>sign-craze-default</code></td>
+<td>bittorrent→direct, youtube→direct, discord→direct,
+refilter-blocked→{vpn}, final=direct</td>
+<td>ruleset-domain-refilter_domains.srs
+(1andrevich/Re-filter-lists)</td>
+</tr>
+<tr class="even">
+<td><code>block-ads</code></td>
+<td>geosite-category-ads-all → reject</td>
+<td>SagerNet/sing-geosite</td>
+</tr>
+<tr class="odd">
+<td><code>ru-direct</code></td>
+<td>geoip-ru → direct</td>
+<td>SagerNet/sing-geoip (<code>geoip-ru.srs</code>)</td>
+</tr>
+<tr class="even">
+<td><code>blocked-vpn</code></td>
+<td>refilter-blocked-domains → {vpn}</td>
+<td>1andrevich/Re-filter-lists</td>
+</tr>
+<tr class="odd">
+<td><code>discord-vpn</code></td>
+<td>geosite-discord → {vpn}</td>
+<td>SagerNet/sing-geosite</td>
+</tr>
+<tr class="even">
+<td><code>torrents-direct</code></td>
+<td>protocol bittorrent → direct</td>
+<td>sniff-based, без SRS</td>
+</tr>
+<tr class="odd">
+<td><code>block-bogon-udp</code></td>
+<td>UDP 135/137-139 → reject</td>
+<td>фиксированные порты, без SRS</td>
+</tr>
+</tbody>
+</table>
+<p>Placeholder <code>{vpn}</code> резолвится в
+<code>state.Outbounds[0].Tag</code> автоматически.</p>
+<p><strong>REST API</strong> (<code>:9092</code>):</p>
+<pre class="plain"><code>GET    /api/state
+GET    /api/inbounds      POST  PUT/{tag}    DELETE/{tag}
+GET    /api/outbounds     POST  PUT/{tag}    DELETE/{tag}
+GET    /api/rules         POST  PUT/{idx}    DELETE/{idx}
+POST   /api/rules/reorder   body={from, to}
+GET    /api/rule_sets     POST               DELETE/{tag}
+GET    /api/presets       POST /api/presets/{name}/apply
+POST   /api/validate      body=RoutingConfig
+GET    /api/preview                          → rendered config.json
+POST   /api/apply                            → {&quot;needs_restart&quot;: true}</code></pre>
+<p><strong>Apply pipeline:</strong> <code>POST /api/apply</code> →
+<code>ensureConfigFreshForCore</code> → <code>c.RenderConfig</code>
+(check встроен) → atomic write конфига активного ядра. Ответ
+<code>{"needs_restart": true}</code>. Reload через SIGHUP не
+поддерживается — нужен <code>sign-craze --restart</code>.</p>
+<p><strong>Validate response</strong> (начиная с v1.0.0):</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode json"><code class="sourceCode json"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;ok&quot;</span><span class="fu">:</span> <span class="kw">true</span><span class="fu">,</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;errors&quot;</span><span class="fu">:</span> <span class="ot">[]</span><span class="fu">,</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;warnings&quot;</span><span class="fu">:</span> <span class="ot">[</span><span class="st">&quot;rule_set geosite-category-ads-all: .srs URL несовместим с mihomo, нужен .mrs — повторно примените пресет&quot;</span><span class="ot">]</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
+<p><code>warnings</code> не блокируют apply. <code>errors</code>
+блокируют.</p>
+<p><strong>Кастомный SRS-источник</strong> (UI "Rule Sets" → Add, или
+POST <code>/api/rule_sets</code>):</p>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode json"><code class="sourceCode json"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;tag&quot;</span><span class="fu">:</span> <span class="st">&quot;my-list&quot;</span><span class="fu">,</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;type&quot;</span><span class="fu">:</span> <span class="st">&quot;remote&quot;</span><span class="fu">,</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;format&quot;</span><span class="fu">:</span> <span class="st">&quot;binary&quot;</span><span class="fu">,</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;url&quot;</span><span class="fu">:</span> <span class="st">&quot;https://example.com/my-rules.srs&quot;</span><span class="fu">,</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;download_detour&quot;</span><span class="fu">:</span> <span class="st">&quot;direct&quot;</span><span class="fu">,</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;update_interval&quot;</span><span class="fu">:</span> <span class="st">&quot;12h0m0s&quot;</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
+<p>После добавления тег <code>my-list</code> доступен в поле
+<code>rule_set</code> любого правила.</p>
+<p><strong>Persistence:</strong> изменения сохраняются в
+<code>/opt/etc/sign-craze/routing.json</code>. Файлы с
+<code>"version": 0</code> (отсутствующее поле) мигрируют в
+<code>"version": 1</code> автоматически при чтении — вручную исправлять
+не нужно.</p>
+<p><strong>Disable:</strong> в <code>state.json</code> выставить
+<code>"routing_ui_enabled": false</code>.</p>
+<hr />
+<h2 id="workarounds-для-частных-случаев">Workarounds для частных
+случаев</h2>
+<h3 id="bypass-ipcidr-через-ipset">Bypass IP/CIDR через ipset</h3>
+<p>Для единичных адресов или небольших блоков без SRS:</p>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--exclude-add</span> 95.213.0.0/16</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--exclude-add</span> 5.45.192.0/18</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--restart</span></span></code></pre></div>
+<p>Меняет <code>state.json:Excludes</code>, регенерирует
+<code>config.json</code>, обновляет ipset
+<code>signcraze_excludes</code>. Минус: уровень kernel, sing-box про эти
+IP не знает; список поддерживается вручную.</p>
+<h3 id="прямая-правка-routingjson-через-rest-9092">Прямая правка
+routing.json через REST :9092</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># получить текущий RoutingConfig</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> http://router:9092/api/state <span class="op">&gt;</span> /tmp/routing.json</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="co"># внести правки, залить обратно через /api/rules или /api/apply</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-X</span> POST http://router:9092/api/validate <span class="at">-d</span> @/tmp/routing.json</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-X</span> POST http://router:9092/api/apply</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--restart</span></span></code></pre></div>
+<p>Изменения персистентны (пишутся в routing.json). Это штатный путь для
+автоматизации без UI.</p>
+<h3 id="режим-policy-по-устройству-не-по-geo">Режим policy (по
+устройству, не по geo)</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--mode</span> policy</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--restart</span></span></code></pre></div>
+<p>В policy mode трафик конкретных устройств/подсетей определяется в
+web-UI Keenetic. Минус: гранулярность по device, не по geo/домену.</p>
+<hr />
+<h2 id="verification">Verification</h2>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co"># 1. Предварительная валидация конфига</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-X</span> POST http://router:9092/api/validate <span class="at">-d</span> @routing.json</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="co"># 2. Preview rendered конфига (JSON для sing-box/xray, YAML для mihomo)</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> http://router:9092/api/preview <span class="kw">|</span> <span class="ex">jq</span> <span class="st">&#39;.route.rules&#39;</span>    <span class="co"># sing-box</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> http://router:9092/api/preview <span class="kw">|</span> <span class="ex">jq</span> <span class="st">&#39;.routing.rules&#39;</span>  <span class="co"># xray</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> http://router:9092/api/preview                        <span class="co"># mihomo (YAML)</span></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a><span class="co"># 3. Apply (sing-box check встроен в WriteConfig)</span></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-X</span> POST http://router:9092/api/apply</span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a><span class="co"># ответ: {&quot;needs_restart&quot;: true}</span></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a><span class="co"># 4. Перезапуск</span></span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--restart</span></span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a><span class="co"># 5. Проверка состояния</span></span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--status</span></span></code></pre></div>
+<p>После <code>--restart</code> убедиться в логах ядра, что
+<code>rule_set</code> успешно скачан (для sing-box/mihomo) или
+translation применена (для xray):</p>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="fu">tail</span> <span class="at">-f</span> /opt/var/log/sign-craze/sign-craze.log <span class="kw">|</span> <span class="fu">grep</span> <span class="at">-E</span> <span class="st">&#39;rule_set|geosite|geoip&#39;</span></span></code></pre></div>
+<hr />
+<h2 id="recipes">Recipes</h2>
+<p>Детальный пример «RU-трафик через прямое соединение без SRS-пресетов»
+— см. <a href="Recipe-RU-Direct.html">Recipe-RU-Direct.md</a>.</p>
+
+</main>
+</div>
+</body>
+</html>

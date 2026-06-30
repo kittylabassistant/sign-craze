@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>Installation · sign-craze</title>
+  <style>
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+    /* CSS for syntax highlighting */
+    pre > code.sourceCode { white-space: pre; position: relative; }
+    pre > code.sourceCode > span { line-height: 1.25; }
+    pre > code.sourceCode > span:empty { height: 1.2em; }
+    .sourceCode { overflow: visible; }
+    code.sourceCode > span { color: inherit; text-decoration: inherit; }
+    div.sourceCode { margin: 1em 0; }
+    pre.sourceCode { margin: 0; }
+    @media screen {
+    div.sourceCode { overflow: auto; }
+    }
+    @media print {
+    pre > code.sourceCode { white-space: pre-wrap; }
+    pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+    }
+    pre.numberSource code
+      { counter-reset: source-line 0; }
+    pre.numberSource code > span
+      { position: relative; left: -4em; counter-increment: source-line; }
+    pre.numberSource code > span > a:first-child::before
+      { content: counter(source-line);
+        position: relative; left: -1em; text-align: right; vertical-align: baseline;
+        border: none; display: inline-block;
+        -webkit-touch-callout: none; -webkit-user-select: none;
+        -khtml-user-select: none; -moz-user-select: none;
+        -ms-user-select: none; user-select: none;
+        padding: 0 4px; width: 4em;
+        color: #aaaaaa;
+      }
+    pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+    div.sourceCode
+      {   }
+    @media screen {
+    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+    }
+    code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+    code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+    code span.at { color: #7d9029; } /* Attribute */
+    code span.bn { color: #40a070; } /* BaseN */
+    code span.bu { color: #008000; } /* BuiltIn */
+    code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+    code span.ch { color: #4070a0; } /* Char */
+    code span.cn { color: #880000; } /* Constant */
+    code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+    code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+    code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+    code span.dt { color: #902000; } /* DataType */
+    code span.dv { color: #40a070; } /* DecVal */
+    code span.er { color: #ff0000; font-weight: bold; } /* Error */
+    code span.ex { } /* Extension */
+    code span.fl { color: #40a070; } /* Float */
+    code span.fu { color: #06287e; } /* Function */
+    code span.im { color: #008000; font-weight: bold; } /* Import */
+    code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+    code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+    code span.op { color: #666666; } /* Operator */
+    code span.ot { color: #007020; } /* Other */
+    code span.pp { color: #bc7a00; } /* Preprocessor */
+    code span.sc { color: #4070a0; } /* SpecialChar */
+    code span.ss { color: #bb6688; } /* SpecialString */
+    code span.st { color: #4070a0; } /* String */
+    code span.va { color: #19177c; } /* Variable */
+    code span.vs { color: #4070a0; } /* VerbatimString */
+    code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+  </style>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="layout">
+<nav class="sidebar">
+<p><strong>Навигация</strong></p>
+<ul>
+<li><a href="index.html">Home</a></li>
+<li><a href="Installation.html">Installation</a>
+<ul>
+<li><a href="Install-Behind-DPI.html">Установка за
+DPI/блокировкой</a></li>
+</ul></li>
+<li><a href="Routing.html">Routing</a>
+<ul>
+<li><a href="Routing-Reference.html">Reference</a></li>
+<li><a href="Recipes.html">Recipes</a></li>
+</ul></li>
+<li><a href="FAQ.html">FAQ</a></li>
+</ul>
+<p><strong>Документация</strong></p>
+<ul>
+<li><a
+href="https://github.com/kittylabassistant/sign-craze/blob/main/README.md">README</a></li>
+<li><a
+href="https://github.com/kittylabassistant/sign-craze/blob/main/docs/ARCHITECTURE.md">ARCHITECTURE</a></li>
+</ul>
+<p><strong>Ссылки</strong></p>
+<ul>
+<li><a
+href="https://github.com/kittylabassistant/sign-craze/releases">Releases</a></li>
+<li><a
+href="https://github.com/kittylabassistant/sign-craze/issues">Issues</a></li>
+<li><a
+href="https://github.com/kittylabassistant/sign-craze/blob/main/LICENSE">Лицензия</a></li>
+</ul>
+
+</nav>
+<main class="content">
+<h1 id="установка-sign-craze">Установка sign-craze</h1>
+<p>Полная инструкция от чистой флешки до рабочего прокси на роутере
+Keenetic.</p>
+<blockquote>
+<p>[!WARNING] Все команды выполняются на ваш страх и риск. Перед
+форматированием убедитесь, что выбран правильный диск — ошибка может
+уничтожить данные на системном накопителе. Делайте резервную копию
+важных данных.</p>
+</blockquote>
+<h2 id="содержание">Содержание</h2>
+<ol type="1">
+<li><a href="#1-что-понадобится">Что понадобится</a></li>
+<li><a href="#2-подготовка-флешки-разметка--swap">Подготовка флешки:
+разметка + swap</a></li>
+<li><a href="#3-установка-entware-на-keenetic">Установка Entware на
+Keenetic</a></li>
+<li><a href="#4-создание-swap-1-gb">Создание swap 1 GB</a></li>
+<li><a href="#5-установка-sign-craze">Установка sign-craze</a></li>
+<li><a href="#6-конфигурация-sign-craze">Конфигурация sign-craze</a>
+(включая выбор ядра <code>--core</code>)</li>
+<li><a href="#7-запуск">Запуск</a></li>
+<li><a href="#8-web-ui-опционально">Web UI (опционально)</a></li>
+<li><a href="#9-гео-фильтрация-опционально">Гео-фильтрация
+(опционально)</a></li>
+<li><a href="#10-проверка-прокси-с-клиента">Проверка прокси с
+клиента</a></li>
+<li><a href="#11-автозапуск-после-ребута">Автозапуск после
+ребута</a></li>
+<li><a href="#12-диагностика-при-проблемах">Диагностика при
+проблемах</a></li>
+</ol>
+<hr />
+<h2 id="1-что-понадобится">1. Что понадобится</h2>
+<ul>
+<li>Роутер Keenetic с USB-портом и поддержкой OPKG (большинство моделей
+кроме самых младших).</li>
+<li>USB-флешка <strong>≥ 4 GB</strong> (sign-craze + sing-box +
+geo-файлы + swap-файл 1 GB + запас под Entware).</li>
+<li>ПК с Linux, macOS или Windows.</li>
+<li>Подписка на VPN/прокси-сервис: URL формата <code>vless://...</code>,
+<code>vmess://...</code>, <code>ss://...</code>,
+<code>trojan://...</code>, <code>http://...</code> или
+<code>socks5://...</code>.</li>
+<li>SSH-клиент (встроен в Linux/macOS, для Windows — PuTTY или
+встроенный <code>ssh.exe</code>).</li>
+</ul>
+<hr />
+<h2 id="2-подготовка-флешки-разметка--swap">2. Подготовка флешки:
+разметка + swap</h2>
+<p>Цель: получить флешку с одним ext4-разделом (и опционально
+swap-разделом). Если хотите swap-файлом вместо раздела — оставьте всю
+флешку под ext4 и переходите к <a href="#4-создание-swap-1-gb">шагу
+4</a>.</p>
+<p>Выберите <strong>один из 6 методов</strong> в зависимости от вашей
+ОС.</p>
+<h3 id="метод-a--linux-cli-bashparted">Метод A — Linux CLI
+(bash/parted)</h3>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># 1. Найти устройство флешки</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="ex">lsblk</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Вы увидите примерно:</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="co">#  sda      8:0    1   16G  0 disk</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="co">#  └─sda1   8:1    1   16G  0 part</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Запомните имя без цифры (sda, sdb, sdc...). НЕ перепутайте с системным диском!</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="co"># 2. Размонтировать все разделы флешки</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> umount /dev/sdX<span class="pp">*</span>    <span class="co"># X = ваша буква, e.g. /dev/sdb*</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a><span class="co"># 3. Очистить старые сигнатуры</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> wipefs <span class="at">-a</span> /dev/sdX</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a><span class="co"># 4. Вариант 1 — только ext4 (swap будет файлом, см. шаг 4):</span></span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> parted /dev/sdX <span class="at">--script</span> mklabel msdos</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> parted /dev/sdX <span class="at">--script</span> mkpart primary ext4 1MiB 100%</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> mkfs.ext4 <span class="at">-L</span> Entware /dev/sdX1</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a><span class="co"># 4. Вариант 2 — ext4 + отдельный swap-раздел 1 GB:</span></span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> parted /dev/sdX <span class="at">--script</span> mklabel msdos</span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> parted /dev/sdX <span class="at">--script</span> mkpart primary ext4 1MiB <span class="at">-1024MiB</span></span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> parted /dev/sdX <span class="at">--script</span> mkpart primary linux-swap <span class="at">-1024MiB</span> 100%</span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> mkfs.ext4 <span class="at">-L</span> Entware /dev/sdX1</span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> mkswap <span class="at">-L</span> SWAP /dev/sdX2</span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a><span class="co"># 5. Извлечь</span></span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> eject /dev/sdX</span></code></pre></div>
+<h3 id="метод-b--macos-terminal-через-homebrew">Метод B — macOS Terminal
+(через Homebrew)</h3>
+<p>macOS не поддерживает ext4 нативно. Установите
+<code>e2fsprogs</code>:</p>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># 1. Поставить e2fsprogs</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">brew</span> install e2fsprogs</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="co"># 2. Найти диск</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="ex">diskutil</span> list</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Найдите вашу флешку (e.g. /dev/disk4). Будьте ОЧЕНЬ внимательны — внутренний SSD не трогать!</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="co"># 3. Размонтировать</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="ex">diskutil</span> unmountDisk /dev/diskN     <span class="co"># N = номер вашей флешки</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="co"># 4. Стереть и создать MBR с одним пустым разделом</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="ex">diskutil</span> eraseDisk free FREE MBR /dev/diskN</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="ex">diskutil</span> partitionDisk /dev/diskN 1 MBR <span class="st">&quot;Free Space&quot;</span> <span class="st">&quot;FREE&quot;</span> 100%</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a><span class="co"># 5. Отформатировать в ext4</span></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> <span class="va">$(</span><span class="ex">brew</span> <span class="at">--prefix</span> e2fsprogs<span class="va">)</span>/sbin/mkfs.ext4 <span class="at">-L</span> Entware /dev/rdiskNs1</span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a><span class="co"># 6. Извлечь</span></span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a><span class="ex">diskutil</span> eject /dev/diskN</span></code></pre></div>
+<blockquote>
+<p>[!NOTE] После форматирования диск в Finder не появится — это
+нормально, macOS не умеет монтировать ext4 без сторонних драйверов. Swap
+делайте swap-файлом на роутере (шаг 4).</p>
+</blockquote>
+<h3 id="метод-c--windows-powershell--diskpart">Метод C — Windows
+PowerShell + diskpart</h3>
+<p>PowerShell сам ext4 не умеет. Сначала очистите флешку через
+<code>diskpart</code>, затем отформатируйте через GUI-утилиту (методы
+D/E/F).</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode powershell"><code class="sourceCode powershell"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Запустить PowerShell от имени администратора</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>diskpart</span></code></pre></div>
+<p>В интерактивной сессии diskpart:</p>
+<pre><code>list disk
+select disk N            REM N — номер флешки. ОСТОРОЖНО!
+clean
+create partition primary
+exit</code></pre>
+<p>Далее перейдите к одному из GUI-методов (D, E или F) для
+форматирования в ext4.</p>
+<h3 id="метод-d--paragon-partition-manager-free-windows">Метод D —
+Paragon Partition Manager Free (Windows)</h3>
+<ol type="1">
+<li>Скачать с <a
+href="https://www.paragon-software.com/free/pm-express/">https://www.paragon-software.com/free/pm-express/</a>
+(Free версия).</li>
+<li>Установить и запустить от администратора.</li>
+<li>В списке дисков выбрать USB-флешку → правой кнопкой по разделу →
+<strong>Format Partition</strong>.</li>
+<li><strong>File system:</strong> <code>Ext4</code></li>
+<li><strong>Volume label:</strong> <code>Entware</code></li>
+<li>Нажать <strong>Format</strong> → затем <strong>Apply
+Changes</strong> в верхней панели.</li>
+<li>(Опционально) Создать второй раздел 1024 MB с типом <strong>Linux
+Swap</strong>.</li>
+</ol>
+<h3 id="метод-e--minitool-partition-wizard-free-windows">Метод E —
+MiniTool Partition Wizard Free (Windows)</h3>
+<ol type="1">
+<li>Скачать с <a
+href="https://www.partitionwizard.com/free-partition-manager.html">https://www.partitionwizard.com/free-partition-manager.html</a>
+(Free).</li>
+<li>Установить и запустить от администратора.</li>
+<li>Выбрать USB-флешку → правой кнопкой по разделу → <strong>Format
+Partition</strong>.</li>
+<li><strong>File System:</strong> <code>Ext4</code>, <strong>Partition
+Label:</strong> <code>Entware</code>.</li>
+<li>Нажать <strong>OK</strong> → затем <strong>Apply</strong> в нижнем
+левом углу.</li>
+<li>(Опционально) Свободное место → <strong>Create</strong> →
+<strong>File System:</strong> <code>Linux Swap</code>,
+<strong>Size:</strong> <code>1024 MB</code> →
+<strong>Apply</strong>.</li>
+</ol>
+<h3 id="метод-f--gparted-live-usb-универсальный-windowsmacoslinux">Метод
+F — GParted Live USB (универсальный, Windows/macOS/Linux)</h3>
+<p>Загрузочный диск с GParted работает на любом ПК.</p>
+<ol type="1">
+<li>Скачать ISO: <a
+href="https://gparted.org/download.php">https://gparted.org/download.php</a></li>
+<li>Записать ISO на <strong>отдельную</strong> загрузочную флешку:
+<ul>
+<li>Windows: <a href="https://rufus.ie/">Rufus</a></li>
+<li>macOS/Linux: <a
+href="https://www.balena.io/etcher/">balenaEtcher</a> или
+<code>dd</code></li>
+</ul></li>
+<li>Загрузиться с этой флешки (BIOS/UEFI Boot Menu, обычно
+<code>F12</code> / <code>F2</code> / <code>Esc</code> при
+включении).</li>
+<li>В GParted Live выбрать целевую флешку (правый верхний угол:
+<strong>Device</strong>).</li>
+<li>Создать таблицу разделов: <strong>Device</strong> → <strong>Create
+Partition Table</strong> → <code>msdos</code>.</li>
+<li>Создать ext4-раздел: правой кнопкой на свободном месте →
+<strong>New</strong> → <strong>File system:</strong> <code>ext4</code>,
+<strong>Label:</strong> <code>Entware</code>, размер = всё минус 1024
+MB.</li>
+<li>Создать swap: правой кнопкой на оставшемся свободном месте →
+<strong>New</strong> → <strong>File system:</strong>
+<code>linux-swap</code>, размер <code>1024 MB</code>.</li>
+<li><strong>Edit</strong> → <strong>Apply All Operations</strong> →
+подтвердить.</li>
+<li>Извлечь и подключить к роутеру.</li>
+</ol>
+<hr />
+<h2 id="3-установка-entware-на-keenetic">3. Установка Entware на
+Keenetic</h2>
+<h3 id="31-подготовка-веб-интерфейса">3.1. Подготовка
+веб-интерфейса</h3>
+<ol type="1">
+<li>Открыть веб-интерфейс роутера (<code>http://192.168.1.1</code> или
+<code>http://my.keenetic.net</code>).</li>
+<li><strong>Общие настройки</strong> → <strong>Обновления и
+компоненты</strong> → <strong>Изменить набор компонентов</strong>.</li>
+<li>Убедиться, что установлены:
+<ul>
+<li><strong>OPKG</strong> (менеджер пакетов)</li>
+<li><strong>Файловая система Ext4</strong></li>
+<li><strong>Файл подкачки</strong> (для swap)</li>
+</ul></li>
+<li>Применить, дождаться перезагрузки.</li>
+</ol>
+<h3 id="32-подключение-флешки">3.2. Подключение флешки</h3>
+<ol type="1">
+<li>Подключить отформатированную флешку к USB-порту роутера.</li>
+<li>Веб-интерфейс → <strong>Приложения</strong> →
+<strong>USB-накопители</strong>.</li>
+<li>Дождаться появления флешки в списке.</li>
+</ol>
+<h3 id="33-установка-entware-через-веб-интерфейс">3.3. Установка Entware
+через веб-интерфейс</h3>
+<ol type="1">
+<li>Веб-интерфейс → <strong>Приложения</strong> → раздел
+<strong>OPKG</strong>.</li>
+<li><strong>Включить</strong> OPKG.</li>
+<li><strong>Накопитель:</strong> выбрать раздел флешки
+(<code>Entware</code> если ставили label).</li>
+<li>Применить. Роутер скачает и установит Entware (~3–5 минут).</li>
+</ol>
+<h3 id="34-включение-ssh">3.4. Включение SSH</h3>
+<ol type="1">
+<li>Веб-интерфейс → <strong>Управление</strong> → <strong>Пользователи и
+доступ</strong>.</li>
+<li>Создать пользователя или выбрать существующего → дать права
+<strong>admin</strong>.</li>
+<li>Разрешить доступ по <strong>SSH</strong> для этого
+пользователя.</li>
+</ol>
+<h3 id="35-проверка-по-ssh">3.5. Проверка по SSH</h3>
+<div class="sourceCode" id="cb5"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ssh</span> admin@192.168.1.1     <span class="co"># либо адрес вашего роутера</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Внутри сессии — попасть в Entware shell:</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="ex">opkg</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="co"># или сразу:</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="bu">exec</span> sh</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="ex">opkg</span> update</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="ex">opkg</span> install nano htop</span></code></pre></div>
+<blockquote>
+<p>[!NOTE] На некоторых прошивках Keenetic после
+<code>ssh admin@...</code> вы попадаете в CLI Keenetic, а не в Entware.
+Команда <code>exec sh</code> переключает в shell Entware. Альтернатива —
+<code>ssh root@...</code> если включён рутовый доступ.</p>
+</blockquote>
+<hr />
+<h2 id="4-создание-swap-1-gb">4. Создание swap 1 GB</h2>
+<p>Если в шаге 2 вы не создавали отдельный swap-раздел — используйте
+swap-файл (рекомендуется, проще).</p>
+<h3 id="41-swap-файл-рекомендуется">4.1. Swap-файл (рекомендуется)</h3>
+<div class="sourceCode" id="cb6"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># По SSH на роутере, в Entware shell</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Создать файл 1 GB</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="fu">dd</span> if=/dev/zero of=/opt/swap bs=1M count=1024</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="fu">chmod</span> 600 /opt/swap</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="ex">mkswap</span> /opt/swap</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="ex">swapon</span> /opt/swap</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a><span class="co"># Проверка</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a><span class="fu">free</span> <span class="at">-m</span></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a><span class="ex">swapon</span> <span class="at">-s</span></span></code></pre></div>
+<h3 id="42-автозапуск-swap-после-ребута">4.2. Автозапуск swap после
+ребута</h3>
+<p>Создать init.d-скрипт <code>/opt/etc/init.d/S02swap</code>:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span> <span class="op">&gt;</span> /opt/etc/init.d/S02swap <span class="op">&lt;&lt;&#39;EOF&#39;</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="st">#!/bin/sh</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="st">ENABLED=yes</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="st">PROCS=swapon</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="st">ARGS=&quot;/opt/swap&quot;</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="st">PREARGS=&quot;&quot;</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a><span class="st">DESC=$PROCS</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a><span class="st">PATH=/opt/sbin:/opt/bin:/sbin:/bin:/usr/sbin:/usr/bin</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a><span class="st">. /opt/etc/init.d/rc.func</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a><span class="op">EOF</span></span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a><span class="fu">chmod</span> +x /opt/etc/init.d/S02swap</span></code></pre></div>
+<h3 id="43-если-swap-раздел-был-создан-в-шаге-2">4.3. Если swap-раздел
+был создан в шаге 2</h3>
+<div class="sourceCode" id="cb8"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Найти swap-раздел</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="ex">blkid</span> <span class="kw">|</span> <span class="fu">grep</span> swap</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Например: /dev/sda2: LABEL=&quot;SWAP&quot; TYPE=&quot;swap&quot;</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="ex">swapon</span> /dev/sda2</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a><span class="fu">free</span> <span class="at">-m</span></span></code></pre></div>
+<p>Автозапуск аналогично — <code>S02swap</code> с
+<code>ARGS="/dev/sda2"</code>.</p>
+<hr />
+<h2 id="5-установка-sign-craze">5. Установка sign-craze</h2>
+<blockquote>
+<p><strong>Важно</strong>: BusyBox <code>wget</code> на Keenetic собран
+<strong>без SSL</strong> и не поддерживает HTTPS — выдаст
+<code>not an http or ftp url</code>. Также BusyBox <code>od</code> не
+поддерживает опцию <code>-t</code>. Поэтому установка идёт через
+<code>curl</code> (с <code>-k</code> — без проверки сертификатов) или
+через <code>wget-ssl</code> из Entware.</p>
+</blockquote>
+<h3 id="51-установить-curl-один-раз">5.1. Установить curl (один
+раз)</h3>
+<div class="sourceCode" id="cb9"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="ex">opkg</span> update</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="ex">opkg</span> install curl</span></code></pre></div>
+<p>Альтернатива — <code>wget-ssl</code>:</p>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="ex">opkg</span> install wget-ssl</span></code></pre></div>
+<h3 id="52-запустить-установщик">5.2. Запустить установщик</h3>
+<div class="sourceCode" id="cb11"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="co"># По SSH, в Entware shell на роутере</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-fsSL</span> https://github.com/kittylabassistant/sign-craze/releases/latest/download/install.sh <span class="kw">|</span> <span class="fu">sh</span></span></code></pre></div>
+<p>Если GitHub недоступен напрямую, передайте прокси через переменную
+окружения установщику:</p>
+<div class="sourceCode" id="cb12"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="va">https_proxy</span><span class="op">=</span>http://<span class="op">&lt;</span>host<span class="op">&gt;</span>:<span class="op">&lt;</span>port<span class="op">&gt;</span> curl <span class="ex">-fsSL</span> https://github.com/kittylabassistant/sign-craze/releases/latest/download/install.sh <span class="kw">|</span> <span class="fu">sh</span></span></code></pre></div>
+<p>Скрипт автоматически:</p>
+<ul>
+<li>Выберет загрузчик: <code>curl -fsSL</code> или <code>wget</code> (с
+проверкой TLS). Если корневых CA на роутере нет —
+<code>opkg install ca-certificates</code>.</li>
+<li>Определит архитектуру (<code>mipsle</code> / <code>mips</code> /
+<code>arm7</code> / <code>arm64</code>); endianness MIPS — через
+<code>od -x</code> (BusyBox-совместимо).</li>
+<li>Проверит свободное место на <code>/opt</code> (нужно ≥ 30 МБ).</li>
+<li>Скачает соответствующий бинарь с GitHub Releases.</li>
+<li>Проверит SHA256 (если файл <code>.sha256</code> доступен).</li>
+<li>Атомарно установит в <code>/opt/sbin/sign-craze</code>.</li>
+</ul>
+<h3 id="53-возможные-ошибки">5.3. Возможные ошибки</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Ошибка</th>
+<th>Причина</th>
+<th>Решение</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>wget: not an http or ftp url: https://...</code></td>
+<td>BusyBox <code>wget</code> без SSL</td>
+<td><code>opkg install curl</code> или <code>wget-ssl</code></td>
+</tr>
+<tr class="even">
+<td><code>od: invalid option -- 't'</code></td>
+<td>Старая версия скрипта (BusyBox <code>od</code> без
+<code>-t</code>)</td>
+<td>Обновить <code>install.sh</code> до последнего релиза</td>
+</tr>
+<tr class="odd">
+<td><code>od: invalid option -- 'A'</code></td>
+<td>Старая версия скрипта (BusyBox <code>od</code> без
+<code>-A</code>/<code>-N</code>)</td>
+<td>Обновить <code>install.sh</code> до последнего релиза</td>
+</tr>
+<tr class="even">
+<td><code>Не удалось определить endianness MIPS</code></td>
+<td><code>od</code> вывел неожиданный формат</td>
+<td>Сообщить вывод <code>printf '\\001\\002' | od -x</code> в issue</td>
+</tr>
+<tr class="odd">
+<td><code>Нужен curl или wget с поддержкой SSL</code></td>
+<td>Ни <code>curl</code>, ни <code>wget-ssl</code> не установлены</td>
+<td><code>opkg install curl</code></td>
+</tr>
+<tr class="even">
+<td><code>Недостаточно места в /opt</code></td>
+<td>&lt; 30 МБ свободно</td>
+<td>Очистить <code>/opt</code>, либо подключить swap/USB</td>
+</tr>
+</tbody>
+</table>
+<p>Проверка:</p>
+<div class="sourceCode" id="cb13"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--version</span></span></code></pre></div>
+<p>Ожидаемый вывод:</p>
+<pre><code>sign-craze v1.6.1 (commit &lt;актуальный&gt;, built 2026-06-19)
+sing-box: not installed</code></pre>
+<hr />
+<h2 id="6-конфигурация-sign-craze">6. Конфигурация sign-craze</h2>
+<h3 id="61-выбор-прокси-ядра---core">6.1. Выбор прокси-ядра
+(<code>--core</code>)</h3>
+<p>sign-craze поддерживает три прокси-ядра. По умолчанию используется
+<strong>sing-box</strong>. Выбрать ядро можно при установке или
+позже:</p>
+<div class="sourceCode" id="cb15"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Установка с явным указанием ядра</span></span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--install</span> <span class="at">--core</span> sing-box   <span class="co"># по умолчанию, TPROXY-mode (default с v0.7.1; TUN — только при явном --inbound tun)</span></span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--install</span> <span class="at">--core</span> xray       <span class="co"># PQ-VLESS, Vision, xhttp packet-up</span></span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--install</span> <span class="at">--core</span> mihomo     <span class="co"># Hysteria2, TUIC, WireGuard</span></span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a><span class="co"># Смена ядра в работающей системе</span></span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--core</span> xray <span class="at">--restart</span></span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--core</span> sing-box <span class="at">--restart</span></span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Список ядер и статус установки</span></span>
+<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--core-list</span></span></code></pre></div>
+<p>Если нужное ядро ещё не скачано — установить без
+переконфигурации:</p>
+<div class="sourceCode" id="cb16"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--core-install</span> xray     <span class="co"># скачать xray в /opt/sbin/xray, не переключать</span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--core-install</span> mihomo   <span class="co"># скачать mihomo в /opt/sbin/mihomo</span></span></code></pre></div>
+<p>Ядро скачивается с GitHub Releases через тот же mirror chain, что и
+sign-craze (Fastly raw.githubusercontent.com как приоритетный канал).
+SHA256 проверяется автоматически.</p>
+<h3 id="63-интерактивная-установка">6.3. Интерактивная установка</h3>
+<div class="sourceCode" id="cb17"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--install</span></span></code></pre></div>
+<p>Утилита спросит:</p>
+<ol type="1">
+<li><strong>URL прокси / outbound</strong> — вставьте ваш
+<code>vless://...</code> / <code>vmess://...</code> /
+<code>ss://...</code> / <code>trojan://...</code> /
+<code>http://...</code> / <code>socks5://...</code>.</li>
+<li><strong>Режим маршрутизации:</strong>
+<ul>
+<li><code>policy</code> — интеграция с Keenetic IP Policy через RCI (по
+умолчанию). Выбор устройств — через штатный web-UI Keenetic «Приоритеты
+подключений».</li>
+<li><code>full</code> — legacy: собственный fwmark 0x53 + ipset,
+маршрутизирует <strong>весь</strong> транзитный трафик через TUN.</li>
+</ul></li>
+</ol>
+<p>Можно передать outbound сразу через флаг <code>--proxy</code>, минуя
+интерактивный режим:</p>
+<div class="sourceCode" id="cb18"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--install</span> <span class="at">--proxy</span> <span class="st">&#39;vless://...&#39;</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a><span class="co"># или при переустановке:</span></span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--reinstall</span> <span class="at">--proxy</span> <span class="st">&#39;vless://...&#39;</span></span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--restart</span></span></code></pre></div>
+<p>Флаг <code>--proxy</code> принимает тот же URL-формат, что и при
+интерактивной установке. При <code>--reinstall --proxy</code> завершение
+подсказывает <code>--restart</code> (не <code>--start</code>), так как
+ядро продолжает работать.</p>
+<p>После завершения:</p>
+<ul>
+<li>Скачается <code>sing-box</code> с GitHub Releases SagerNet →
+<code>/opt/sbin/sing-box</code></li>
+<li>Сгенерируется <code>/opt/etc/sign-craze/config.json</code> (TUN
+inbound <code>signbox-tun</code>, fwmark <code>0x53</code> для
+loop-prevention)</li>
+<li>В режиме <code>policy</code> — будет создана IP Policy
+<code>sign-craze</code> через RCI Keenetic</li>
+<li>При включении DPI (<code>--dpi on</code>) — скачается
+<code>nfqws2</code> и сгенерируется
+<code>/opt/etc/sign-craze/nfqws2.conf</code>; DPI chain перенесена в
+FORWARD (signcraze_dpi_fwd) с v1.1.0 для применения ко всем
+LAN-устройствам</li>
+<li>Создастся init.d shim <code>/opt/etc/init.d/S99signcraze</code>
+(автозапуск sing-box + firewall watchdog)</li>
+<li>Создастся NDM netfilter.d hook
+<code>/opt/etc/ndm/netfilter.d/50-sign-craze</code> (реапплай правил
+после rebuild)</li>
+</ul>
+<blockquote>
+<p><strong>Защита от SSH-lockout и LAN-трафик</strong>: SSH-порты
+роутера (<code>22</code> Entware/dropbear, <code>222</code> Keenetic
+admin) и локальные сети (RFC1918 + loopback + multicast + link-local)
+автоматически исключены из проксирования через ipset
+<code>signcraze_excludes</code> и RETURN-правила в mangle.
+Дополнительной настройки не требуется. Для кастомизации (другие порты,
+bypass публичных IP) править поля <code>admin_ports</code> и
+<code>admin_ips</code> в <code>/opt/etc/sign-craze/state.json</code> и
+перезапустить sign-craze.</p>
+</blockquote>
+<h3 id="64-без-вопросов">6.4. Без вопросов</h3>
+<div class="sourceCode" id="cb19"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--install-auto</span></span></code></pre></div>
+<p>Использует параметры по умолчанию: режим <code>policy</code>,
+outbound — заглушка <code>direct</code> (для реального outbound передай
+<code>--proxy &lt;URL&gt;</code> отдельной командой).</p>
+<h3 id="65-из-локального-бинаря-offline">6.5. Из локального бинаря
+(offline)</h3>
+<div class="sourceCode" id="cb20"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--install-offline</span> /tmp/sing-box-1.10.0-linux-mipsle.tar.gz</span></code></pre></div>
+<h3 id="66-с-dpi-обходом-из-коробки---with-dpi">6.6. С DPI-обходом из
+коробки (<code>--with-dpi</code>)</h3>
+<div class="sourceCode" id="cb21"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--install</span> <span class="at">--with-dpi</span></span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--start</span></span></code></pre></div>
+<p>Что произойдёт:</p>
+<ol type="1">
+<li><p>Стандартный <code>--install</code> (sing-box, init.d shim,
+netfilter.d hook).</p></li>
+<li><p>Скачивается <code>nfqws2-keenetic</code> v1.2.3
+(<code>.ipk</code> для текущей arch) с GitHub.</p></li>
+<li><p>Распаковывается бинарь <code>nfqws2</code> →
+<code>/opt/sbin/nfqws2</code>.</p></li>
+<li><p>Распаковываются blob-payload'ы (<code>quic_initial.bin</code>,
+<code>tls_clienthello.bin</code>) →
+<code>/opt/etc/sign-craze/blobs/</code>.</p></li>
+<li><p><code>state.DPIEnabled=true</code>, <code>state.DPITargets</code>
+= preset <code>discord-youtube</code> (17 доменов: discord.com,
+discord.gg, …, youtube.com, googlevideo.com, …).</p></li>
+<li><p>Генерируется <code>/opt/etc/sign-craze/nfqws2.conf</code> со
+стратегиями upstream (TLS+QUIC для YouTube, UDP-stun/voice для
+Discord).</p></li>
+<li><p>После <code>--start</code> nfqws2 поднимается со связкой:</p>
+<pre><code>nfqws2 --user=nobody --qnum=300 --lua-init --blob-dir=…
+       &lt;UDP discord/stun стратегия&gt; --new
+       &lt;QUIC YouTube стратегия&gt; --new
+       &lt;TLS YouTube/general&gt; --hostlist=/opt/etc/sign-craze/dpi-hostlist.txt</code></pre></li>
+</ol>
+<p>Для другого набора доменов:
+<code>sign-craze --dpi-targets &lt;список&gt;</code> (через запятую).
+Для отключения:
+<code>sign-craze --dpi off &amp;&amp; sign-craze --restart</code>.</p>
+<p>Источник стратегий: github.com/nfqws/nfqws2-keenetic (MIT). Все
+стратегии встроены в sign-craze и могут быть переопределены через
+<code>--dpi-strategy "&lt;NFQWS_ARGS строка&gt;"</code> (override
+TCP/TLS блока).</p>
+<hr />
+<h2 id="7-запуск">7. Запуск</h2>
+<div class="sourceCode" id="cb23"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--start</span></span></code></pre></div>
+<p>Применит iptables/ipset правила и запустит sing-box (и nfqws2 в
+режимах <code>dpi</code>/<code>hybrid</code>).</p>
+<blockquote>
+<p><strong>DPI отключён по умолчанию.</strong> После
+<code>sign-craze --install</code> (без <code>--with-dpi</code>) режим —
+<code>policy</code>, <code>nfqws2</code> не скачан и не запускается,
+NFQUEUE-правила не добавляются. Для активации DPI:</p>
+<ul>
+<li><strong>Из коробки</strong>:
+<code>sign-craze --install --with-dpi</code> (см. <a
+href="#64-с-dpi-обходом-из-коробки---with-dpi">6.4</a>).</li>
+<li><strong>На существующей установке</strong>:
+<code>sign-craze --dpi on &amp;&amp; sign-craze --restart</code> (см.
+раздел <a href="#9a-selective-dpi-bypass-опционально">9a</a>).</li>
+</ul>
+</blockquote>
+<p>Проверка статуса:</p>
+<div class="sourceCode" id="cb24"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--status</span></span></code></pre></div>
+<p>Ожидаемый вывод:</p>
+<pre><code>sing-box: running (PID 12345)
+nfqws2: running (PID 12346)
+режим: policy
+версия: v1.6.1</code></pre>
+<hr />
+<h2 id="8-web-ui-опционально">8. Web UI (опционально)</h2>
+<div class="sourceCode" id="cb26"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--ui</span> on</span></code></pre></div>
+<p>Откроются три HTTP-сервиса (только из LAN):</p>
+<ul>
+<li><code>http://&lt;router-ip&gt;:9090/</code> —
+<strong>Zashboard</strong> (Clash-совместимый dashboard). Показывает
+реальное дерево прокси, живые счётчики трафика, активные соединения и
+логи в реальном времени — стриминговые эндпоинты (<code>/traffic</code>,
+<code>/logs</code>, <code>/connections</code>) передаются без
+буферизации. Данные приходят через Clash API реверс-прокси на sing-box
+(порт <code>9094</code>, внутренний). Выбор активного прокси сохраняется
+после рестарта sing-box.</li>
+<li><code>http://&lt;router-ip&gt;:9091/api/status</code> —
+<strong>admin REST API</strong> (статус, конфиг, порты, исключения, DPI
+targets).</li>
+<li><code>http://&lt;router-ip&gt;:9092</code> — <strong>Routing Editor
+SPA</strong> (визуальный редактор inbounds/outbounds/rules, пресеты).
+При первом запуске автоматически инициализируется из текущих
+<code>state.outbounds</code> — сконфигурированный прокси появляется
+сразу. Outbound в таблице отображается с адресом сервера и портом.</li>
+</ul>
+<p>Все порты работают без аутентификации. Доступ извне LAN заблокирован
+iptables-правилами.</p>
+<hr />
+<h2 id="9-гео-фильтрация-опционально">9. Гео-фильтрация
+(опционально)</h2>
+<div class="sourceCode" id="cb27"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--update-geo</span></span></code></pre></div>
+<p>Скачивает SRS rule-set файлы с GitHub (manifest-driven, выборочная
+загрузка по SHA256). После обновления:</p>
+<div class="sourceCode" id="cb28"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--restart</span></span></code></pre></div>
+<hr />
+<h2 id="9a-selective-dpi-bypass-опционально">9a. Selective DPI bypass
+(опционально)</h2>
+<p>По умолчанию <code>--dpi on</code> запускает nfqws2 на
+<strong>весь</strong> TCP/UDP трафик (через NFQUEUE). На MIPS-роутерах
+это даёт packet-copy overhead до ~30% CPU при 40 Mbps. Selective режим
+ограничивает desync только выбранными доменами через
+<code>nfqws2 --hostlist</code>.</p>
+<div class="sourceCode" id="cb29"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Включить DPI</span></span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--dpi</span> on</span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Установить список целевых доменов (Discord + YouTube)</span></span>
+<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--dpi-targets</span> discord.com,discordapp.com,youtube.com,googlevideo.com,ytimg.com</span>
+<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-7"><a href="#cb29-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Применить</span></span>
+<span id="cb29-8"><a href="#cb29-8" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--restart</span></span>
+<span id="cb29-9"><a href="#cb29-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-10"><a href="#cb29-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Проверить активный список</span></span>
+<span id="cb29-11"><a href="#cb29-11" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--dpi-targets-list</span></span>
+<span id="cb29-12"><a href="#cb29-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-13"><a href="#cb29-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Сбросить (вернуться к &quot;desync для всего&quot;)</span></span>
+<span id="cb29-14"><a href="#cb29-14" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--dpi-targets</span> clear</span></code></pre></div>
+<p>Через Web UI: <code>PUT /api/dpi/targets</code> (порт 9091) или
+встроенные пресеты:</p>
+<div class="sourceCode" id="cb30"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-X</span> POST http://<span class="op">&lt;</span>router<span class="op">&gt;</span>:9091/api/dpi/presets/discord-youtube/apply</span></code></pre></div>
+<p>Доступные пресеты: <code>discord</code>, <code>youtube</code>,
+<code>discord-youtube</code>. Список —
+<code>GET /api/dpi/presets</code>.</p>
+<p>При непустом <code>dpi_targets</code> файл
+<code>/opt/etc/sign-craze/dpi-hostlist.txt</code> пишется автоматически
+(один домен на строку).</p>
+<hr />
+<h2 id="10-проверка-прокси-с-клиента">10. Проверка прокси с клиента</h2>
+<p>С устройства, подключённого к роутеру (телефон/ноутбук):</p>
+<div class="sourceCode" id="cb31"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Внешний IP должен совпадать с IP outbound-сервера</span></span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> https://api.ipify.org</span>
+<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> https://ifconfig.me</span>
+<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb31-5"><a href="#cb31-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Проверка задержки (должна быть выше прямой — трафик идёт через прокси)</span></span>
+<span id="cb31-6"><a href="#cb31-6" aria-hidden="true" tabindex="-1"></a><span class="fu">ping</span> <span class="at">-c</span> 5 1.1.1.1</span></code></pre></div>
+<p>Ресурсы для проверки утечек DNS / WebRTC / IP:</p>
+<ul>
+<li><a
+href="https://browserleaks.com/ip">https://browserleaks.com/ip</a></li>
+<li><a href="https://ipleak.net">https://ipleak.net</a></li>
+<li><a href="https://dnsleaktest.com">https://dnsleaktest.com</a></li>
+</ul>
+<p>Если внешний IP <strong>совпадает</strong> с outbound — прокси
+работает.</p>
+<hr />
+<h2 id="11-автозапуск-после-ребута">11. Автозапуск после ребута</h2>
+<p>Уже настроен через <code>/opt/etc/init.d/S99signcraze</code> (создан
+в <a href="#6-конфигурация-sign-craze">шаге 6</a>). Init.d shim делает
+на boot:</p>
+<ol type="1">
+<li><code>sign-craze --service-start</code> — поднимает sing-box +
+nfqws2 + применяет firewall.</li>
+<li><code>sign-craze --service-watchdog &amp;</code> — standalone
+watchdog процесс в фоне (PID в
+<code>/opt/var/run/sign-craze-watchdog.pid</code>). Каждые 30 сек
+проверяет критичные правила (<code>-i/o signbox-tun -j ACCEPT</code> и
+PREROUTING jump на
+<code>signcraze_policy</code>/<code>signcraze</code>). Если ndm их стёр
+— реапплаит за ~100ms. Это закрывает сценарий «через несколько часов
+sign-craze перестаёт проксировать».</li>
+</ol>
+<p>Проверка:</p>
+<div class="sourceCode" id="cb32"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="ex">reboot</span></span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a><span class="co"># Подождать 1–2 минуты пока роутер поднимется</span></span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a><span class="fu">ssh</span> admin@192.168.1.1</span>
+<span id="cb32-5"><a href="#cb32-5" aria-hidden="true" tabindex="-1"></a><span class="bu">exec</span> sh</span>
+<span id="cb32-6"><a href="#cb32-6" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--status</span></span>
+<span id="cb32-7"><a href="#cb32-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-8"><a href="#cb32-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Watchdog должен быть запущен</span></span>
+<span id="cb32-9"><a href="#cb32-9" aria-hidden="true" tabindex="-1"></a><span class="fu">ps</span> <span class="kw">|</span> <span class="fu">grep</span> service-watchdog</span>
+<span id="cb32-10"><a href="#cb32-10" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span> /opt/var/run/sign-craze-watchdog.pid</span></code></pre></div>
+<p>Если status показывает <code>running</code> и в <code>ps</code> есть
+<code>sign-craze --service-watchdog</code> — автозапуск работает.</p>
+<hr />
+<h2 id="12-диагностика-при-проблемах">12. Диагностика при проблемах</h2>
+<h3 id="121-команда-диагностики">12.1. Команда диагностики</h3>
+<div class="sourceCode" id="cb33"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--diag</span></span></code></pre></div>
+<p>Выведет PASS/WARN/FAIL по пунктам:</p>
+<ul>
+<li>наличие бинарей (<code>sign-craze</code>, <code>sing-box</code>,
+<code>nfqws2</code>)</li>
+<li>валидность конфигов</li>
+<li>состояние init.d скриптов</li>
+<li>iptables / ipset правила</li>
+<li>маршруты и fwmark</li>
+<li>DNS-резолвинг</li>
+<li>свободное место на <code>/opt</code></li>
+<li>статус swap</li>
+</ul>
+<h3 id="122-логи">12.2. Логи</h3>
+<div class="sourceCode" id="cb34"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="fu">tail</span> <span class="at">-f</span> /opt/var/log/sign-craze/sign-craze.log</span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a><span class="fu">tail</span> <span class="at">-f</span> /opt/var/log/sign-craze/sing-box.log</span></code></pre></div>
+<h3 id="123-проверка-процессов">12.3. Проверка процессов</h3>
+<div class="sourceCode" id="cb35"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ps</span> <span class="kw">|</span> <span class="fu">grep</span> <span class="at">-E</span> <span class="st">&#39;sing-box|nfqws2|sign-craze&#39;</span></span>
+<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span> /opt/var/run/sign-craze-singbox.pid</span></code></pre></div>
+<h3 id="124-сброс-состояния-если-совсем-плохо">12.4. Сброс состояния
+(если совсем плохо)</h3>
+<div class="sourceCode" id="cb36"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--stop</span></span>
+<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--uninstall</span>    <span class="co"># полное удаление</span></span>
+<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--install</span>      <span class="co"># переустановка</span></span>
+<span id="cb36-4"><a href="#cb36-4" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--start</span></span></code></pre></div>
+<h3 id="125-куда-обращаться">12.5. Куда обращаться</h3>
+<ul>
+<li><strong>Issues:</strong> <a
+href="https://github.com/kittylabassistant/sign-craze/issues">https://github.com/kittylabassistant/sign-craze/issues</a></li>
+<li><strong>BEHAVIOR_SPEC.md</strong> — полное описание всех команд и
+инвариантов: <a
+href="https://github.com/kittylabassistant/sign-craze/blob/main/BEHAVIOR_SPEC.md">https://github.com/kittylabassistant/sign-craze/blob/main/BEHAVIOR_SPEC.md</a></li>
+</ul>
+<p>При создании issue приложите вывод <code>sign-craze --diag</code>,
+версию роутера и прошивки Keenetic.</p>
+
+</main>
+</div>
+</body>
+</html>
