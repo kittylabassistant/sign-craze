@@ -41,6 +41,34 @@ func checkTUNAvailableReal() error {
 	return nil
 }
 
+// requiredBinaries — внешние бинари, без которых firewall-слой sign-craze не
+// работает. В Entware ставятся пакетами `iptables` (даёт iptables +
+// iptables-restore) и `ipset`.
+var requiredBinaries = []string{"iptables", "iptables-restore", "ipset"}
+
+// CheckRequiredBinaries проверяет доступность iptables/iptables-restore/ipset
+// (через `<bin> --version`; PATH расширен на /opt/{sbin,bin} в exectx). При
+// отсутствии любого — actionable-ошибка с командой opkg.
+//
+// Без этой проверки пользователь, поставивший sign-craze через `curl|sh` (минуя
+// opkg-зависимости из control.tmpl), получает на `--start` криптичную
+// exec-ошибку «not found» вместо понятной подсказки (issue #3).
+func CheckRequiredBinaries(ctx context.Context, runner exectx.Runner) error {
+	var missing []string
+	for _, bin := range requiredBinaries {
+		if _, err := runner.Run(ctx, bin, "--version"); err != nil {
+			missing = append(missing, bin)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf(
+			"не найдены обязательные бинари: %s. Установите через Entware: `opkg install iptables ipset`",
+			strings.Join(missing, ", "),
+		)
+	}
+	return nil
+}
+
 // CheckRequiredIptablesModules проверяет наличие match `set` (xt_set) в iptables.
 // MARK target есть всегда (включён в любую iptables-сборку), его не пробуем.
 // xt_TPROXY больше не требуется (sign-craze v0.3+ использует TUN-mode).

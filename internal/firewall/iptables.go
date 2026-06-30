@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/log"
@@ -59,6 +60,12 @@ func (b *BatchBuilder) Bytes() []byte {
 // IPTables управляет правилами iptables через exectx.Runner.
 type IPTables struct {
 	runner exectx.Runner
+
+	// waitOnce/waitSupported кешируют результат пробы поддержки опции --wait
+	// у iptables-restore (см. restoreWaitSupported). Проба выполняется один
+	// раз на экземпляр.
+	waitOnce      sync.Once
+	waitSupported bool
 }
 
 // New создаёт IPTables с заданным runner.
@@ -159,7 +166,10 @@ func (t *IPTables) FlushAndDeleteChain(ctx context.Context, table, chain string)
 // dump в формате iptables-save: *table / правила / COMMIT.
 // --noflush: существующие правила НЕ сбрасываются, только добавляются новые.
 // --wait 2: таймаут захвата xtables lock (busybox iptables может удерживать
-// lock дольше 1s при высокой нагрузке на slow MIPS softfloat).
+// lock дольше 1s при высокой нагрузке на slow MIPS softfloat). Флаг
+// добавляется ТОЛЬКО если iptables-restore его поддерживает — legacy-сборки
+// Entware (iptables ≤1.4.x) не знают --wait и трактуют его аргумент как имя
+// входного файла (issue #3: "unrecognized option '--wait'" → "Can't open 2").
 //
 // Аналогично IPSet.AtomicReplace: один subprocess вместо N forkexec.
 // На slow MIPS softfloat один iptables fork ≈ 20-50ms, batch из 12 правил
@@ -173,9 +183,34 @@ func (t *IPTables) RestoreBatch(ctx context.Context, dump []byte) error {
 	if !ok {
 		return fmt.Errorf("firewall: runner не поддерживает StdinRunner (RestoreBatch требует StdinRunner)")
 	}
-	if _, err := sr.RunWithStdin(ctx, bytes.NewReader(dump), "iptables-restore", "--noflush", "--wait", "2"); err != nil {
+	args := []string{"--noflush"}
+	if t.restoreWaitSupported(ctx, sr) {
+		args = append(args, "--wait", "2")
+	}
+	if _, err := sr.RunWithStdin(ctx, bytes.NewReader(dump), "iptables-restore", args...); err != nil {
 		return fmt.Errorf("firewall: iptables-restore batch: %w", err)
 	}
 	log.L().Debug("firewall: iptables-restore batch выполнен", "bytes", len(dump))
 	return nil
+}
+
+// restoreWaitSupported лениво (один раз на экземпляр) определяет, поддерживает
+// ли iptables-restore опцию --wait. Проба — функциональный no-op: пустая
+// секция filter с --noflush ничего не меняет в системе, но getopt отвергнет
+// неизвестный --wait ещё до применения. err==nil ⇒ флаг поддержан.
+//
+// Любая ошибка пробы трактуется как «нет поддержки»: это безопасное
+// направление — без --wait restore работает как поштучные iptables-вызовы
+// (они --wait тоже не используют), теряется лишь повторная попытка захвата
+// xtables lock.
+func (t *IPTables) restoreWaitSupported(ctx context.Context, sr exectx.StdinRunner) bool {
+	t.waitOnce.Do(func() {
+		probe := []byte("*filter\nCOMMIT\n")
+		_, err := sr.RunWithStdin(ctx, bytes.NewReader(probe), "iptables-restore", "--noflush", "--wait", "1")
+		t.waitSupported = err == nil
+		if !t.waitSupported {
+			log.L().Warn("firewall: iptables-restore без поддержки --wait, lock-retry отключён")
+		}
+	})
+	return t.waitSupported
 }

@@ -73,6 +73,49 @@ func TestIntegration_IPTables_EnsureAndDeleteRule(t *testing.T) {
 	}
 }
 
+// TestIntegration_RestoreBatch_AppliesRules проверяет полный путь RestoreBatch
+// на реальном iptables-restore: проба поддержки --wait + атомарное применение
+// батча. На хосте с любой сборкой iptables (с --wait или без) restore должен
+// успешно применить правило (регрессия issue #3).
+func TestIntegration_RestoreBatch_AppliesRules(t *testing.T) {
+	skipIfNoIPTables(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	runner := newRealRunner()
+	ipt := New(runner)
+
+	const chain = "signcraze_restore_test"
+	if err := ipt.EnsureChain(ctx, "mangle", chain); err != nil {
+		t.Fatalf("EnsureChain: %v", err)
+	}
+	defer func() {
+		_ = ipt.FlushAndDeleteChain(ctx, "mangle", chain)
+	}()
+
+	var b BatchBuilder
+	b.Table("mangle").
+		Chain(chain).
+		Flush(chain).
+		Rule(chain, "-j", "MARK", "--set-mark", "0x53").
+		Commit()
+
+	if err := ipt.RestoreBatch(ctx, b.Bytes()); err != nil {
+		t.Fatalf("RestoreBatch: %v", err)
+	}
+
+	// Правило должно присутствовать после атомарного restore.
+	if _, err := runner.Run(ctx, "iptables", "-t", "mangle", "-C", chain, "-j", "MARK", "--set-mark", "0x53"); err != nil {
+		t.Fatalf("правило отсутствует после RestoreBatch: %v", err)
+	}
+
+	// Повторный батч идемпотентен (Flush + повторное добавление).
+	if err := ipt.RestoreBatch(ctx, b.Bytes()); err != nil {
+		t.Fatalf("RestoreBatch (повторный): %v", err)
+	}
+}
+
 func TestIntegration_IPSet_AtomicReplace(t *testing.T) {
 	skipIfNoIPTables(t)
 

@@ -21,6 +21,34 @@ func TestCheckTUNAvailable_HostHasTUN(t *testing.T) {
 	}
 }
 
+// TestCheckRequiredBinaries_AllPresent — все бинари отвечают на --version → nil.
+func TestCheckRequiredBinaries_AllPresent(t *testing.T) {
+	r := exectx.Mock(map[string]exectx.Result{
+		"iptables --version":         {ExitCode: 0},
+		"iptables-restore --version": {ExitCode: 0},
+		"ipset --version":            {ExitCode: 0},
+	})
+	if err := CheckRequiredBinaries(context.Background(), r); err != nil {
+		t.Errorf("ожидался nil, получено: %v", err)
+	}
+}
+
+// TestCheckRequiredBinaries_Missing — отсутствие ipset (нет записи в Mock →
+// Run вернёт ошибку) должно дать actionable-ошибку с подсказкой opkg (issue #3).
+func TestCheckRequiredBinaries_Missing(t *testing.T) {
+	r := exectx.Mock(map[string]exectx.Result{
+		"iptables --version":         {ExitCode: 0},
+		"iptables-restore --version": {ExitCode: 0},
+	})
+	err := CheckRequiredBinaries(context.Background(), r)
+	if err == nil {
+		t.Fatal("ожидалась ошибка про отсутствующий ipset")
+	}
+	if !strings.Contains(err.Error(), "ipset") || !strings.Contains(err.Error(), "opkg install") {
+		t.Errorf("ошибка должна упоминать ipset и opkg install, получено: %v", err)
+	}
+}
+
 // TestCheckRequiredIptablesModules_SetMatchOK — match `set` доступен:
 // iptables либо принимает rule (exit 0), либо ругается на несуществующий
 // ipset (`doesn't exist`). Оба случая — положительный исход probe.

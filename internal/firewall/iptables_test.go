@@ -184,6 +184,10 @@ type stdinRecorder struct {
 	args  []string
 	stdin []byte
 	fail  bool
+	// failOnWait эмулирует legacy iptables-restore (Entware ≤1.4.x), который не
+	// знает опцию --wait: любой вызов с --wait в args завершается ошибкой
+	// "unrecognized option" (как в issue #3).
+	failOnWait bool
 }
 
 func (r *stdinRecorder) Run(_ context.Context, name string, args ...string) (exectx.Result, error) {
@@ -198,6 +202,14 @@ func (r *stdinRecorder) RunWithStdin(_ context.Context, stdin io.Reader, name st
 		return exectx.Result{ExitCode: 1}, err
 	}
 	r.stdin = data
+	if r.failOnWait {
+		for _, a := range args {
+			if a == "--wait" {
+				return exectx.Result{ExitCode: 1, Stderr: []byte("iptables-restore: unrecognized option '--wait'")},
+					fmt.Errorf("exec iptables-restore: exit status 1 (stderr: unrecognized option '--wait')")
+			}
+		}
+	}
 	if r.fail {
 		return exectx.Result{ExitCode: 1, Stderr: []byte("iptables-restore error")},
 			fmt.Errorf("iptables-restore failed")
@@ -255,6 +267,63 @@ func TestIPTables_RestoreBatch_ОшибкаBezStdinRunner(t *testing.T) {
 	if err == nil {
 		t.Fatal("ожидалась ошибка при runner без StdinRunner")
 	}
+}
+
+// TestIPTables_RestoreBatch_БезWaitНаLegacy — на legacy iptables-restore без
+// поддержки --wait (Entware ≤1.4.x) проба должна обнаружить отсутствие флага,
+// а реальный вызов restore — пройти без --wait и завершиться успешно.
+// Регрессия issue #3: раньше --wait передавался безусловно → exit 1 → весь
+// Apply падал ("unrecognized option '--wait'" / "Can't open 2").
+func TestIPTables_RestoreBatch_БезWaitНаLegacy(t *testing.T) {
+	rec := &stdinRecorder{failOnWait: true}
+	ipt := New(rec)
+	if err := ipt.RestoreBatch(context.Background(), []byte("*mangle\nCOMMIT\n")); err != nil {
+		t.Fatalf("RestoreBatch на legacy iptables-restore вернул ошибку: %v", err)
+	}
+	// Финальный (реальный) вызов записан в rec — он не должен содержать --wait.
+	for _, a := range rec.args {
+		if a == "--wait" {
+			t.Errorf("--wait не должен передаваться на legacy iptables-restore (args=%v)", rec.args)
+		}
+	}
+	if rec.name != "iptables-restore" {
+		t.Errorf("команда = %q, ожидалось iptables-restore", rec.name)
+	}
+	if string(rec.stdin) != "*mangle\nCOMMIT\n" {
+		t.Errorf("stdin реального вызова = %q, ожидалось дамп mangle", rec.stdin)
+	}
+}
+
+// TestIPTables_RestoreBatch_WaitProbeOnce — проба поддержки --wait выполняется
+// один раз на экземпляр IPTables (sync.Once), последующие RestoreBatch её не
+// повторяют.
+func TestIPTables_RestoreBatch_WaitProbeOnce(t *testing.T) {
+	rec := &countingStdinRunner{}
+	ipt := New(rec)
+	for i := 0; i < 3; i++ {
+		if err := ipt.RestoreBatch(context.Background(), []byte("*mangle\nCOMMIT\n")); err != nil {
+			t.Fatalf("RestoreBatch #%d вернул ошибку: %v", i, err)
+		}
+	}
+	// 1 проба + 3 реальных вызова = 4. Если бы проба шла каждый раз — было бы 6.
+	if rec.calls != 4 {
+		t.Errorf("RunWithStdin вызовов = %d, ожидалось 4 (1 проба + 3 restore)", rec.calls)
+	}
+}
+
+// countingStdinRunner считает вызовы RunWithStdin (для проверки one-shot пробы).
+type countingStdinRunner struct {
+	calls int
+}
+
+func (r *countingStdinRunner) Run(_ context.Context, _ string, _ ...string) (exectx.Result, error) {
+	return exectx.Result{ExitCode: 0}, nil
+}
+
+func (r *countingStdinRunner) RunWithStdin(_ context.Context, stdin io.Reader, _ string, _ ...string) (exectx.Result, error) {
+	r.calls++
+	_, _ = io.ReadAll(stdin)
+	return exectx.Result{ExitCode: 0}, nil
 }
 
 // TestIPTables_RestoreBatch_ПробрасываетОшибку — ошибка iptables-restore
