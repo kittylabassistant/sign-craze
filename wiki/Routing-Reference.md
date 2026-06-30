@@ -88,7 +88,7 @@ routing.json
 
 | Имя | Что делает | Источник SRS |
 | --- | --- | --- |
-| `sign-craze-default` | bittorrent→direct, youtube→direct, discord→direct, refilter-blocked→{vpn}, final=direct | refilter-domains.srs |
+| `sign-craze-default` | bittorrent→direct, youtube→direct, discord→direct, refilter-blocked→{vpn}, final=direct | ruleset-domain-refilter_domains.srs (1andrevich/Re-filter-lists) |
 | `block-ads` | geosite-category-ads-all → reject | SagerNet/sing-geosite |
 | `ru-direct` | geoip-ru → direct | SagerNet/sing-geoip (`geoip-ru.srs`) |
 | `blocked-vpn` | refilter-blocked-domains → {vpn} | 1andrevich/Re-filter-lists |

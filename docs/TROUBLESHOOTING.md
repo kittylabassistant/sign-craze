@@ -1,6 +1,6 @@
 # TROUBLESHOOTING
 
-> Версия: 2026-05-20.
+> Версия: 2026-06-19.
 
 > Symptom → diagnosis → fix.
 > Это не install-guide — он в `wiki/Installation.md`.
@@ -173,6 +173,21 @@ sign-craze --diag            # 2. PASS/WARN/FAIL по 12 проверкам
 sign-craze --update-geo --core xray
 sign-craze --start --core xray
 ```
+
+### xray не стартует на mips/mipsle: `runtime.futexwakeup ... returned -89`
+
+**Симптом:** после `--core-install xray` на роутере с MIPS (mips/mipsle) при `--start` xray падает сразу; в `sing-box.stderr.log` (или отдельном логе xray) строка вида `runtime.futexwakeup ... returned -89`.
+
+**Причина:** конкретная сборка upstream xray **v26.3.27** на mips/mipsle падает при старте — `runtime.futexwakeup ... returned -89` (ENOSYS) на старых ядрах Keenetic (3.4–4.x). Это регрессия именно этого релиза; другие сборки ветки 26.* на mips/mipsle работают. Тем не менее sign-craze на mips/mipsle всегда ставит проверенный pinned custom-build v25.12.8 (см. ниже).
+
+**Решение:** sign-craze автоматически устанавливает pinned custom-build `v25.12.8` для mips/mipsle вместо upstream latest. Если бинарь был скопирован вручную — удалить его и переустановить через CLI:
+
+```sh
+sign-craze --core-install xray   # скачает v25.12.8 для mips/mipsle из kittylabassistant/sign-craze-xray
+sign-craze --restart
+```
+
+Для arm64/arm7 upstream xray (включая v26.3.27) работает нормально — ограничение касается только mips/mipsle.
 
 ### Переключение ядра (multi-core, v1.0.0+)
 

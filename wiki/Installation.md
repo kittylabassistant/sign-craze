@@ -321,7 +321,7 @@ sign-craze --version
 Ожидаемый вывод:
 
 ```
-sign-craze v1.4.2 (commit <актуальный>, built 2026-05-20)
+sign-craze v1.6.1 (commit <актуальный>, built 2026-06-19)
 sing-box: not installed
 ```
 
@@ -415,7 +415,7 @@ sign-craze --start
 Что произойдёт:
 
 1. Стандартный `--install` (sing-box, init.d shim, netfilter.d hook).
-2. Скачивается `nfqws2-keenetic` v1.1.5+ (`.ipk` для текущей arch) с GitHub.
+2. Скачивается `nfqws2-keenetic` v1.2.3 (`.ipk` для текущей arch) с GitHub.
 3. Распаковывается бинарь `nfqws2` → `/opt/sbin/nfqws2`.
 4. Распаковываются blob-payload'ы (`quic_initial.bin`, `tls_clienthello.bin`)
    → `/opt/etc/sign-craze/blobs/`.
@@ -466,7 +466,7 @@ sign-craze --status
 sing-box: running (PID 12345)
 nfqws2: running (PID 12346)
 режим: policy
-версия: v1.4.2
+версия: v1.6.1
 ```
 
 ---

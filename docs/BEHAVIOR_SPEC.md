@@ -1,6 +1,6 @@
 # BEHAVIOR_SPEC.md
 
-> Версия: 2026-05-20. Спецификация v1.4.2.
+> Версия: 2026-06-19. Спецификация v1.6.1.
 
 Функциональная спецификация sign-craze, написанная в режиме clean-room.
 Исходники XKeen не читались. Только публичные источники.
@@ -130,7 +130,7 @@
 <active_core>:  запущен  (pid 1234)
 nfqws2:         остановлен
 режим:          policy
-версия:         sign-craze v1.4.2 / <core> v<core-version>
+версия:         sign-craze v1.6.1 / <core> v<core-version>
 ```
 
 Метка ядра соответствует активному core (`sing-box`, `xray`, `mihomo`) из `--core <name>`.
@@ -909,7 +909,7 @@ POST   /api/dpi/presets/{name}/apply — применить пресет по и
   "nfqws2":   {"running": false, "pid": 0},
   "mode":     "policy",
   "core":     "<active_core>",
-  "version":  {"sign_craze": "v1.4.2", "core": "v<core-version>"},
+  "version":  {"sign_craze": "v1.6.1", "core": "v<core-version>"},
   "uptime_s": 3600
 }
 ```

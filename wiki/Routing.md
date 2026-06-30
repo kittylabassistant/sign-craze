@@ -62,10 +62,10 @@ config.json    xray/config.json  mihomo/config.yaml
 
 | Пресет | Что делает |
 | ------ | ------------ |
-| `sign-craze-default` | Базовые правила: LAN direct, loopback direct, DNS через прокси |
+| `sign-craze-default` | bittorrent→direct, youtube→direct, discord→direct, refilter-blocked-domains→{vpn}, final=direct |
 | `block-ads` | Блокирует рекламные домены через geosite-category-ads-all → block |
-| `ru-direct` | РФ-адреса (geoip-ru + geosite-ru) → direct, минует VPN |
-| `blocked-vpn` | Заблокированные сайты из geosite-blocked → прокси-outbound |
+| `ru-direct` | РФ-адреса (geoip-ru) → direct, минует VPN |
+| `blocked-vpn` | Заблокированные домены (refilter-blocked-domains) → прокси-outbound |
 | `discord-vpn` | Discord (geosite-discord) → прокси-outbound |
 | `torrents-direct` | BitTorrent-трафик → direct, не тратит VPN-квоту |
 | `block-bogon-udp` | Bogon-диапазоны в UDP → drop, защита от спуфинга |

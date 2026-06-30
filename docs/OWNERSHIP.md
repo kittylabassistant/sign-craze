@@ -1,6 +1,6 @@
 # OWNERSHIP.md — System-state ownership sign-craze
 
-> Версия: 2026-05-20. Автор: @kittylabassistant.
+> Версия: 2026-06-19. Автор: @kittylabassistant.
 
 ---
 

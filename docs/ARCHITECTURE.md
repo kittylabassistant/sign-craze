@@ -1,6 +1,6 @@
 # sign-craze: Архитектура
 
-> Версия: 2026-05-20. Архитектура v1.4.2.
+> Версия: 2026-06-19. Архитектура v1.6.1.
 
 ## Диаграмма слоёв
 
@@ -202,7 +202,7 @@ Legacy-имена `proxy`, `dpi`, `hybrid` принимаются для обр�
 1. `signcraze_dpi` (NFQUEUE, `--queue-bypass`) — обрабатывается первой (только full+DPI)
 2. `signcraze` / `signcraze_policy` (mark-маршрутизация) — обрабатывается второй
 
-Цепочка `signcraze_policy_dpi` устанавливается в `mangle:POSTROUTING` (только policy+DPI).
+DPI-цепочка `signcraze_dpi_fwd` устанавливается в `mangle:FORWARD` (`-o $WAN_IFACE -m mark ! --mark 0x53`, начиная с v1.1.0 — ловит все LAN-устройства, см. раздел «DPI chain в FORWARD» ниже). Legacy `signcraze_policy_dpi` (`mangle:POSTROUTING`) сохранён только для cleanup при апгрейде с v1.0.x.
 
 ## Packet path: режим policy (TPROXY/REDIRECT) — v0.8.0 (историческое, закрыто в v1.0.0+)
 

@@ -1,6 +1,6 @@
 # OPERATIONS.md — Runbook оператора sign-craze
 
-> Версия: 2026-05-20.
+> Версия: 2026-06-19.
 
 ## 1. Обзор и предусловия
 
@@ -59,7 +59,7 @@ sign-craze --install
 ```sh
 # Скачать .ipk из GitHub Releases
 ARCH=mipsel-3.4
-VER=1.6.0
+VER=1.6.1
 wget "https://github.com/kittylabassistant/sign-craze/releases/download/v${VER}/sign-craze_${VER}_${ARCH}.ipk"
 sha256sum -c "sign-craze_${VER}_${ARCH}.ipk.sha256"
 opkg install ./sign-craze_${VER}_${ARCH}.ipk
@@ -141,7 +141,7 @@ sign-craze --status
 # sing-box:  запущен  (pid 1234)
 # nfqws2:    остановлен
 # режим:     policy
-# версия:    sign-craze v1.4.2 / sing-box v1.13.x
+# версия:    sign-craze v1.6.1 / sing-box v1.13.x
 ```
 
 ---

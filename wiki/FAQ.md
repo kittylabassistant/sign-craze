@@ -40,7 +40,7 @@ sign-craze --dpi on        # качает nfqws2 в /opt/sbin/, генерит /
 sign-craze --restart       # applier добавляет NFQUEUE-правила, lifecycle поднимает nfqws2
 ```
 
-> **nfqws2 загружается из репозитория `github.com/nfqws/nfqws2-keenetic`** в формате Entware `.ipk` (начиная с v1.1.5). Распаковка `.ipk` (outer tar.gz → `data.tar.gz` → бинарь) выполняется автоматически. Если скачивание падает с 404 — убедитесь, что бинарь sign-craze актуальный (`sign-craze --update`).
+> **nfqws2 загружается из репозитория `github.com/nfqws/nfqws2-keenetic`** в формате Entware `.ipk` (актуальная версия: v1.2.3). Распаковка `.ipk` (outer tar.gz → `data.tar.gz` → бинарь) выполняется автоматически. Если скачивание падает с 404 — убедитесь, что бинарь sign-craze актуальный (`sign-craze --update`).
 
 После `--dpi on` состояние сохраняется в `state.json` и переживает ребуты — init.d shim `/opt/etc/init.d/S99signcraze` поднимет `nfqws2` автоматически.
 

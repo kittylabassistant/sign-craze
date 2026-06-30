@@ -33,7 +33,7 @@ Go-утилита для управления межсетевым экрано�
 - **Routing UI: пресеты AS-IS/TO-BE + клиентский буфер (v1.1.0)**: «+ Добавить» (аддитивно) и «⟳ Заменить» (очистка Rules + force-set Final). Изменения буферизуются в браузере; Action-bar Сохранить/Отмена. Apply при unsaved требует подтверждения.
 - **Светлая тема Routing UI (v1.1.2)**: переключатель ☀/☾, persist через localStorage, дефолт по `prefers-color-scheme`.
 - **Per-core presets**: при применении пресета URL rule_sets подбираются автоматически под ядро: `.srs` для sing-box (SagerNet), `.mrs` для mihomo (MetaCubeX), geosite:/geoip: matcher для xray (встроенный `.dat`).
-- **Протоколы по ядрам** (актуально для sing-box 1.13+, xray 25.x, mihomo 1.18+; полная таблица ниже):
+- **Протоколы по ядрам** (актуально на 19.06.2026: sing-box 1.13.13, xray 26.3.27, mihomo 1.19.27; полная таблица ниже):
   - Все три ядра: VLESS Reality, VMess, Trojan, Shadowsocks legacy + 2022, XHTTP basic, транспорты WS/gRPC/QUIC/h2, uTLS-фингерпринт
   - sing-box + mihomo: Hysteria 2 (obfs-salamander, brutal CC), TUIC v5, WireGuard, AnyTLS
   - xray only: Vision UDP443 (`flow=*-udp443`), PQ-VLESS (`mlkem768x25519plus`), XHTTP `stream-up`/`stream-one`/`packet-up`
@@ -121,7 +121,7 @@ sign-craze --install
 ```sh
 # На локальной машине: скачать .ipk нужной архитектуры из GitHub Releases
 ARCH=mipsel-3.4
-VER=1.6.0
+VER=1.6.1
 wget "https://github.com/kittylabassistant/sign-craze/releases/download/v${VER}/sign-craze_${VER}_${ARCH}.ipk"
 wget "https://github.com/kittylabassistant/sign-craze/releases/download/v${VER}/sign-craze_${VER}_${ARCH}.ipk.sha256"
 
@@ -250,7 +250,7 @@ sign-craze --restart
 
 ### Поддерживаемые протоколы
 
-Актуально для sing-box 1.13+, xray-core 25.x, mihomo 1.18+. Полная матрица с разбивкой по транспортам, uTLS, ECH, sniffing: [`docs/COMPATIBILITY_MATRIX.md`](docs/COMPATIBILITY_MATRIX.md) (раздел «Матрица протокол × ядро»).
+Актуально на 19.06.2026: sing-box 1.13.13 (1.13.x), xray-core 26.3.27 (26.x; именно эта сборка не стартует на mips/mipsle — см. ²), mihomo 1.19.27 (1.19.x). Версии ядер ставятся из latest GitHub release. Полная матрица с разбивкой по транспортам, uTLS, ECH, sniffing: [`docs/COMPATIBILITY_MATRIX.md`](docs/COMPATIBILITY_MATRIX.md) (раздел «Матрица протокол × ядро»).
 
 | Протокол / режим | sing-box | xray | mihomo |
 |------------------|:--------:|:----:|:------:|
@@ -259,7 +259,7 @@ sign-craze --restart
 | VLESS Vision UDP443 (`*-udp443`)      | ✗ | ✓ | ✗ |
 | VLESS XHTTP (basic, без `mode`)       | ✓ | ✓ | ✓ |
 | VLESS XHTTP `stream-up` / `stream-one` / `packet-up` | ✗ | ✓ | ✓ |
-| PQ-VLESS (`mlkem768x25519plus`)       | ⚠ | ✓ | ✗ |
+| PQ-VLESS (`mlkem768x25519plus`)       | ✗ | ✓ | ✗ |
 | VMess (AEAD)                          | ✓ | ✓ | ✓ |
 | Trojan                                | ✓ | ✓ | ✓ |
 | Shadowsocks legacy (AEAD)             | ✓ | ✓ | ✓ |
@@ -280,6 +280,8 @@ sign-craze --restart
 > ¹ naive/mieru - supervised peer (process chain). sign-craze запускает daemon на `127.0.0.1`, sing-box подключается через socks5-outbound. xray/mihomo явно отклоняют такие конфиги с подсказкой `--core sing-box`. mips (big-endian) для naive не поддерживается: klzgrad публикует только linux-mipsel (LE).
 >
 > **Ограничения mihomo** (источник: `internal/core/mihomo/validate.go`): Vision UDP443 и PQ-VLESS отклоняются с подсказкой `--core xray`. **Ограничения xray** (источник: `internal/core/xray/validate.go`): TUIC v5, WireGuard, Hysteria 2 отклоняются с подсказкой `--core sing-box` / `--core mihomo`.
+>
+> ² **mips/mipsle**: из ветки xray-core 26.* при старте падает ТОЛЬКО сборка **26.3.27** (текущий latest) — `runtime.futexwakeup ... returned -89` (ENOSYS) на старых ядрах Keenetic (3.4–4.x), регрессия конкретного релиза. Остальные 26.* (более ранние) работают. На mips/mipsle sign-craze ставит pinned custom-build xray v25.12.8 (репо `kittylabassistant/sign-craze-xray`, источник `internal/core/xray/download.go`).
 
 ### Унифицированный Routing Editor
 

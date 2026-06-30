@@ -2,7 +2,7 @@
 
 Этот документ является единым справочником по поддерживаемым архитектурам, прошивкам, устройствам, kernel-модулям и внешним зависимостям. Он заменяет разрозненные упоминания в README. Актуален для sign-craze v0.3.x+ (TUN-режим, без TPROXY как dependency на ядро).
 
-Последнее обновление: v1.4.2 (2026-05-17).
+Последнее обновление: v1.6.1 (2026-06-19).
 
 ---
 
@@ -120,7 +120,7 @@
 | mips BE  | **Нет**   | (отсутствует)                  | klzgrad публикует только linux-mipsel (little-endian) |
 | amd64    | Да        | linux-x64.tar.xz               | self-test в Docker                                 |
 
-Версия pin: latest GitHub release (v148.0.7778.96-5 на момент интеграции).
+Версия pin: latest GitHub release (v149.0.7827.114-1 на 19.06.2026).
 Формат tarball: tar.xz (требует `github.com/ulikunitz/xz` decoder).
 
 Путь установки: `/opt/sbin/naive`. Загружается при `--with-naive` / `--install --with-naive`. Источник: `internal/naiveproxy/`.
@@ -147,6 +147,7 @@
 - **systemd**: sign-craze не генерирует systemd unit-файлы. Используется только Entware init.d (`/opt/etc/init.d/S99signcraze`). На системах с systemd без Entware установка не поддерживается.
 - **nftables**: sign-craze использует `iptables-legacy`. Если активен `iptables-nft` (nf_tables backend), поведение MARK/CONNMARK может отличаться. Проверьте `iptables --version` — ожидается `legacy`.
 - **MIPS hardfloat**: бинарь из релиза собран с `GOMIPS=softfloat`. Запуск hardfloat-бинаря на роутере без FPU → `SIGILL`.
+- **xray-core на mips/mipsle**: из ветки 26.* при старте не запускается ТОЛЬКО сборка **26.3.27** (текущий latest) — падает с `runtime.futexwakeup ... returned -89` (ENOSYS) на старых ядрах Keenetic (3.4–4.x), регрессия конкретного релиза. Остальные 26.* (более ранние) работают. На mips/mipsle sign-craze ставит pinned custom-build xray v25.12.8 (репо `kittylabassistant/sign-craze-xray`, источник `internal/core/xray/download.go`).
 - **OpenWrt без Entware**: sign-craze предполагает файловую структуру Entware (`/opt/sbin`, `/opt/etc/init.d`, `/opt/etc/ndm`). На чистом OpenWrt без Entware пути некорректны, NDM hook отсутствует.
 - **KeeneticOS 4.x и ниже**: отсутствует `/rci/show/ip/policy`. Режим `policy` недоступен. Режим `full` теоретически применим, не тестировался.
 - **IPv6 без kernel-модулей**: ip6tables-цепочки создаются по аналогии. Если провайдер не предоставляет IPv6 — цепочки пустые (не ломают работу).
@@ -185,7 +186,7 @@ Sign-craze поддерживает три взаимозаменяемых пр
 | XHTTP `mode=stream-up` | ❌ | ✅ | ✅ | Upload-only split |
 | XHTTP `mode=stream-one` | ❌ | ✅ | ✅ | Single stream |
 | XHTTP `mode=packet-up` | ❌ | ✅ | ✅ | Packet-based upload — обход активного DPI |
-| Encryption `mlkem768x25519plus` (PQ-VLESS) | ⚠️ | ✅ | ❌ | sing-box экспериментально; в sing-box ≤ 1.12 не валидируется, в 1.13+ недоступно через Validate() |
+| Encryption `mlkem768x25519plus` (PQ-VLESS) | ❌ | ✅ | ❌ | sing-box 1.13.x: `Validate()` отвергает (`internal/singbox/validate.go`); раньше ≤ 1.12 не валидировалось. Только xray |
 | uTLS Fingerprint | ✅ | ✅ | ✅ | chrome/firefox/safari/ios/random |
 | ECH (Encrypted ClientHello) | ⚠️ | ⚠️ | ⚠️ | Все три ядра в процессе внедрения 2026 |
 | Transport WebSocket | ✅ | ✅ | ✅ | |

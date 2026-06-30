@@ -1,6 +1,6 @@
 # RISK_REGISTER.md — sign-craze
 
-> Версия: 2026-05-20 (v1.4.2)
+> Версия: 2026-06-19 (v1.6.1)
 > Методология: Severity × Likelihood.
 > Содержит только **активные** риски (open / mitigated / accepted / partial).
 > Закрытые (DONE) риски — в §5 с отсылкой на `tasks/safety-fixes.md`.
@@ -65,6 +65,7 @@
 | R023 | Зависимость от upstream | `internal/dpi/update.go::DefaultUpdateURLs` ссылается на конкретные пути в Flowseal/zapret-discord-youtube (list-general.txt, list-google.txt). Upstream может переименовать файлы или сменить layout (как было с list-discord.txt → list-general.txt). | HIGH     | M          | Свежие установки получают 404 на дефолтных URL → пустой hostlist → selective-DPI не работает до явной настройки `--dpi-update-urls` | При изменении upstream — патч + новый релиз. Smoke-тест `--dpi-update-now` в CI                                 | open      | `internal/dpi/update.go`; v0.8.2                                         |
 | R024 | Состояние / Конфигурация | Если пользователь параллельно редактирует `routing.json` руками, а sign-craze запускает migration (фильтрация TUN-inbound + Save), edit пользователя теряется.                                                     | MED      | L          | Manual customization routing.json (custom outbounds, route_rules) пропадает | Save идёт через atomic temp+rename (durable). Сообщение в WARN-логе при удалении TUN. Long-term: бэкап routing.json в `routing.json.pre-migration` перед перезаписью | open      | `internal/cli/deps.go::configParamsFromState`; v0.8.3                                     |
 | R035 | DPI / supply chain | Naiveproxy/mieru бинарь скачивается из `klzgrad/naiveproxy` и `enfein/mieru` GitHub releases. SHA256 не верифицируется sign-craze (только TLS + cosign публикуется upstream выборочно). | MED | L | Подменённый бинарь маскирует трафик некорректно или ведёт исходящий dial | TLS 1.2 минимум, путь через `internal/naiveproxy/download.go` валидирует HTTP 2xx; пользователь явно opt-in `--with-naive` | open | `internal/naiveproxy/download.go`; v1.3.0 |
+| R036 | Ядро / совместимость | xray-core v26.3.27 не стартует на mips/mipsle (Keenetic ядро Linux 3.4–4.x): `runtime.futexwakeup ... -89` (ENOSYS — syscall отсутствует). Прочие архитектуры (arm64, arm7) v26.3.27 работают штатно. | HIGH | H (для mips/mipsle пользователей) | xray не запускается; прокси недоступен; трафик идёт напрямую | Пин custom-build v25.12.8 для GOARCH=mips/mipsle в `internal/core/xray/download.go` (`XRayMIPSVersion`); arm64/arm7 получают актуальный upstream. Детектируется при `--update-core` — платформо-зависимый URL. | mitigated | baseline 2026-06-19; `internal/core/xray/download.go` |
 
 ---
 

@@ -64,9 +64,9 @@ sign-craze --restart
 
 ```sh
 # с десктопа
-curl -fsSLO https://raw.githubusercontent.com/kittylabassistant/sign-craze/v1.4.2/dist/sign-craze-mipsle
-curl -fsSLO https://github.com/SagerNet/sing-box/releases/download/v1.13.11/sing-box-1.13.11-linux-mipsle-softfloat.tar.gz
-curl -fsSLO https://github.com/nfqws/nfqws2-keenetic/releases/download/v1.1.5/nfqws2-keenetic_1.1.5_mipsel-3.4.ipk
+curl -fsSLO https://raw.githubusercontent.com/kittylabassistant/sign-craze/v1.6.1/dist/sign-craze-mipsle
+curl -fsSLO https://github.com/SagerNet/sing-box/releases/download/v1.13.13/sing-box-1.13.13-linux-mipsle-softfloat.tar.gz
+curl -fsSLO https://github.com/nfqws/nfqws2-keenetic/releases/download/v1.2.3/nfqws2-keenetic_1.2.3_mipsel-3.4.ipk
 
 scp -O -P 222 sign-craze-mipsle sing-box-*.tar.gz nfqws2-*.ipk root@<router>:/tmp/
 ```
@@ -106,6 +106,9 @@ sign-craze --restart
 - **XHTTP packet-up режимы** (`xhttpMode: packet-up`) — маскировка под обычный HTTP-загрузчик, менее детектируем чем grpc/ws
 - **PQ-VLESS** (постквантовое шифрование) — дополнительный уровень обфускации
 - **Vision UDP443** — проксирование UDP через TLS 443 с минимальными отличиями от HTTPS
+
+> [!WARNING]
+> **mips/mipsle (большинство Keenetic):** сборка xray v26.3.27 не стартует на старых ядрах Keenetic (3.4–4.x) — `runtime.futexwakeup ... -89` (ENOSYS); это регрессия данного релиза, прочие 26.* работают. Sign-craze на mips/mipsle всегда ставит проверенный custom-build xray v25.12.8. На arm7/arm64 upstream xray (включая v26.3.27) работает штатно.
 
 Установка с xray:
 
