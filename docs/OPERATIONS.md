@@ -2,14 +2,33 @@
 
 > Версия: 2026-06-19.
 
+## Содержание
+
+1. [Обзор и предусловия](#1-обзор-и-предусловия)
+2. [Установка](#2-установка)
+3. [Запуск, остановка, перезапуск](#3-запуск-остановка-перезапуск)
+4. [Переключение режимов](#4-переключение-режимов)
+5. [Обновление](#5-обновление)
+6. [Backup / Restore](#6-backup--restore)
+7. [DPI](#7-dpi)
+8. [Web UI](#8-web-ui)
+9. [Recovery](#9-recovery)
+10. [Reapply (NDM hook)](#10-reapply-ndm-hook)
+11. [Uninstall](#11-uninstall)
+12. [Diag-bundle](#12-diag-bundle)
+13. [Auto-update hostlist](#13-auto-update-hostlist)
+14. [VPN-exclude](#14-vpn-exclude)
+
+---
+
 ## 1. Обзор и предусловия
 
-**sign-craze** — Go single-binary менеджер межсетевого экрана для Keenetic. Управляет sing-box (прокси-ядро), iptables/ipset, DPI-обходом (nfqws2) и интеграцией с Keenetic IP Policy через RCI.
+**sign-craze** — Go single-binary менеджер межсетевого экрана для [Keenetic](https://help.keenetic.com/hc/ru). Управляет [sing-box](https://sing-box.sagernet.org/) (прокси-ядро), [iptables](https://www.netfilter.org/projects/iptables/index.html)/[ipset](https://ipset.netfilter.org/), DPI-обходом ([nfqws2](https://github.com/nfqws/nfqws2-keenetic)) и интеграцией с Keenetic IP Policy через RCI.
 
 **Предусловия:**
-- Keenetic с установленным Entware (`/opt` смонтирован, ≥ 30 МБ свободно)
+- Keenetic с установленным [Entware](https://entware.net/) (`/opt` смонтирован, ≥ 30 МБ свободно)
 - SSH-доступ с root (или `sudo`)
-- `opkg install ipset curl` — обязательно перед установкой
+- `opkg install ipset curl` — обязательно перед установкой ([opkg](https://openwrt.org/docs/guide-user/additional-software/opkg))
 
 **Ключевые пути:**
 
@@ -33,7 +52,7 @@
 
 ### 2.0 Установка через opkg (рекомендуется)
 
-opkg обеспечивает: feed-based upgrade (`opkg update && opkg upgrade sign-craze`), dependency tracking (автоустановка ipset, iptables-mod-tproxy и других зависимостей), атомарный rollback при конфликте файлов.
+opkg обеспечивает: feed-based upgrade (`opkg update && opkg upgrade sign-craze`), dependency tracking (автоустановка [ipset](https://ipset.netfilter.org/), iptables-mod-tproxy и других зависимостей), атомарный rollback при конфликте файлов. Жизненный цикл preinst/postinst/prerm/postrm — [docs/BEHAVIOR_SPEC.md](BEHAVIOR_SPEC.md) §10.
 
 **Через feed:**
 
@@ -127,7 +146,7 @@ sign-craze --status     # состояние, режим, версии
 **`--start` выполняет:**
 1. Загружает `state.json`; проверяет наличие `sing-box` и `config.json`.
 2. В режиме `policy`: обращается к Keenetic RCI, создаёт/обновляет IP-policy, кеширует `PolicyMark` и `PolicyTable` в `state.json`.
-3. Применяет iptables/ipset (`applier.Apply`).
+3. Применяет [iptables-restore](https://ipset.netfilter.org/iptables-restore.man.html)/ipset (`applier.Apply`).
 4. Восстанавливает ipset-дамп из `/opt/share/sign-craze/ipset.dump`.
 5. Запускает sing-box, ждёт TUN-интерфейс.
 6. Если `DPIEnabled` — запускает nfqws2.
@@ -151,9 +170,9 @@ sign-craze --status
 | Режим               | Механизм                                        | Когда использовать                              |
 |---------------------|-------------------------------------------------|-------------------------------------------------|
 | `policy` (default)  | Keenetic RCI IP Policy + fwmark из NDM          | Выборочная маршрутизация через Keenetic UI      |
-| `full`              | ipset `signcraze_ipv4/v6` по dst-IP             | Нет доступа к RCI / альтернативная прошивка     |
+| `full`              | [ipset](https://ipset.netfilter.org/) `signcraze_ipv4/v6` по dst-IP             | Нет доступа к RCI / альтернативная прошивка     |
 
-Устаревшие псевдонимы `proxy`, `dpi`, `hybrid` автоматически мигрируют в `policy`.
+Устаревшие псевдонимы `proxy`, `dpi`, `hybrid` автоматически мигрируют в `policy`. Выбор режима также влияет на правила [ip rule (policy routing)](https://www.man7.org/linux/man-pages/man8/ip-rule.8.html).
 
 ```sh
 sign-craze --mode policy   # переключить
@@ -173,7 +192,7 @@ sign-craze --restart       # применить — обязательно
 
 ```sh
 sign-craze --status          # режим: policy|full
-ip rule show | grep 0x53     # fwmark-правило маршрутизации
+ip rule show | grep 0x53     # [fwmark/SO_MARK](https://www.man7.org/linux/man-pages/man7/socket.7.html)-правило маршрутизации
 ```
 
 ---
@@ -189,13 +208,7 @@ opkg update
 opkg upgrade sign-craze
 ```
 
-При upgrade:
-1. opkg вызывает `prerm upgrade` - sign-craze не останавливается (postinst новой версии сделает restart).
-2. Старый бинарь удаляется, распаковывается новый.
-3. opkg вызывает `postinst upgrade` - проверяет наличие state.json:
-   - Если есть и сервис был запущен - `sign-craze --restart`.
-   - Если нет - никаких действий (пользователь сам вызовет `--install`).
-4. state.json, config.json, routing.json не трогаются.
+При upgrade: `prerm upgrade` → замена бинаря → `postinst upgrade` (restart если сервис был запущен). Пользовательские файлы (state.json, config.json, routing.json) не трогаются. Полный жизненный цикл preinst/postinst/prerm/postrm — [docs/BEHAVIOR_SPEC.md](BEHAVIOR_SPEC.md) §10.
 
 ### 5.1 Обновить sign-craze (self-update)
 
@@ -211,7 +224,7 @@ sign-craze --update
 sign-craze --update-geo
 ```
 
-Загружает `.srs` в `/opt/var/lib/sign-craze/geo/`, декомпилирует в CIDR, заполняет `signcraze_ipv4/ipv6`, сохраняет дамп в `/opt/share/sign-craze/ipset.dump`. Если sing-box ещё не установлен — заполнение ipset пропускается с предупреждением.
+Загружает [geosite/geoip/.srs](https://sing-box.sagernet.org/configuration/rule-set/) в `/opt/var/lib/sign-craze/geo/`, декомпилирует в CIDR, заполняет `signcraze_ipv4/ipv6`, сохраняет дамп в `/opt/share/sign-craze/ipset.dump`. Если sing-box ещё не установлен — заполнение ipset пропускается с предупреждением.
 
 Рекомендуется через `cron`:
 
@@ -262,29 +275,7 @@ sign-craze --core-install mihomo
 | `--core <sing-box\|xray\|mihomo>` | Переключить активное ядро; требует `--restart` |
 | `--core-install <name>` | Скачать и установить ядро для текущей архитектуры |
 
-> Смена ядра не пересоздаёт конфиг автоматически — конфиг генерируется заново при следующем `--restart`.
-
-### Установка с mieru (enfein/mieru)
-
-`sign-craze --install --with-mieru` — скачивает и устанавливает бинарь mieru параллельно с sing-box. После установки выбрать outbound: `--proxy mierus://<server>:<port>?username=<user>&password=<pass>` или редактирование `routing.json` через UI.
-
-### Установка с naive (klzgrad/naiveproxy)
-
-`sign-craze --install --with-naive` — скачивает и устанавливает бинарь naive параллельно с sing-box. После установки выбрать outbound: `--proxy naive+https://<user>:<pass>@<server>:<port>` или редактирование `routing.json` через UI.
-
----
-
-## 5а. Multi-core operations (v1.0.0+)
-
-### Переключение ядра
-
-```sh
-sign-craze --core xray
-sign-craze --restart
-sign-craze --status        # active core: xray
-```
-
-`--restart` вызывает `ensureConfigFreshForCore` — генерирует `config.json` (или эквивалент) для **активного** ядра и только для него. Если до смены работал `sing-box`, его конфиг при переключении на `xray` не трогается и не используется при старте.
+> Смена ядра не пересоздаёт конфиг автоматически — конфиг генерируется заново при следующем `--restart`. `--restart` вызывает `ensureConfigFreshForCore` — генерирует конфиг только для **активного** ядра.
 
 ### routing.json — core-agnostic
 
@@ -340,6 +331,14 @@ sign-craze --status    # active core: xray|mihomo|sing-box
 curl http://localhost:9092/api/validate   # проверить warnings
 ```
 
+### Установка с mieru (enfein/mieru)
+
+`sign-craze --install --with-mieru` — скачивает и устанавливает бинарь [mieru](https://github.com/enfein/mieru) параллельно с sing-box. После установки выбрать outbound: `--proxy mierus://<server>:<port>?username=<user>&password=<pass>` или редактирование `routing.json` через UI.
+
+### Установка с naive (klzgrad/naiveproxy)
+
+`sign-craze --install --with-naive` — скачивает и устанавливает бинарь [naiveproxy](https://github.com/klzgrad/naiveproxy) параллельно с sing-box. После установки выбрать outbound: `--proxy naive+https://<user>:<pass>@<server>:<port>` или редактирование `routing.json` через UI.
+
 ---
 
 ## 6. Backup / Restore
@@ -351,9 +350,7 @@ sign-craze --backup
 # /opt/var/lib/sign-craze/backups/backup-2026-05-03T12-00-00.tar.gz
 ```
 
-Архивирует весь `/opt/etc/sign-craze/` (config.json, state.json, admin.creds). Geo-файлы и кэш не включаются — восстанавливаются через `--update-geo`.
-
-> `admin.creds` — reserved-файл; basic auth не применяется с v0.5.2, но файл создаётся `LoadOrCreateCreds` для совместимости.
+Архивирует весь `/opt/etc/sign-craze/` (config.json, state.json). Geo-файлы и кэш не включаются — восстанавливаются через `--update-geo`.
 
 ### 6.2 Восстановление
 
@@ -389,9 +386,6 @@ sign-craze --dpi-strategy file:///opt/etc/sign-craze/nfqws2-custom.conf
 
 Формат пути: `file://` + абсолютный путь (согласно справке `--dpi-strategy`).
 Пример: `file:///opt/etc/sign-craze/nfqws2-custom.conf` — три слеша: два от `file://` + один от абсолютного пути.
-
-```sh
-```
 
 Обновить бинарь:
 
@@ -448,7 +442,7 @@ sign-craze --ui on    # блокирующий вызов до SIGTERM
 
 > **Firewall watchdog**: при активном `--ui on` запускается фоновая проверка iptables-правил каждые 30 с. Если критические правила отсутствуют (например, NDM пересобрал цепочки без вызова hook'а), watchdog восстанавливает их через `Applier.Reconcile`. При отсутствии `--ui on` восстановление — только через NDM hook `50-sign-craze`.
 
-**Аутентификация:** отсутствует (auth удалён).
+**Аутентификация:** отсутствует (auth удалён в v1.6.1).
 
 **Проверка:**
 
@@ -595,7 +589,7 @@ rm -rf /opt/etc/sign-craze /opt/var/lib/sign-craze /opt/var/log/sign-craze
 rm -f /opt/etc/init.d/S99signcraze /opt/etc/ndm/netfilter.d/50-sign-craze
 ```
 
-Альтернатива: вызвать `sign-craze --uninstall` ДО `opkg remove` - это выполнит более чистое удаление (стоп сервиса, отвязка policy от хостов Keenetic через RCI), затем `opkg remove` уже только снимет бинарь.
+> Рекомендуется сначала `sign-craze --uninstall` (остановит сервис, отвяжет IP-policy через RCI), затем `opkg remove`. Жизненный цикл postrm — [docs/BEHAVIOR_SPEC.md](BEHAVIOR_SPEC.md) §10.
 
 ---
 
@@ -644,57 +638,7 @@ cat /opt/var/log/sign-craze/boot.log >> /tmp/diag.txt
 
 ---
 
-## 13. Deploy v0.8.x на Keenetic
-
-> **BusyBox `wget` не поддерживает HTTPS на Entware.** Для загрузки обязательно нужен `/opt/bin/curl` (из пакета `curl`). Убедитесь, что пакет установлен: `opkg install curl`.
-
-Выберите архитектуру:
-
-| Модель | ARCH |
-|--------|------|
-| KN-1410, KN-1810 | `mips` |
-| KN-1910, KN-2010 и новее | `mipsle` |
-| Современные ARM-роутеры | `arm7` или `arm64` |
-
-```bash
-ARCH=mips  # подставить нужную архитектуру
-VERSION=v0.8.3  # целевая версия
-ssh -p 222 root@<router> "
-  /opt/bin/curl -fsSL -o /tmp/sc.new https://github.com/kittylabassistant/sign-craze/releases/download/${VERSION}/sign-craze-${ARCH} &&
-  /opt/bin/curl -fsSL -o /tmp/sc.sha https://github.com/kittylabassistant/sign-craze/releases/download/${VERSION}/sign-craze-${ARCH}.sha256 &&
-  cd /tmp && sha256sum -c sc.sha &&
-  mv /opt/sbin/sign-craze /opt/sbin/sign-craze.bak &&
-  mv /tmp/sc.new /opt/sbin/sign-craze &&
-  chmod +x /opt/sbin/sign-craze &&
-  /opt/sbin/sign-craze --restart
-"
-```
-
-**Проверка после deploy:**
-
-```sh
-sign-craze --version
-# → v0.8.3
-
-sign-craze --status
-# → sing-box+nfqws2 запущены
-
-iptables -t mangle -L POSTROUTING -n -v | grep signcraze_policy_dpi
-# → -o eth3 (WAN-интерфейс)
-
-iptables -t mangle -L signcraze_policy_dpi -n -v | head -5
-# → первые правила RETURN
-
-ls -la /opt/etc/sign-craze/dpi-hostlist.txt
-# → файл существует
-
-tail /opt/var/log/sign-craze/sign-craze.log | grep -E "reapply|dpi"
-# → не более 12 reapply/час
-```
-
----
-
-## 14. Auto-update hostlist (24h)
+## 13. Auto-update hostlist
 
 Автоматическая загрузка и обновление hostlist для DPI-обхода по расписанию.
 
@@ -710,17 +654,20 @@ sign-craze --restart
 | `--dpi-update-urls` | Список URL через запятую — источники hostlist |
 | `--dpi-update-interval` | Интервал обновления в часах (24 = раз в сутки) |
 | `--dpi-update-now` | Принудительно скачать hostlist немедленно |
+| `--dpi-exclude-ips` | IP-адреса через запятую — RETURN перед [NFQUEUE](https://www.netfilter.org/projects/libnetfilter_queue/) |
+| `--dpi-exclude-ips-list` | Показать текущие IP-исключения из DPI |
 
 **Проверка:**
 
 ```sh
 ls -la /opt/etc/sign-craze/dpi-hostlist.txt
 sign-craze --dpi-targets-list
+sign-craze --dpi-exclude-ips-list
 ```
 
 ---
 
-## 15. VPN-exclude
+## 14. VPN-exclude
 
 Исключение IP VPN-эндпоинта из DPI/proxy-правил — трафик к VPN-серверу идёт напрямую.
 
@@ -751,115 +698,3 @@ sign-craze --status
 iptables -t mangle -L signcraze_policy_dpi -n -v | grep RETURN
 ```
 
----
-
-## 16. Rollback v0.8.x
-
-Если после deploy возникли проблемы — откат к предыдущему бинарю (`sign-craze.bak`):
-
-```bash
-ssh root@<router> "/opt/sbin/sign-craze --stop && mv /opt/sbin/sign-craze /tmp/sc.failed && mv /opt/sbin/sign-craze.bak /opt/sbin/sign-craze && /opt/sbin/sign-craze --start"
-```
-
-Проверить версию после отката:
-
-```sh
-sign-craze --version
-sign-craze --status
-```
-
-> Если `.bak` отсутствует — восстановить через `--install-offline` или скачать нужную версию из GitHub Releases вручную (см. секцию [13. Deploy v0.8.x](#13-deploy-v08x-на-keenetic)).
-
----
-
-## 17. Verify и migration после upgrade с v0.6.x
-
-### Проверка inbound-конфига
-
-```sh
-netstat -tlnp | grep 7895
-# Ожидаемо: sing-box LISTEN на TCP+UDP 0.0.0.0:7895
-# Если пусто — возможна проблема с TUN-inbound
-```
-
-Если `netstat` не показывает порт — проверить наличие TUN-inbound в `routing.json`:
-
-```sh
-cat /opt/etc/sign-craze/routing.json | jq '.inbounds'
-# Если вывод непустой и содержит type:"tun" — migration не сработала автоматически
-```
-
-**Ручное исправление:**
-
-```sh
-jq 'del(.inbounds)' /opt/etc/sign-craze/routing.json > /tmp/r && \
-  mv /tmp/r /opt/etc/sign-craze/routing.json && \
-  sign-craze --restart
-```
-
-После перезапуска повторно проверить `netstat -tlnp | grep 7895`.
-
-### Проверка hostlist auto-update
-
-```sh
-ls -la /opt/etc/sign-craze/dpi-hostlist.txt
-# Файл должен появиться через 24h после установки или после --dpi-update-now
-
-wc -l /opt/etc/sign-craze/dpi-hostlist.txt
-# Ожидаемо: десятки–сотни строк
-```
-
-### Проверка DNS fallback (v0.8.1+)
-
-Если системный resolver возвращает SERVFAIL для github.com (например, DNSCrypt фильтрует upstream) — `--dpi-update-now` должен использовать fallback DNS и завершаться успешно:
-
-```sh
-sign-craze --dpi-update-now
-# Ожидаемо: успешно скачан hostlist, обновлён счётчик строк
-# При SERVFAIL на системном resolver — fallback DNS подхватывает автоматически
-```
-
----
-
-## 18. CLI auto-update hostlist
-
-Управление автоматическим обновлением DPI-hostlist из внешних источников.
-
-**Установить интервал (часы):**
-
-```sh
-sign-craze --dpi-update-interval 24
-```
-
-**Задать источники (URL через запятую):**
-
-```sh
-sign-craze --dpi-update-urls "https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/lists/list-general.txt,https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/lists/list-youtube.txt"
-```
-
-**Принудительное обновление немедленно:**
-
-```sh
-sign-craze --dpi-update-now
-```
-
-**VPN-исключения — RETURN перед NFQUEUE:**
-
-```sh
-sign-craze --dpi-exclude-ips "1.2.3.4,5.6.7.8"
-sign-craze --restart
-```
-
-**Проверить текущий список исключений:**
-
-```sh
-sign-craze --dpi-exclude-ips-list
-```
-
-| Флаг | Описание |
-|------|----------|
-| `--dpi-update-interval` | Интервал авто-обновления в часах |
-| `--dpi-update-urls` | Список URL через запятую — источники hostlist |
-| `--dpi-update-now` | Скачать hostlist немедленно, не ждать таймера |
-| `--dpi-exclude-ips` | IP-адреса через запятую — RETURN перед NFQUEUE |
-| `--dpi-exclude-ips-list` | Показать текущие исключения |

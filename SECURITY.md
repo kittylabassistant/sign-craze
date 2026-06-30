@@ -65,7 +65,7 @@ PGP-ключ не публикуется: GitHub Security Advisories уже пе
 - **Окружение:** модель Keenetic, версия KeeneticOS, архитектура
   (`mipsle` / `mips` / `arm` / `arm64`), версия Entware
 - **Компонент:** firewall / routing / web UI (`:9090` / `:9091` /
-  `:9092`) / генератор конфигов sing-box / install-скрипт / релизный
+  `:9092`) / генератор конфигов [sing-box](https://sing-box.sagernet.org/) / install-скрипт / релизный
   бинарь / прочее
 - **Описание:** что не так, какой инвариант нарушается
 - **Воспроизведение:** минимальная последовательность команд или
@@ -78,7 +78,7 @@ PGP-ключ не публикуется: GitHub Security Advisories уже пе
   MAC, токены провайдеров, `proxy.json` URL outbound, IP клиентов LAN,
   пароли Wi-Fi
 
-Если уязвимость в зависимости (sing-box, nfqws2, geo-данные), укажите
+Если уязвимость в зависимости (sing-box, [nfqws2](https://github.com/nfqws/nfqws2-keenetic), geo-данные), укажите
 это: возможно, апстрим уже знает.
 
 ## Сроки реакции
@@ -109,7 +109,7 @@ In-scope для sign-craze (репозиторий
   через прокси, идёт мимо; правила `signcraze_*` обходятся через
   предсказуемый вход.
 - **Повреждение чужих firewall-правил** не из префикса `signcraze_*`:
-  sign-craze не должен трогать сторонние chain'ы / ipset'ы (см.
+  sign-craze не должен трогать сторонние chain'ы / [ipset](https://ipset.netfilter.org/)'ы (см.
   [`docs/OWNERSHIP.md`](docs/OWNERSHIP.md)).
 - **RCE / command injection** через web UI (`:9090` Zashboard,
   `:9091` admin REST API, `:9092` Routing Editor) или CLI: исполнение
@@ -120,7 +120,7 @@ In-scope для sign-craze (репозиторий
   пользователя меняет состояние sign-craze.
 - **Доступ к web UI с WAN** при штатной установке: порты `:9090`/`:9091`/
   `:9092` должны быть LAN-only.
-- **Template injection** в генераторах конфигов sing-box / xray / mihomo:
+- **Template injection** в генераторах конфигов sing-box / [Xray-core](https://xtls.github.io/) / [mihomo](https://wiki.metacubex.one/):
   пользовательский ввод (имя outbound, URL прокси) ломает шаблон или
   даёт исполнение.
 - **Утечка секретов в логи и support-bundle:** outbound URL, API-токены
@@ -149,9 +149,10 @@ Out-of-scope: репортить можно, но это будет закрыт
 - Атаки, требующие `root` или физического доступа к роутеру: такой
   атакующий уже владеет устройством.
 - Атаки на клиентов LAN, использующих доверенный прокси: модель угроз
-  sign-craze считает LAN доверенной. Admin UI `:9091` защищён bcrypt-аутентификацией
-  (с v1.4.0); Routing Editor `:9092` и Zashboard `:9090`: LAN-only без auth
-  by design. Web-UI с WAN входит в scope (см. выше).
+  sign-craze считает LAN доверенной. Web UI (`:9090` Zashboard, `:9091` admin REST,
+  `:9092` Routing Editor) — LAN-only, без HTTP-аутентификации by design. Единственный
+  барьер от WAN — NDM INPUT DROP на эти порты. Web-UI, доступный с WAN (из-за
+  неверной конфигурации firewall), входит в scope.
 - Self-XSS, требующий ручного ввода вредоносного payload в собственный
   браузер.
 - Отсутствие современных HTTP security-заголовков (HSTS, CSP) на LAN-only
@@ -208,11 +209,11 @@ Out-of-scope: репортить можно, но это будет закрыт
   через `--install-auto` / `--dpi on`. Поддерживается проверка
   фактической sha256 относительно ожидаемой. Если интеграция
   верификации сломана, это уязвимость in-scope.
-- **Подпись релизов.** Каждый артефакт релиза подписан **cosign keyless OIDC**
+- **Подпись релизов.** Каждый артефакт релиза подписан **[cosign](https://www.sigstore.dev/) keyless OIDC**
   через GitHub Actions (с v1.4.0): рядом с бинарём лежат `.sig` и `.pem`.
   Проверка: `cosign verify-blob --certificate-identity-regexp ... --certificate-oidc-issuer https://token.actions.githubusercontent.com`,
   см. раздел [«Verifying the release»](README.md#verifying-the-release).
-  Дополнительно **SLSA build provenance** через `actions/attest-build-provenance@v4`,
+  Дополнительно **[SLSA](https://slsa.dev/) build provenance** через `actions/attest-build-provenance@v4`,
   верификация: `gh attestation verify <file> --repo kittylabassistant/sign-craze`.
 
 ## Рекомендации пользователям

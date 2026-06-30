@@ -24,7 +24,7 @@ pull request'ы так, чтобы изменения попали в релиз
 ## Ограничения проекта
 
 Sign-craze. Go-утилита для управления firewall/маршрутизацией на роутерах
-Keenetic поверх Entware: установка sing-box / xray / mihomo, опционально `nfqws2`,
+[Keenetic](https://help.keenetic.com/hc/ru) поверх [Entware](https://entware.net/): установка [sing-box](https://sing-box.sagernet.org/) / [xray](https://xtls.github.io/) / [mihomo](https://wiki.metacubex.one/), опционально [`nfqws2`](https://github.com/nfqws/nfqws2-keenetic),
 конфигурация policy/full режима, web-UI на портах `:9090`/`:9091`/`:9092`.
 Проект работает в условиях встраиваемого Linux: ограниченный RAM,
 отсутствие systemd/nftables, MIPS/ARM SoC.
@@ -39,11 +39,11 @@ Keenetic поверх Entware: установка sing-box / xray / mihomo, оп
 - Go 1.25.9 доступен на хосте: `go build`/`test`/`vet`/`mod tidy` — локально.
   podman/docker нужен ТОЛЬКО для cross-compile под mipsle/mips/arm: см. `Makefile`
   и скилл `go-xbuild`.
-- `CGO_ENABLED=0`, `GOMIPS=softfloat`, `-ldflags="-s -w"`, цель ≤ 4 МБ
-  после `upx --lzma`.
+- `CGO_ENABLED=0`, [`GOMIPS=softfloat`](https://pkg.go.dev/cmd/go#hdr-Environment_variables), `-ldflags="-s -w"`, цель ≤ 4 МБ
+  после [`upx`](https://upx.github.io/) `--lzma`.
 - Sign-craze управляет только **своими** объектами по префиксу
   `signcraze_` и явным путям.
-  Широкие операции (`iptables -F`, `ipset destroy` без имени) запрещены.
+  Широкие операции ([`iptables`](https://www.netfilter.org/projects/iptables/index.html) `-F`, [`ipset`](https://ipset.netfilter.org/) `destroy` без имени) запрещены.
 - Любое изменение публичного CLI и lifecycle команд проходит через
   обсуждение в issue: меняется контракт, на который опираются
   пользователи и скрипты установки.
@@ -205,7 +205,7 @@ Smoke-test в QEMU `qemu-user-static` ловит часть проблем
 
 ## Стиль кода и тесты
 
-- **Go 1.25+**. Используем `log/slog` (структурированные логи),
+- **Go 1.25+**. Используем [`log/slog`](https://pkg.go.dev/log/slog) (структурированные логи),
   `embed.FS` (шаблоны sing-box), `context` (отмена/таймауты).
 - **Layout:** `cmd/` для main, `internal/` для приватной логики,
   `pkg/types` для core-agnostic типов (`RoutingConfig`, `CoreRenderParams`),
@@ -249,7 +249,7 @@ Smoke-test в QEMU `qemu-user-static` ловит часть проблем
 
 ## Сообщения коммитов
 
-Формат: Conventional Commits с проектным набором scope'ов
+Формат: [Conventional Commits](https://www.conventionalcommits.org/) с проектным набором scope'ов
 (см. git log):
 
 ```plain

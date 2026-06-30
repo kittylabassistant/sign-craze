@@ -1,6 +1,6 @@
 # Установка sign-craze
 
-Полная инструкция от чистой флешки до рабочего прокси на роутере Keenetic.
+Полная инструкция от чистой флешки до рабочего прокси на роутере [Keenetic](https://help.keenetic.com/hc/ru).
 
 > [!WARNING]
 > Все команды выполняются на ваш страх и риск. Перед форматированием убедитесь, что выбран правильный диск — ошибка может уничтожить данные на системном накопителе. Делайте резервную копию важных данных.
@@ -25,7 +25,7 @@
 ## 1. Что понадобится
 
 - Роутер Keenetic с USB-портом и поддержкой OPKG (большинство моделей кроме самых младших).
-- USB-флешка **≥ 4 GB** (sign-craze + sing-box + geo-файлы + swap-файл 1 GB + запас под Entware).
+- USB-флешка **≥ 4 GB** (sign-craze + [sing-box](https://sing-box.sagernet.org/) + geo-файлы + swap-файл 1 GB + запас под [Entware](https://entware.net/)).
 - ПК с Linux, macOS или Windows.
 - Подписка на VPN/прокси-сервис: URL формата `vless://...`, `vmess://...`, `ss://...`, `trojan://...`, `http://...` или `socks5://...`.
 - SSH-клиент (встроен в Linux/macOS, для Windows — PuTTY или встроенный `ssh.exe`).
@@ -267,7 +267,7 @@ free -m
 
 ### 5.1. Способ 1: opkg (рекомендуется)
 
-Если Entware установлен (шаги 3–4 выполнены) — используйте opkg. Даёт автоматические обновления через `opkg upgrade`, проверку подписи и автоматическую установку зависимостей (ipset, iptables, curl и др.).
+Если Entware установлен (шаги 3–4 выполнены) — используйте [opkg](https://openwrt.org/docs/guide-user/additional-software/opkg). Даёт автоматические обновления через `opkg upgrade`, проверку подписи и автоматическую установку зависимостей (ipset, iptables, curl и др.).
 
 ```sh
 # Определить архитектуру роутера
@@ -308,7 +308,7 @@ opkg install sign-craze
 
 ### 5.2. Способ 2: curl | sh (альтернатива)
 
-> **Важно**: BusyBox `wget` на Keenetic собран **без SSL** и не поддерживает HTTPS — выдаст `not an http or ftp url`. Также BusyBox `od` не поддерживает опцию `-t`. Поэтому установка идёт через `curl` (с `-k` — без проверки сертификатов) или через `wget-ssl` из Entware.
+> **Важно**: [BusyBox](https://busybox.net/) `wget` на Keenetic собран **без SSL** и не поддерживает HTTPS — выдаст `not an http or ftp url`. Также BusyBox `od` не поддерживает опцию `-t`. Поэтому установка идёт через `curl` (с `-k` — без проверки сертификатов) или через `wget-ssl` из Entware.
 
 #### 5.2.1. Установить curl (один раз)
 
@@ -402,7 +402,7 @@ sign-craze --core-install mihomo   # скачать mihomo в /opt/sbin/mihomo
 
 ### 6.2. Supervised peers: naiveproxy и mieru (v1.3.0+)
 
-sign-craze поддерживает naiveproxy и mieru как supervised peers — запускаются как daemon рядом с sing-box (process chain через socks5-outbound). Работают **только** с ядром sing-box; xray и mihomo такие конфиги отклоняют с подсказкой `--core sing-box`.
+sign-craze поддерживает [naiveproxy](https://github.com/klzgrad/naiveproxy) и [mieru](https://github.com/enfein/mieru) как supervised peers — запускаются как daemon рядом с sing-box (process chain через socks5-outbound). Работают **только** с ядром sing-box; xray и mihomo такие конфиги отклоняют с подсказкой `--core sing-box`.
 
 ```sh
 # Установка + активация naiveproxy
@@ -458,7 +458,7 @@ sign-craze --install --proxy 'vless://...' --preset ru-direct
 - Создастся init.d shim `/opt/etc/init.d/S99signcraze` (автозапуск sing-box + firewall watchdog)
 - Создастся NDM netfilter.d hook `/opt/etc/ndm/netfilter.d/50-sign-craze` (реапплай правил после rebuild)
 
-> **Защита от SSH-lockout и LAN-трафик**: SSH-порты роутера (`22` Entware/dropbear, `222` Keenetic admin) и локальные сети (RFC1918 + loopback + multicast + link-local) автоматически исключены из проксирования через ipset `signcraze_excludes` и RETURN-правила в mangle. Дополнительной настройки не требуется. Для кастомизации (другие порты, bypass публичных IP) править поля `admin_ports` и `admin_ips` в `/opt/etc/sign-craze/state.json` и перезапустить sign-craze.
+> **Защита от SSH-lockout и LAN-трафик**: SSH-порты роутера (`22` Entware/dropbear, `222` Keenetic admin) и локальные сети (RFC1918 + loopback + multicast + link-local) автоматически исключены из проксирования через [ipset](https://ipset.netfilter.org/) `signcraze_excludes` и RETURN-правила в mangle. Дополнительной настройки не требуется. Для кастомизации (другие порты, bypass публичных IP) править поля `admin_ports` и `admin_ips` в `/opt/etc/sign-craze/state.json` и перезапустить sign-craze.
 
 ### 6.4. Без вопросов
 
@@ -516,7 +516,7 @@ sign-craze --start
 sign-craze --start
 ```
 
-Применит iptables/ipset правила и запустит sing-box (и nfqws2 в режимах `dpi`/`hybrid`).
+Применит [iptables](https://www.netfilter.org/projects/iptables/index.html)/ipset правила и запустит sing-box (и [nfqws2](https://github.com/nfqws/nfqws2-keenetic) в режимах `dpi`/`hybrid`).
 
 > **DPI отключён по умолчанию.** После `sign-craze --install` (без `--with-dpi`) режим — `policy`, `nfqws2` не скачан и не запускается, NFQUEUE-правила не добавляются. Для активации DPI:
 >
@@ -548,7 +548,7 @@ sign-craze --ui on
 
 Откроются три HTTP-сервиса (только из LAN):
 
-- `http://<router-ip>:9090/` — **Zashboard** (Clash-совместимый dashboard). Показывает реальное дерево прокси, живые счётчики трафика, активные соединения и логи в реальном времени — стриминговые эндпоинты (`/traffic`, `/logs`, `/connections`) передаются без буферизации. Данные приходят через Clash API реверс-прокси на sing-box (порт `9094`, внутренний). Выбор активного прокси сохраняется после рестарта sing-box.
+- `http://<router-ip>:9090/` — **[Zashboard](https://github.com/Zephyruso/zashboard)** (Clash-совместимый dashboard). Показывает реальное дерево прокси, живые счётчики трафика, активные соединения и логи в реальном времени — стриминговые эндпоинты (`/traffic`, `/logs`, `/connections`) передаются без буферизации. Данные приходят через Clash API реверс-прокси на sing-box (порт `9094`, внутренний). Выбор активного прокси сохраняется после рестарта sing-box.
 - `http://<router-ip>:9091/api/status` — **admin REST API** (статус, конфиг, порты, исключения, DPI targets).
 - `http://<router-ip>:9092` — **Routing Editor SPA** (визуальный редактор inbounds/outbounds/rules, пресеты). При первом запуске автоматически инициализируется из текущих `state.outbounds` — сконфигурированный прокси появляется сразу. Outbound в таблице отображается с адресом сервера и портом.
 
@@ -572,7 +572,7 @@ sign-craze --restart
 
 ## 9a. Selective DPI bypass (опционально)
 
-По умолчанию `--dpi on` запускает nfqws2 на **весь** TCP/UDP трафик (через NFQUEUE). На MIPS-роутерах это даёт packet-copy overhead до ~30% CPU при 40 Mbps. Selective режим ограничивает desync только выбранными доменами через `nfqws2 --hostlist`.
+По умолчанию `--dpi on` запускает nfqws2 на **весь** TCP/UDP трафик (через [NFQUEUE](https://www.netfilter.org/projects/libnetfilter_queue/)). На MIPS-роутерах это даёт packet-copy overhead до ~30% CPU при 40 Mbps. Selective режим ограничивает desync только выбранными доменами через `nfqws2 --hostlist`.
 
 ```sh
 # Включить DPI

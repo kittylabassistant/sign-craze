@@ -1,6 +1,6 @@
 # Рецепт: IPRU + DomainRU → direct, остальное → proxy
 
-> **Совместимость:** шаги с `geoip-ru` работают на всех трёх ядрах (sing-box, xray, mihomo) — sign-craze транслирует правило в нативный формат при Apply. Шаги с `geosite-ru` (A.5–A.6, B.3, B-альтернатива) используют источник из sign-craze-dat и применимы только с ядром sing-box; для mihomo/xray Validate покажет предупреждение.
+> **Совместимость:** шаги с `geoip-ru` работают на всех трёх ядрах ([sing-box](https://sing-box.sagernet.org/), [xray](https://xtls.github.io/), [mihomo](https://wiki.metacubex.one/)) — sign-craze транслирует правило в нативный формат при Apply. Шаги с `geosite-ru` (A.5–A.6, B.3, B-альтернатива) используют источник из sign-craze-dat и применимы только с ядром sing-box; для mihomo/xray Validate покажет предупреждение.
 
 ## Цель
 
@@ -11,7 +11,7 @@
 
 ## Prerequisites
 
-- sign-craze установлен (см. INSTALL.md).
+- sign-craze установлен (см. [Installation](Installation)).
 - VPN-outbound (`vless`, `trojan` или `shadowsocks`) уже описан в `routing.json`.
   Получить его tag:
 

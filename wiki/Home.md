@@ -2,7 +2,7 @@
 
 # sign-craze
 
-Go-утилита для управления межсетевым экраном на роутерах Keenetic. Поддерживает три прокси-ядра с единым управлением через Web UI: [sing-box](https://github.com/SagerNet/sing-box) (умолчание), **xray** и **mihomo**; дополнительно — supervised peers **naiveproxy** и **mieru** (process chain через socks5-outbound sing-box). Опционально [nfqws2](https://github.com/nfqws/nfqws2-keenetic) для DPI-обхода. Чистая реализация (clean-room) без переиспользования кода XKeen.
+Go-утилита для управления межсетевым экраном на роутерах Keenetic. Поддерживает три прокси-ядра с единым управлением через Web UI: [sing-box](https://github.com/SagerNet/sing-box) (умолчание), **xray** и **mihomo**; дополнительно — supervised peers **[naiveproxy](https://github.com/klzgrad/naiveproxy)** и **[mieru](https://github.com/enfein/mieru)** (process chain через socks5-outbound sing-box). Опционально [nfqws2](https://github.com/nfqws/nfqws2-keenetic) для DPI-обхода. Чистая реализация (clean-room) без переиспользования кода XKeen.
 
 > [!WARNING]
 > Материал подготовлен в научно-технических целях. Sign-Craze предназначен для управления межсетевым экраном роутера Keenetic в домашней сети. Разработчик не несёт ответственности за иное использование. Перед применением убедитесь, что ваши действия соответствуют законодательству вашей страны.
@@ -104,7 +104,7 @@ Go-утилита для управления межсетевым экрано�
 - **Releases:** <https://github.com/kittylabassistant/sign-craze/releases>
 - **Issues:** <https://github.com/kittylabassistant/sign-craze/issues>
 - **README:** [README.md](https://github.com/kittylabassistant/sign-craze/blob/main/README.md)
-- **Поведенческая спецификация:** [BEHAVIOR_SPEC.md](https://github.com/kittylabassistant/sign-craze/blob/main/BEHAVIOR_SPEC.md)
+- **Поведенческая спецификация:** [BEHAVIOR_SPEC.md](https://github.com/kittylabassistant/sign-craze/blob/main/docs/BEHAVIOR_SPEC.md)
 - **Архитектура:** [docs/ARCHITECTURE.md](https://github.com/kittylabassistant/sign-craze/blob/main/docs/ARCHITECTURE.md)
 - **Лицензия:** [LICENSE](https://github.com/kittylabassistant/sign-craze/blob/main/LICENSE) (BSD 3-Clause)
 

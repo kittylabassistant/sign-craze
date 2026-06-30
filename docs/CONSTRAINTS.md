@@ -10,16 +10,16 @@ Single source of truth для инвариантов, нарушение кот�
 
 | Ресурс | Лимит | Мотивация | Проверка |
 |--------|-------|-----------|----------|
-| Бинарь (сжатый, UPX --lzma) | ≤ 4 МБ | Flash на Entware ограничен; README:136, `CLAUDE.md:32` | `ls -lh dist/sign-craze-*` после `make upx` |
+| Бинарь (сжатый, [UPX](https://upx.github.io/) --lzma) | ≤ 4 МБ | Flash на [Entware](https://entware.net/) ограничен; README:136, `CLAUDE.md:32` | `ls -lh dist/sign-craze-*` после `make upx` |
 | Бинарь (несжатый mipsle) | ~9 МБ | Ориентир для отслеживания bloat; `test-roadmap.md:590` | `ls -lh dist/sign-craze-mipsle` |
-| RSS всей системы (sing-box + sign-craze + nfqws2) | ≤ 128 МБ целевой; 256 МБ реально на KN-1810 | KN-1810 имеет 256 МБ RAM; `CLAUDE.md:34`, `test-roadmap.md:577,592` | `top \| grep -E 'sing-box\|sign-craze\|nfqws2'` |
+| RSS всей системы ([sing-box](https://sing-box.sagernet.org/) + sign-craze + nfqws2) | ≤ 128 МБ целевой; 256 МБ реально на KN-1810 | KN-1810 имеет 256 МБ RAM; `CLAUDE.md:34`, `test-roadmap.md:577,592` | `top \| grep -E 'sing-box\|sign-craze\|nfqws2'` |
 | RSS sing-box | < 30 МБ | Предупреждение memory leak; `test-roadmap.md:592` | `/proc/<pid>/status`, VmRSS |
 | RSS sign-craze | < 10 МБ | Управляющий процесс не должен вытеснять sing-box | `/proc/<pid>/status`, VmRSS |
 | Flash (Entware-раздел) | ≥ 30 МБ свободно | 3 бинаря + geo; `BEHAVIOR_SPEC.md:49` | `df -h /opt` в `--install` до загрузки |
 | HTTP-тело (admin API) | 1 МБ (`1 << 20`) | 50 МБ malformed JSON убивает 128 МБ роутер; safety-fixes #7 | `MaxBytesReader` в `apiConfigPost`, `apiPortsAdd`, `apiExcludesAdd` |
 | Geo-файл (.srs) | ≤ 200 МБ hard cap; streaming, не в RAM | Потоковая запись через `WriteFileAtomicFromReader`; `internal/geo/srs.go:27` | 8 КБ буфер, `io.CopyBuffer` |
 
-### naiveproxy daemon
+### [naiveproxy](https://github.com/klzgrad/naiveproxy) daemon
 
 При включении naive outbound добавляется отдельный процесс `naive` с RSS ~30–50 МБ
 (Chrome network stack). На роутерах с 128 МБ RAM проверяйте свободную память перед
@@ -27,7 +27,7 @@ Single source of truth для инвариантов, нарушение кот�
 
 ### mieru daemon
 
-- mieru: ~30 МБ RSS (отдельный процесс, supervised peer). Сумма naive+mieru не должна превышать 80 МБ для бюджета 128 МБ роутера.
+- [mieru](https://github.com/enfein/mieru): ~30 МБ RSS (отдельный процесс, supervised peer). Сумма naive+mieru не должна превышать 80 МБ для бюджета 128 МБ роутера.
 
 ---
 
@@ -47,14 +47,12 @@ Single source of truth для инвариантов, нарушение кот�
 
 ## 3. Поддерживаемые архитектуры
 
-| GOARCH | Доп. флаг | Статус | Источник |
-|--------|-----------|--------|----------|
-| `arm64` | — | поддерживается | `Makefile`, `ci.yml`, `release.yml` |
-| `arm` | `GOARM=7` | поддерживается | `Makefile`, `ci.yml`, `release.yml` |
-| `mipsle` | `GOMIPS=softfloat` | поддерживается | `Makefile`, `ci.yml`, `release.yml` |
-| `mips` | `GOMIPS=softfloat` | поддерживается | `Makefile`, `ci.yml`, `release.yml` |
-| `mips`/`mipsle` с hardfloat | **ЗАПРЕЩЕНО** | KN-1810 без FPU → SIGILL; `test-roadmap.md:591` | `GOMIPS=softfloat` обязателен |
-| `windows`, `darwin`, `386` | — | вне scope | — |
+Канонический список целевых платформ: [COMPATIBILITY_MATRIX.md](COMPATIBILITY_MATRIX.md) §1.
+
+Инварианты:
+- Поддерживаемые архитектуры: `arm64`, `arm` (GOARM=7), `mipsle`, `mips` — все с `GOMIPS=softfloat` для mips-вариантов.
+- `GOMIPS=hardfloat` — **ЗАПРЕЩЕНО** на mips/mipsle: KN-1810 без FPU → SIGILL.
+- `windows`, `darwin`, `386` — вне scope.
 
 ---
 
@@ -62,7 +60,7 @@ Single source of truth для инвариантов, нарушение кот�
 
 | Ограничение | Мотивация | Источник |
 |-------------|-----------|----------|
-| PATH обязан включать `/opt/sbin`, `/opt/bin`, `/opt/usr/sbin`, `/opt/usr/bin` | На Keenetic init.d PATH ограничен; `iptables`, `ipset`, `ip` живут в `/opt` | `internal/exectx/exec.go:19` |
+| PATH обязан включать `/opt/sbin`, `/opt/bin`, `/opt/usr/sbin`, `/opt/usr/bin` | На [Keenetic](https://help.keenetic.com/hc/ru) init.d PATH ограничен; `iptables`, `ipset`, `ip` живут в `/opt` | `internal/exectx/exec.go:19` |
 | **Нет systemd** | Keenetic — собственный init; init.d shim — единственный механизм автостарта | `CLAUDE.md`, `internal/service/shim.go` |
 | **Нет nftables** — только `iptables-legacy` | Стоковое ядро Keenetic (mipsel-3.4) без nf_tables | `test-roadmap.md:599` |
 | **Нет `xt_TPROXY` kernel-зависимости** с v0.3 | Переход на TUN-mode; xt_TPROXY отсутствует на стоковом ядре | `BEHAVIOR_SPEC.md:7-12` |
@@ -86,46 +84,33 @@ Single source of truth для инвариантов, нарушение кот�
 
 ## 6. Firewall-инварианты
 
-Все значения жёстко зафиксированы. Изменение требует ADR + обновление этого файла.
+Все значения жёстко зафиксированы. Изменение требует ADR + обновление этого файла. Канонический реестр идентификаторов: [OWNERSHIP.md](OWNERSHIP.md) §5.
 
 | Параметр | Значение | Мотивация | Источник |
 |----------|----------|-----------|----------|
-| fwmark sign-craze | `0x53` (83) | Loop-prevention: пакеты от sing-box не попадают повторно в TPROXY | `internal/firewall/applier.go:69`, `BEHAVIOR_SPEC.md:281` |
+| [fwmark](https://www.man7.org/linux/man-pages/man7/socket.7.html) sign-craze | `0x53` (83) | Loop-prevention: пакеты от sing-box не попадают повторно в [TPROXY](https://www.kernel.org/doc/html/latest/networking/tproxy.html) | `internal/firewall/applier.go:69`, `BEHAVIOR_SPEC.md:281` |
 | Routing table | `83` | Выделена для sign-craze; не пересекается с Keenetic | `internal/firewall/applier.go:70` |
 | `ip rule` приоритет | `32765` | Ниже Keenetic-политик, выше `32766 unreachable` | `internal/firewall/applier.go:71`, `BEHAVIOR_SPEC.md:346` |
 | sing-box TPROXY/TUN listen port | `7895` | Фиксирован в конфиге; `BEHAVIOR_SPEC.md:280` | `internal/firewall/applier.go:72` |
 | sing-box loopback mark (SO_MARK) | `0x53` | Совпадает с fwmark; пакеты от прокси уходят в таблицу 83 | `BEHAVIOR_SPEC.md:281` |
-| NFQUEUE num (DPI) | `300` | Фиксирован в конфиге nfqws2 и iptables-правилах (совпадает с upstream nfqws2-keenetic) | `internal/firewall/applier.go:57,151` |
+| [NFQUEUE](https://www.netfilter.org/projects/libnetfilter_queue/) num (DPI) | `300` | Фиксирован в конфиге nfqws2 и [iptables](https://www.netfilter.org/projects/iptables/index.html)-правилах (совпадает с upstream nfqws2-keenetic) | `internal/firewall/applier.go:57,151` |
 | TUN-интерфейс sing-box | `signbox-tun` | Имя жёстко в конфиге sing-box и firewall-слое | `internal/firewall/applier.go:59`, `internal/singbox/config.go:23` |
 | TUN-адреса | `172.19.0.1/30`, `fdfe:dcba:9876::1/126` | Не пересекаются с типичными Keenetic LAN | `internal/singbox/config.go:29` |
 | Prefix цепочек iptables | `signcraze_*` | Namespace для idempotent cleanup | `internal/firewall/applier.go:284-309` |
-| Prefix ipset-наборов | `signcraze_*` | Аналогично | `internal/firewall/applier.go:54`, `ipset.go` |
+| Prefix [ipset](https://ipset.netfilter.org/)-наборов | `signcraze_*` | Аналогично | `internal/firewall/applier.go:54`, `ipset.go` |
 | `iptables -F` без chain | **ЗАПРЕЩЕНО** | Уничтожает Keenetic-правила; только `FlushAndDeleteChain` по owned | `CLAUDE.md` |
 
 ---
 
 ## 7. Filesystem-инварианты
 
-Все пути жёстко зафиксированы в коде; изменение требует ADR.
+Все пути жёстко зафиксированы в коде; изменение требует ADR. Полный канонический список путей и их владельцев: [OWNERSHIP.md](OWNERSHIP.md) §6.
 
-```
-/opt/etc/sign-craze/          — конфигурация (state.json, config.json, nfqws2.conf, dpi-hostlist.txt, admin.creds)
-/opt/etc/init.d/S99signcraze  — init.d shim (автозапуск Entware)
-/opt/etc/ndm/netfilter.d/50-sign-craze — NDM hook (persistence iptables)
-
-/opt/sbin/sign-craze          — основной бинарь
-/opt/sbin/sing-box            — скачанный бинарь sing-box
-/opt/sbin/nfqws2              — скачанный бинарь nfqws2
-
-/opt/var/lib/sign-craze/      — данные (geo/*.srs, backups/, cache/)
-/opt/var/log/sign-craze/      — логи (ротируются)
-/opt/var/run/sign-craze-singbox.pid  — PID sing-box
-/opt/var/run/sign-craze-nfqws2.pid   — PID nfqws2
-/opt/var/lock/sign-craze.lock — flock (эксклюзивный mutex)
-/opt/share/sign-craze/ipset.dump     — персист ipset-дампа
-```
-
-Источники: `internal/singbox/install.go:23-26`, `internal/dpi/install.go:17-23` (`DefaultHostlistPath`), `internal/service/shim.go:16-18`, `internal/service/netfilter_hook.go:15-19`, `internal/geo/srs.go:21`, `internal/locks/file.go:16`, `internal/firewall/ipset_persist.go:16`, `internal/state/state.go:19` (`DPITargets`).
+Инварианты:
+- Все persistent-файлы живут в `/opt/etc/sign-craze/`, `/opt/var/lib/sign-craze/`, `/opt/var/log/sign-craze/`, `/opt/share/sign-craze/`.
+- Volatile PID-файлы — в `/opt/var/run/`, lock — `/opt/var/lock/sign-craze.lock`.
+- Все записи — атомарно (`atomicfs.WriteFileAtomic`); прямая запись без atomic-паттерна **запрещена**.
+- При `--uninstall` удаляются только пути из §6 OWNERSHIP.md — никаких широких `rm -rf`.
 
 ---
 
@@ -139,7 +124,7 @@ Single source of truth для инвариантов, нарушение кот�
 - **Запрещено**: `bubbletea` и TUI-фреймворки; heavy runtime dependencies.
 - **Запрещено**: чтение/копирование XKeen source code (clean-room; `BEHAVIOR_SPEC.md:1-6`).
 - **Запрещено**: прямая запись файлов без `atomicfs` (temp + fsync + rename).
-- Логин для web UI — жёстко `"admin"` (`internal/web/server.go:13`).
+- Web UI без HTTP-аутентификации (с v1.6.1); защита портов 9090/9091/9092 от WAN — только через NDM INPUT DROP.
 
 ---
 
@@ -148,7 +133,7 @@ Single source of truth для инвариантов, нарушение кот�
 - **Atomic write**: все мутирующие записи — через `atomicfs.WriteFileAtomic` или `WriteFileAtomicFromReader` (temp → fsync → rename); `internal/atomicfs/atomicfs.go`.
 - **PID-проверка**: перед операцией над процессом — `kill -0 PID` (`/proc/<pid>/status`), не доверять только PID-файлу; `internal/service/lifecycle.go`.
 - **Setpgid**: daemon-процессы (sing-box, nfqws2) запускаются с `SysProcAttr{Setpgid: true}` — не умирают вместе с sign-craze; `internal/service/lifecycle.go:75`.
-- **flock**: все mutating-операции захватывают `/opt/var/lock/sign-craze.lock` (LOCK_EX); `internal/locks/file.go:16`.
+- **[flock](https://man7.org/linux/man-pages/man2/flock.2.html)**: все mutating-операции захватывают `/opt/var/lock/sign-craze.lock` (LOCK_EX); `internal/locks/file.go:16`.
 - **TryAcquire** для re-entrant (NDM hook `--reapply`): если заблокировано — exit 0, не ждать; `internal/locks/file.go:61`.
 - **killall — запрещён**: завершать только процесс из owned PID-файла.
 - **SIGTERM + grace 10 с + SIGKILL**: стандартный stop-flow; `internal/service/lifecycle.go:151`.

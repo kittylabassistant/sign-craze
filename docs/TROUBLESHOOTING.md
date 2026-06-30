@@ -38,6 +38,8 @@ sign-craze --diag            # 2. PASS/WARN/FAIL по 12 проверкам
 | `ip route show table 83` | Default через `signbox-tun` | TUN не прикреплён, маршрут пуст |
 | `ip link show signbox-tun` | Состояние TUN-интерфейса | TUN не появился или завис |
 
+> Канонические идентификаторы ([fwmark/SO_MARK](https://www.man7.org/linux/man-pages/man7/socket.7.html) `0x53`, table `83`, цепочки `signcraze_*`) — [docs/OWNERSHIP.md](OWNERSHIP.md) §5.
+
 ---
 
 ## Симптомы и решения
@@ -56,9 +58,9 @@ sign-craze --diag            # 2. PASS/WARN/FAIL по 12 проверкам
 
 | Симптом | Вероятная причина | Команда проверки | Fix |
 | --------- | ------------------- | ----------------- | ----- |
-| `--start: ndm: ... connection refused` или `RCI недоступен` | Режим `policy` (default) требует Keenetic RCI на `127.0.0.1:79`. KeeneticOS < 5.0 не имеет endpoint | `curl -s http://127.0.0.1:79/rci/show/ip/policy` | `sign-craze --mode full && sign-craze --start` |
+| `--start: ndm: ... connection refused` или `RCI недоступен` | Режим `policy` (default) требует [Keenetic](https://help.keenetic.com/hc/ru) RCI на `127.0.0.1:79`. KeeneticOS < 5.0 не имеет endpoint | `curl -s http://127.0.0.1:79/rci/show/ip/policy` | `sign-craze --mode full && sign-craze --start` |
 | `--start: fwmark conflict` или `ErrFWMarkConflict` | fwmark `0x53` занят XKeen или скриптом с другой таблицей | `ip rule show \| grep 0x53` | Остановить конкурирующий сервис или поменять его fwmark. XKeen и sign-craze не должны работать в одном режиме |
-| sing-box процесс умирает сразу | Ошибка конфига, занятый TUN, нехватка памяти | `cat /opt/var/log/sign-craze/sing-box.stderr.log` | `sign-craze --reinstall` пересоздаст конфиг; зависший TUN: `ip tuntap del mode tun name signbox-tun`, затем `sign-craze --start` |
+| [sing-box](https://sing-box.sagernet.org/) процесс умирает сразу | Ошибка конфига, занятый TUN, нехватка памяти | `cat /opt/var/log/sign-craze/sing-box.stderr.log` | `sign-craze --reinstall` пересоздаст конфиг; зависший TUN: `ip tuntap del mode tun name signbox-tun`, затем `sign-craze --start` |
 | `--start: TUN attach: timeout` | `signbox-tun` не появился за timeout | `ip link show signbox-tun` | sing-box не поднялся — `sing-box.stderr.log`; занятый netdev: `ip tuntap del mode tun name signbox-tun` |
 | `--start` сообщает «уже запущен (pid X)», но ничего не работает | Зависший PID-файл от предыдущего краша | `cat /opt/var/run/sign-craze-singbox.pid` → `ps \| grep sing-box` | Если процесса нет: `sign-craze --stop && sign-craze --start` |
 | `--start` в режиме `policy`: «policy not found» или mark = 0 | Policy удалена вручную через UI Keenetic | `sign-craze --diag` → `keenetic-policy` | `sign-craze --start` пересоздаст policy через RCI |
@@ -123,12 +125,12 @@ sign-craze --diag            # 2. PASS/WARN/FAIL по 12 проверкам
 | После ребута policy в UI есть, но трафик не проксируется | `SaveConfig` не выполнился до ребута → mark изменился | `--diag` → `keenetic-policy WARN: mark в RCI не совпадает с state` | `sign-craze --start` обновит mark; или `--stop && --start` |
 | Policy не переживает ребут — исчезает из UI | `ndm.SaveConfig` не вызывался при последнем старте | `grep -i saveconfig /opt/var/log/sign-craze/sign-craze.log` | `sign-craze --restart` — SaveConfig вызывается при каждом `--start` в `policy` |
 
-### DPI и nfqws2
+### DPI и [nfqws2](https://github.com/nfqws/nfqws2-keenetic)
 
 | Симптом | Вероятная причина | Команда проверки | Fix |
 | --------- | ------------------- | ----------------- | ----- |
 | YouTube не открывается на TV/STB/PC — SNI блокируется ISP | Устройство не получает mark `0x53`: не входит в Keenetic policy «sign-craze», nfqws2 не обрабатывает его трафик | `iptables -t mangle -nvL signcraze_policy` — строка с IP устройства отсутствует | Добавить устройство в policy «sign-craze» в Keenetic UI (Приоритеты подключений). Альтернатива: расширить список обхода через `sign-craze --dpi-update-urls <url> --restart` |
-| Reality VPN handshake ломается у downstream-устройства (Beelink/RPi4) с собственным VPN-клиентом к тому же эндпоинту | nfqws2 в POSTROUTING десинкает TLS ClientHello к VPN-серверу; пакеты к VPN-IP попадают в NFQUEUE и модифицируются | `iptables -t mangle -nvL \| grep NFQUEUE` — счётчик растёт на трафике к VPN-IP | `sign-craze --dpi-exclude-ips <vpn_ip> --restart` — добавляет RETURN-правило перед NFQUEUE для указанного IP. Автоматически: IP первого `outbound.server` из конфига резолвится best-effort и исключается при старте |
+| [Reality](https://github.com/XTLS/REALITY) VPN handshake ломается у downstream-устройства (Beelink/RPi4) с собственным VPN-клиентом к тому же эндпоинту | nfqws2 в POSTROUTING десинкает TLS ClientHello к VPN-серверу; пакеты к VPN-IP попадают в [NFQUEUE](https://www.netfilter.org/projects/libnetfilter_queue/) и модифицируются | `iptables -t mangle -nvL \| grep NFQUEUE` — счётчик растёт на трафике к VPN-IP | `sign-craze --dpi-exclude-ips <vpn_ip> --restart` — добавляет RETURN-правило перед NFQUEUE для указанного IP. Автоматически: IP первого `outbound.server` из конфига резолвится best-effort и исключается при старте |
 | NFQUEUE счётчик UDP/443 = 0 (в выводе `iptables -t mangle -nvL`) | В v0.8.0 jump имеет `-o $WAN_IFACE`: QUIC-трафик устройств в policy уходит через TPROXY до POSTROUTING, минуя цепочку на `eth3` | `iptables -t mangle -nvL \| grep NFQUEUE` | Нормальное поведение v0.8.0. Если QUIC-клиентов нет в policy и счётчик всё равно 0 — проверить `sign-craze --diag` |
 | После `--dpi-update-now` файл `dpi-hostlist.txt` создан, но nfqws2 десинкает ВЕСЬ трафик, а не только хосты из листа | До v0.8.2 nfqws2 получал `--hostlist=<path>` только если `state.dpi_targets` непуст. Auto-update создавал файл на диске, но не дописывал `DPITargets` — selective-режим не активировался | `ps -ef \| grep nfqws2` — аргументы без `--hostlist=` | Обновиться до v0.8.2+ (auto-detect файла на диске). Временный fix: `sign-craze --dpi-targets youtube.com,googlevideo.com --restart` |
 
@@ -189,7 +191,7 @@ sign-craze --restart
 
 Для arm64/arm7 upstream xray (включая v26.3.27) работает нормально — ограничение касается только mips/mipsle.
 
-### Переключение ядра (multi-core, v1.0.0+)
+### Переключение ядра: диагностика (multi-core, v1.0.0+)
 
 | Симптом | Вероятная причина | Команда проверки | Fix |
 | --------- | ------------------- | ----------------- | ----- |
@@ -199,7 +201,7 @@ sign-craze --restart
 | `--status` показывает `active core: sing-box`, хотя `--core xray` был выполнен | `--restart` не был запущен после смены ядра | `sign-craze --status` — строка `active core:` | `sign-craze --restart` — обязательно после `--core <name>` |
 | Web UI `:9092` показывает предупреждение, Apply всё равно выполняется | Штатное поведение v1.0.0 — warnings не блокируют Apply | `curl -s http://localhost:9092/api/validate \| jq '.warnings'` | Прочитайте предупреждение; если критично — исправить routing.json или сменить ядро. Apply можно делать с warnings |
 
-**Диагностика при проблемах со сменой ядра:**
+#### Диагностика при проблемах со сменой ядра
 
 ```sh
 # Проверить активное ядро и статус
@@ -275,6 +277,8 @@ ipset list 2>&1 | head -50 >> /tmp/diag.txt
 
 ## Известные ограничения
 
+> Полный реестр рисков и их статус — [docs/RISK_REGISTER.md](RISK_REGISTER.md).
+
 - **Утечка трафика при WAN-fallback**: если оператор вручную назначит policy «sign-craze» WAN-fallback через Keenetic UI (`permit` с активным интерфейсом), table 4098 получит default через провайдера, и в окне reapply (~100–500 ms) возможен leak. Не делайте этого. Sign-craze создаёт policy без `permit`-канала именно для предотвращения этого. (`BEHAVIOR_SPEC.md:467-471`)
 
 - **Watchdog для policy**: если policy «sign-craze» удалена вручную, sign-craze узнает только при следующем `--start` или `--reapply`. Восстановление iptables-правил работает через firewall watchdog (активен при `--ui on`), однако RCI policy watchdog не реализован.
@@ -306,7 +310,7 @@ ipset list 2>&1 | head -50 >> /tmp/diag.txt
 
 | Симптом | Причина | Решение |
 |---|---|---|
-| `firewall: pre-flight: не найдены обязательные бинари: ...` | iptables/ipset не установлены (типично после `curl \| sh`) | `opkg update && opkg install iptables ipset` |
+| `firewall: pre-flight: не найдены обязательные бинари: ...` | [iptables](https://www.netfilter.org/projects/iptables/index.html)/[ipset](https://ipset.netfilter.org/) не установлены (типично после `curl \| sh`) | `opkg update && opkg install iptables ipset` |
 | `iptables-restore: unrecognized option '--wait'` / `Can't open 2` | Старая сборка iptables без поддержки `--wait` (Entware ≤1.4.x) | Обновите sign-craze до v1.6.3+ — поддержка `--wait` определяется автоматически |
 
 ---

@@ -17,9 +17,9 @@ sign-craze управляет маршрутизацией через едины
 5. Запустить `sign-craze --restart`.
 
 Пример: правило `rule_set: ["geosite-youtube"], outbound: "direct"` превращается в:
-- **sing-box** → `"route": {"rules": [{"rule_set": ["geosite-youtube"], "outbound": "direct"}]}`
-- **xray** → `"routing": {"rules": [{"domain": ["geosite:youtube"], "outboundTag": "direct"}]}`
-- **mihomo** → строка `RULE-SET,geosite-youtube,DIRECT` в секции `rules:` + запись в `rule-providers:`
+- **[sing-box](https://sing-box.sagernet.org/)** → `"route": {"rules": [{"rule_set": ["geosite-youtube"], "outbound": "direct"}]}`
+- **[xray](https://xtls.github.io/)** → `"routing": {"rules": [{"domain": ["geosite:youtube"], "outboundTag": "direct"}]}`
+- **[mihomo](https://wiki.metacubex.one/)** → строка `RULE-SET,geosite-youtube,DIRECT` в секции `rules:` + запись в `rule-providers:`
 
 Правило добавляется один раз — формат определяется ядром автоматически при Apply.
 
@@ -27,7 +27,7 @@ sign-craze управляет маршрутизацией через едины
 
 | Порт | Что слушает | Зачем |
 | ------ | ------------- | ------- |
-| `:9090` | Zashboard SPA + reverse-proxy в sing-box clash_api | Runtime monitoring: proxies, connections, traffic |
+| `:9090` | [Zashboard](https://github.com/Zephyruso/zashboard) SPA + reverse-proxy в sing-box clash_api | Runtime monitoring: proxies, connections, traffic |
 | `:9091` | Admin REST | Управление state: ports, excludes, DPI |
 | `:9092` | **Routing Editor** (Preact SPA + REST) | **CRUD routing.json, пресеты, validate, apply** |
 | `:9094` | sing-box clash_api | Internal (localhost only) |
