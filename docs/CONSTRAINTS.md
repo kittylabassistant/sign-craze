@@ -1,6 +1,6 @@
 # CONSTRAINTS.md — Технические ограничения sign-craze
 
-> Версия: 2026-05-20.
+> Версия: 2026-07-01.
 
 Single source of truth для инвариантов, нарушение которых недопустимо. Изменение любого пункта требует: ADR + правка этого файла + прохождение CI matrix.
 
@@ -12,7 +12,7 @@ Single source of truth для инвариантов, нарушение кот�
 |--------|-------|-----------|----------|
 | Бинарь (сжатый, [UPX](https://upx.github.io/) --lzma) | ≤ 4 МБ | Flash на [Entware](https://entware.net/) ограничен; README:136, `CLAUDE.md:32` | `ls -lh dist/sign-craze-*` после `make upx` |
 | Бинарь (несжатый mipsle) | ~9 МБ | Ориентир для отслеживания bloat; `test-roadmap.md:590` | `ls -lh dist/sign-craze-mipsle` |
-| RSS всей системы ([sing-box](https://sing-box.sagernet.org/) + sign-craze + nfqws2) | ≤ 128 МБ целевой; 256 МБ реально на KN-1810 | KN-1810 имеет 256 МБ RAM; `CLAUDE.md:34`, `test-roadmap.md:577,592` | `top \| grep -E 'sing-box\|sign-craze\|nfqws2'` |
+| RSS всей системы ([sing-box](https://sing-box.sagernet.org/) + sign-craze + [nfqws2](https://github.com/nfqws/nfqws2-keenetic)) | ≤ 128 МБ целевой; 256 МБ реально на KN-1810 | KN-1810 имеет 256 МБ RAM; `CLAUDE.md:34`, `test-roadmap.md:577,592` | `top \| grep -E 'sing-box\|sign-craze\|nfqws2'` |
 | RSS sing-box | < 30 МБ | Предупреждение memory leak; `test-roadmap.md:592` | `/proc/<pid>/status`, VmRSS |
 | RSS sign-craze | < 10 МБ | Управляющий процесс не должен вытеснять sing-box | `/proc/<pid>/status`, VmRSS |
 | Flash (Entware-раздел) | ≥ 30 МБ свободно | 3 бинаря + geo; `BEHAVIOR_SPEC.md:49` | `df -h /opt` в `--install` до загрузки |

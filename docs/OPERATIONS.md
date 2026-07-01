@@ -1,6 +1,6 @@
 # OPERATIONS.md — Runbook оператора sign-craze
 
-> Версия: 2026-06-19.
+> Версия: 2026-07-01.
 
 ## Содержание
 
@@ -78,7 +78,7 @@ sign-craze --install
 ```sh
 # Скачать .ipk из GitHub Releases
 ARCH=mipsel-3.4
-VER=1.6.1
+VER=1.6.3
 wget "https://github.com/kittylabassistant/sign-craze/releases/download/v${VER}/sign-craze_${VER}_${ARCH}.ipk"
 sha256sum -c "sign-craze_${VER}_${ARCH}.ipk.sha256"
 opkg install ./sign-craze_${VER}_${ARCH}.ipk
@@ -160,7 +160,7 @@ sign-craze --status
 # sing-box:  запущен  (pid 1234)
 # nfqws2:    остановлен
 # режим:     policy
-# версия:    sign-craze v1.6.1 / sing-box v1.13.x
+# версия:    sign-craze v1.6.3 / sing-box v1.13.x
 ```
 
 ---
@@ -169,7 +169,7 @@ sign-craze --status
 
 | Режим               | Механизм                                        | Когда использовать                              |
 |---------------------|-------------------------------------------------|-------------------------------------------------|
-| `policy` (default)  | Keenetic RCI IP Policy + fwmark из NDM          | Выборочная маршрутизация через Keenetic UI      |
+| `policy` (default)  | Keenetic RCI IP Policy + [fwmark](https://www.man7.org/linux/man-pages/man7/socket.7.html) из NDM | Выборочная маршрутизация через Keenetic UI      |
 | `full`              | [ipset](https://ipset.netfilter.org/) `signcraze_ipv4/v6` по dst-IP             | Нет доступа к RCI / альтернативная прошивка     |
 
 Устаревшие псевдонимы `proxy`, `dpi`, `hybrid` автоматически мигрируют в `policy`. Выбор режима также влияет на правила [ip rule (policy routing)](https://www.man7.org/linux/man-pages/man8/ip-rule.8.html).
@@ -295,8 +295,8 @@ sign-craze --core-install mihomo
 
 1. `ensureConfigFreshForCore` определяет активное ядро через `state.Core`.
 2. Генерирует конфиг ядра из `routing.json` + `state.json`.
-3. Для **xray**: `rule_set` URL-источники транслируются в `geosite:` / `geoip:` матчеры; `.dat`-файлы ядро ищет сам.
-4. Для **mihomo**: `.srs` URL конвертируется в `.mrs` и прописывается в `rule-providers`.
+3. Для **[xray](https://xtls.github.io/)**: `rule_set` URL-источники транслируются в `geosite:` / `geoip:` матчеры; `.dat`-файлы ядро ищет сам.
+4. Для **[mihomo](https://wiki.metacubex.one/)**: `.srs` URL конвертируется в `.mrs` и прописывается в `rule-providers`.
 5. Для **sing-box**: `.srs` rule-set передаётся напрямую; TUN inbound создаётся если `needsTUN(core) == true`.
 6. Firewall (iptables/ipset) применяется через единый `Applier.Apply` — не зависит от ядра.
 
@@ -331,11 +331,11 @@ sign-craze --status    # active core: xray|mihomo|sing-box
 curl http://localhost:9092/api/validate   # проверить warnings
 ```
 
-### Установка с mieru (enfein/mieru)
+### Установка с [mieru](https://github.com/enfein/mieru) (enfein/mieru)
 
 `sign-craze --install --with-mieru` — скачивает и устанавливает бинарь [mieru](https://github.com/enfein/mieru) параллельно с sing-box. После установки выбрать outbound: `--proxy mierus://<server>:<port>?username=<user>&password=<pass>` или редактирование `routing.json` через UI.
 
-### Установка с naive (klzgrad/naiveproxy)
+### Установка с [naive](https://github.com/klzgrad/naiveproxy) (klzgrad/naiveproxy)
 
 `sign-craze --install --with-naive` — скачивает и устанавливает бинарь [naiveproxy](https://github.com/klzgrad/naiveproxy) параллельно с sing-box. После установки выбрать outbound: `--proxy naive+https://<user>:<pass>@<server>:<port>` или редактирование `routing.json` через UI.
 

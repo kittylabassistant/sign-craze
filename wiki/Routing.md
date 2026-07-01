@@ -56,7 +56,7 @@ config.json    xray/config.json  mihomo/config.yaml
 
 ## Быстрый рецепт: РФ-сайты напрямую, остальное через VPN
 
-В UI `:9092` применить пресет `ru-direct` (добавит geoip-ru → direct), затем вручную добавить rule_set `geosite-ru` и rule с `outbound=direct`, в секции final выбрать VPN-outbound, нажать Apply. После — выполнить `sign-craze --restart` в SSH. Полный пошаговый рецепт с примерами JSON — в [Recipe-RU-Direct.md](Recipe-RU-Direct.md).
+В UI `:9092` применить пресет `ru-direct` (добавит geoip-ru → direct), затем вручную добавить rule_set `geosite-ru` и rule с `outbound=direct`, в секции final выбрать VPN-outbound, нажать Apply. После — выполнить `sign-craze --restart` в SSH. Полный пошаговый рецепт с примерами JSON — в [Recipe-RU-Direct](Recipe-RU-Direct).
 
 ## Встроенные пресеты (v1.5.0+)
 
@@ -128,5 +128,5 @@ sign-craze --restart
 
 ## Где детальная документация
 
-- [Routing-Reference.md](Routing-Reference.md) — полная инструкция по routing.json и API
-- [Recipes.md](Recipes.md) — пошаговые рецепты для типовых сценариев
+- [Routing-Reference](Routing-Reference) — полная инструкция по routing.json и API
+- [Recipes](Recipes) — пошаговые рецепты для типовых сценариев

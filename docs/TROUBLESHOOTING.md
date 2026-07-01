@@ -1,6 +1,6 @@
 # TROUBLESHOOTING
 
-> Версия: 2026-06-19.
+> Версия: 2026-07-01.
 
 > Symptom → diagnosis → fix.
 > Это не install-guide — он в `wiki/Installation.md`.
@@ -26,7 +26,7 @@ sign-craze --diag            # 2. PASS/WARN/FAIL по 12 проверкам
 | Команда | Что показывает | Когда применять |
 | --------- | ---------------- | ----------------- |
 | `sign-craze --status` | sing-box/nfqws2 запущены, режим, версии | Первая проверка |
-| `sign-craze --diag` | PASS/WARN/FAIL по 12 проверкам: бинари, конфиг, маршруты, ipset, geo, RCI-policy | Полная самодиагностика |
+| `sign-craze --diag` | PASS/WARN/FAIL по 12 проверкам: бинари, конфиг, маршруты, [ipset](https://ipset.netfilter.org/), geo, RCI-policy | Полная самодиагностика |
 | `sign-craze --version` | Версия sign-craze + sing-box | Нужна при создании issue |
 | `tail -f /opt/var/log/sign-craze/sign-craze.log` | Структурированные события (slog) | Ошибки старта, reapply, firewall |
 | `tail -f /opt/var/log/sign-craze/sing-box.log` | Лог sing-box | sing-box упал или не соединяется |
@@ -34,7 +34,7 @@ sign-craze --diag            # 2. PASS/WARN/FAIL по 12 проверкам
 | `cat /opt/var/log/sign-craze/boot.log` | Результат `--service-start` при последнем ребуте | Автостарт не сработал |
 | `iptables -t mangle -nvL` | Цепочки `signcraze_policy`, `signcraze_full` | Трафик не маркируется |
 | `ipset list signcraze_ipv4 \| head` | Содержимое ipset (пустой = full-режим не матчит) | Прокси в `full` не маркирует |
-| `ip rule show` | Правила маршрутизации, fwmark 0x53 lookup 83 | fwmark конфликт; loop-prevention |
+| `ip rule show` | Правила маршрутизации, [fwmark](https://www.man7.org/linux/man-pages/man7/socket.7.html) 0x53 lookup 83 | fwmark конфликт; loop-prevention |
 | `ip route show table 83` | Default через `signbox-tun` | TUN не прикреплён, маршрут пуст |
 | `ip link show signbox-tun` | Состояние TUN-интерфейса | TUN не появился или завис |
 
@@ -51,8 +51,8 @@ sign-craze --diag            # 2. PASS/WARN/FAIL по 12 проверкам
 | `opkg install` зависает или падает | Недостаточно места на `/opt` | `df -h /opt` | Удалить лишнее или подключить USB большего объёма; ≥ 30 МБ свободно |
 | `--install` выдаёт «permission denied» | SSH не от admin/root | `id` — uid=0 | `ssh admin@192.168.1.1`, затем `exec sh` |
 | `sing-box` не скачивается, ошибка 429 / `rate limit` | GitHub API rate-limit (>60 req/час с IP) | `curl -s https://api.github.com/rate_limit` | Подождать час или `sign-craze --install-offline /tmp/sing-box-*.tar.gz` |
-| `wget: not an http or ftp url` | BusyBox wget без SSL | — | `opkg install curl` или `opkg install wget-ssl` |
-| `Недостаточно места в /opt` | `/opt` почти полон | `df -h /opt` | Очистить `/opt/var/cache/`, удалить неиспользуемые пакеты Entware |
+| `wget: not an http or ftp url` | [BusyBox](https://busybox.net/) wget без SSL | — | `opkg install curl` или `opkg install wget-ssl` |
+| `Недостаточно места в /opt` | `/opt` почти полон | `df -h /opt` | Очистить `/opt/var/cache/`, удалить неиспользуемые пакеты [Entware](https://entware.net/) |
 
 ### Запуск и режим
 
@@ -134,7 +134,7 @@ sign-craze --diag            # 2. PASS/WARN/FAIL по 12 проверкам
 | NFQUEUE счётчик UDP/443 = 0 (в выводе `iptables -t mangle -nvL`) | В v0.8.0 jump имеет `-o $WAN_IFACE`: QUIC-трафик устройств в policy уходит через TPROXY до POSTROUTING, минуя цепочку на `eth3` | `iptables -t mangle -nvL \| grep NFQUEUE` | Нормальное поведение v0.8.0. Если QUIC-клиентов нет в policy и счётчик всё равно 0 — проверить `sign-craze --diag` |
 | После `--dpi-update-now` файл `dpi-hostlist.txt` создан, но nfqws2 десинкает ВЕСЬ трафик, а не только хосты из листа | До v0.8.2 nfqws2 получал `--hostlist=<path>` только если `state.dpi_targets` непуст. Auto-update создавал файл на диске, но не дописывал `DPITargets` — selective-режим не активировался | `ps -ef \| grep nfqws2` — аргументы без `--hostlist=` | Обновиться до v0.8.2+ (auto-detect файла на диске). Временный fix: `sign-craze --dpi-targets youtube.com,googlevideo.com --restart` |
 
-### naive daemon не стартует
+### [naive](https://github.com/klzgrad/naiveproxy) daemon не стартует
 
 **Симптом:** `--start` сообщает "naive: процесс упал сразу после старта".
 
@@ -149,7 +149,7 @@ sign-craze --diag            # 2. PASS/WARN/FAIL по 12 проверкам
 
 **Причина:** klzgrad/naiveproxy не публикует big-endian MIPS бинари (только linux-mipsel = little-endian). Решение: использовать другой протокол (VLESS+Reality, Trojan).
 
-### mieru daemon не стартует
+### [mieru](https://github.com/enfein/mieru) daemon не стартует
 
 **Симптом:** `--start` сообщает "mieru: процесс упал сразу после старта".
 
@@ -164,7 +164,7 @@ sign-craze --diag            # 2. PASS/WARN/FAIL по 12 проверкам
 
 **Причина:** mieru требует отдельного шага инициализации конфига через `mieru start` (внутренний). Sign-craze управляет lifecycle автоматически — проверьте `sign-craze --diag` на предмет FAIL по строке `service-mieru`.
 
-### xray не стартует: "запустите --update-geo --core xray"
+### [xray](https://xtls.github.io/) не стартует: "запустите --update-geo --core xray"
 
 **Симптом:** после `--core-install xray` команда `--start --core xray` падает с ошибкой `geosite.dat не найден`.
 
@@ -195,8 +195,8 @@ sign-craze --restart
 
 | Симптом | Вероятная причина | Команда проверки | Fix |
 | --------- | ------------------- | ----------------- | ----- |
-| После `--core xray --restart` прокси не работает; `/api/validate` возвращает warning «TUN inbound не поддерживается xray» | routing.json содержит `type: tun` inbound (например от прежнего sing-box preset). xray не имеет TUN, Apply делает fallback на tproxy, но конфиг может быть частично некорректным | `curl -s http://localhost:9092/api/validate \| jq '.warnings'` — видно предупреждение про TUN | Переапплите preset в Web UI `:9092` (кнопка Apply) — конфиг пересоздастся без TUN inbound под xray. Или вручную: `jq 'del(.inbounds[] \| select(.type=="tun"))' /opt/etc/sign-craze/routing.json > /tmp/r && mv /tmp/r /opt/etc/sign-craze/routing.json && sign-craze --restart` |
-| После `--core mihomo --restart` preset Apply не меняет правила; `.srs` URL в routing.json | mihomo использует `.mrs` формат, не `.srs`. Если URL пресета указывает на `.srs` напрямую — warning при validate, конфиг генерируется без этого rule-provider | `curl -s http://localhost:9092/api/validate \| jq '.warnings'` | Переапплите preset через Web UI `:9092` при активном ядре mihomo — `GeoFormat()` вернёт `.mrs` URL автоматически |
+| После `--core xray --restart` прокси не работает; `/api/validate` возвращает warning «TUN inbound не поддерживается xray» | routing.json содержит `type: tun` inbound (например от прежнего sing-box preset). xray не имеет TUN, Apply делает fallback на [tproxy](https://www.kernel.org/doc/html/latest/networking/tproxy.html), но конфиг может быть частично некорректным | `curl -s http://localhost:9092/api/validate \| jq '.warnings'` — видно предупреждение про TUN | Переапплите preset в Web UI `:9092` (кнопка Apply) — конфиг пересоздастся без TUN inbound под xray. Или вручную: `jq 'del(.inbounds[] \| select(.type=="tun"))' /opt/etc/sign-craze/routing.json > /tmp/r && mv /tmp/r /opt/etc/sign-craze/routing.json && sign-craze --restart` |
+| После `--core mihomo --restart` preset Apply не меняет правила; `.srs` URL в routing.json | [mihomo](https://wiki.metacubex.one/) использует `.mrs` формат, не `.srs`. Если URL пресета указывает на `.srs` напрямую — warning при validate, конфиг генерируется без этого rule-provider | `curl -s http://localhost:9092/api/validate \| jq '.warnings'` | Переапплите preset через Web UI `:9092` при активном ядре mihomo — `GeoFormat()` вернёт `.mrs` URL автоматически |
 | После `--core xray --restart` geo-правила не работают (весь трафик идёт через прокси или напрямую) | При ядре xray `rule_set` entries не пишутся в config.json; нужны `geoip:`/`geosite:` матчеры. Если `routing.json` содержит rule_set с нестандартным `.srs` URL без dat-эквивалента — правило пропускается с warning | `curl -s http://localhost:9092/api/validate \| jq '.warnings'` — «нет dat-эквивалента для custom.srs»; `jq '.routing.rules' /opt/etc/sign-craze/config.json` — правило для этого source отсутствует | Использовать только стандартные geo-теги (`geoip:ru`, `geosite:category-ads` и т.д.) при работе с xray. Кастомные `.srs` списки для xray не поддерживаются — используйте `--core sing-box` или `--core mihomo` |
 | `--status` показывает `active core: sing-box`, хотя `--core xray` был выполнен | `--restart` не был запущен после смены ядра | `sign-craze --status` — строка `active core:` | `sign-craze --restart` — обязательно после `--core <name>` |
 | Web UI `:9092` показывает предупреждение, Apply всё равно выполняется | Штатное поведение v1.0.0 — warnings не блокируют Apply | `curl -s http://localhost:9092/api/validate \| jq '.warnings'` | Прочитайте предупреждение; если критично — исправить routing.json или сменить ядро. Apply можно делать с warnings |
@@ -302,7 +302,7 @@ ipset list 2>&1 | head -50 >> /tmp/diag.txt
 1. Убедитесь что Web UI запущен: `sign-craze --status` должен показывать `ui: on`.
 2. Проверьте iptables: `iptables -nvL INPUT` — убедитесь что ваш LAN-интерфейс не определён как WAN ошибочно.
 3. Запустите диагностику: `sign-craze --diag` — проверьте пункт WAN-интерфейса.
-4. При необходимости уточните определённый WAN: `sign-craze --diag` выводит `DetectISPInterface` — если результат неверный, сообщите в issue.
+4. При необходимости уточните определённый WAN: `sign-craze --diag` показывает WAN-интерфейс (детект через `netif.DetectWANIface`) — если результат неверный, сообщите в issue.
 
 ---
 
@@ -315,7 +315,7 @@ ipset list 2>&1 | head -50 >> /tmp/diag.txt
 
 ---
 
-## Установка через opkg
+## Установка через [opkg](https://openwrt.org/docs/guide-user/additional-software/opkg)
 
 | Симптом | Причина | Решение |
 |---|---|---|

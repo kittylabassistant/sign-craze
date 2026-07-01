@@ -2,7 +2,7 @@
 
 Гайд для случая когда ISP блокирует/throttle'ит `release-assets.githubusercontent.com` — типичная картина в РФ. Работающий путь и аварийный offline-сценарий.
 
-> Для базовой установки без блокировок используйте [Installation](Installation.md).
+> Для базовой установки без блокировок используйте [Installation](Installation).
 
 ## Симптомы
 
@@ -64,7 +64,7 @@ sign-craze --restart
 
 ```sh
 # с десктопа
-curl -fsSLO https://raw.githubusercontent.com/kittylabassistant/sign-craze/v1.6.1/dist/sign-craze-mipsle
+curl -fsSLO https://raw.githubusercontent.com/kittylabassistant/sign-craze/v1.6.3/dist/sign-craze-mipsle
 curl -fsSLO https://github.com/SagerNet/sing-box/releases/download/v1.13.13/sing-box-1.13.13-linux-mipsle-softfloat.tar.gz
 curl -fsSLO https://github.com/nfqws/nfqws2-keenetic/releases/download/v1.2.3/nfqws2-keenetic_1.2.3_mipsel-3.4.ipk
 
@@ -101,7 +101,7 @@ sign-craze --restart
 
 ## Xray при жёстком DPI
 
-Если sing-box не пробивается через DPI (VLESS/VMess детектируются провайдером), [xray](https://xtls.github.io/) предлагает дополнительные транспортные опции:
+Если sing-box не пробивается через DPI ([VLESS/VMess](https://xtls.github.io/config/) детектируются провайдером), [xray](https://xtls.github.io/) предлагает дополнительные транспортные опции:
 
 - **XHTTP packet-up режимы** (`xhttpMode: packet-up`) — маскировка под обычный HTTP-загрузчик, менее детектируем чем grpc/ws
 - **PQ-VLESS** (постквантовое шифрование) — дополнительный уровень обфускации
@@ -117,7 +117,7 @@ sign-craze --install --core xray --proxy 'vless://UUID@host:443?type=xhttp&secur
 sign-craze --start
 ```
 
-Xray использует [TProxy](https://www.kernel.org/doc/html/latest/networking/tproxy.html) inbound (не TUN), поэтому требует `xt_TPROXY` модуль в ядре. На Keenetic с прошивкой 4.9+ модули `xt_TPROXY.ko` и `xt_socket.ko` присутствуют в `/lib/modules/` и загружаются автоматически через `insmod`. На более старых прошивках может понадобиться `--core sing-box` как fallback.
+Xray использует [TProxy](https://www.kernel.org/doc/html/latest/networking/tproxy.html) inbound (не TUN), поэтому требует `xt_TPROXY` модуль в ядре. На [Keenetic](https://help.keenetic.com/hc/ru) с прошивкой 4.9+ модули `xt_TPROXY.ko` и `xt_socket.ko` присутствуют в `/lib/modules/` и загружаются автоматически через `insmod`. На более старых прошивках может понадобиться `--core sing-box` как fallback.
 
 ## VLESS URL: spx и выбор ядра
 

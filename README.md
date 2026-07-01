@@ -2,9 +2,9 @@
 
 [![GitHub Release](https://img.shields.io/github/v/release/kittylabassistant/sign-craze)](https://github.com/kittylabassistant/sign-craze/releases) [![GitHub stars](https://img.shields.io/github/stars/kittylabassistant/sign-craze)](https://github.com/kittylabassistant/sign-craze/stargazers) [![GitHub License](https://img.shields.io/github/license/kittylabassistant/sign-craze)](LICENSE) [![GitHub Wiki](https://img.shields.io/badge/wiki-docs-blue)](https://github.com/kittylabassistant/sign-craze/wiki)
 
-Go-утилита для управления межсетевым экраном на роутерах Keenetic.
+Go-утилита для управления межсетевым экраном на роутерах [Keenetic](https://help.keenetic.com/hc/ru).
 
-Поддерживает три прокси-ядра с единым управлением через Web UI: **sing-box**, **xray** и **mihomo**. Ядро определяется автоматически по URL outbound при `--install`, переключается командой `--core`. Дополнительно - supervised peers **naiveproxy** и **mieru** (process chain через sing-box socks5-outbound). Опционально [nfqws2](https://github.com/nfqws/nfqws2-keenetic) для DPI-обхода.
+Поддерживает три прокси-ядра с единым управлением через Web UI: [**sing-box**](https://sing-box.sagernet.org/), [**xray**](https://xtls.github.io/) и [**mihomo**](https://wiki.metacubex.one/). Ядро определяется автоматически по URL outbound при `--install`, переключается командой `--core`. Дополнительно - supervised peers [**naiveproxy**](https://github.com/klzgrad/naiveproxy) и [**mieru**](https://github.com/enfein/mieru) (process chain через sing-box socks5-outbound). Опционально [nfqws2](https://github.com/nfqws/nfqws2-keenetic) для DPI-обхода.
 
 > [!WARNING]
 > Данный материал подготовлен в научно-технических целях. Sign-Craze предназначен для управления межсетевым экраном роутера Keenetic, защищающим домашнюю сеть. Разработчик не несёт ответственности за иное использование утилиты. Перед применением убедитесь, что ваши действия соответствуют законодательству вашей страны.
@@ -65,27 +65,27 @@ sign-craze --install
 
 **Управление прокси-ядром**
 - Три ядра: sing-box / xray / mihomo — автодетект по URL outbound при `--install`, переключение `--core <name>`. Supervised peers naiveproxy и mieru через process chain sing-box (CLI: `--with-naive`).
-- Полная матрица поддерживаемых протоколов по ядрам: [`docs/COMPATIBILITY_MATRIX.md`](docs/COMPATIBILITY_MATRIX.md). Коротко: VLESS Reality / VMess / Trojan / Shadowsocks — все три ядра; Hysteria 2 / TUIC v5 / WireGuard — sing-box и mihomo; xray-only: Vision UDP443, PQ-VLESS, XHTTP stream-up.
+- Полная матрица поддерживаемых протоколов по ядрам: [`docs/COMPATIBILITY_MATRIX.md`](docs/COMPATIBILITY_MATRIX.md). Коротко: [VLESS](https://xtls.github.io/config/) [Reality](https://github.com/XTLS/REALITY) / [VMess](https://xtls.github.io/config/) / Trojan / Shadowsocks — все три ядра; [Hysteria 2](https://v2.hysteria.network/) / [TUIC v5](https://github.com/EAimTY/tuic) / [WireGuard](https://www.wireguard.com/) — sing-box и mihomo; xray-only: Vision UDP443, PQ-VLESS, XHTTP stream-up.
 
 **Маршрутизация**
 - Два режима: `policy` (выборочная маркировка) и `full` (весь LAN-трафик через прокси).
 - Core-agnostic `routing.json`: единые правила транслируются в натив-форматы sing-box/xray/mihomo. Routing Editor `:9092` (Web UI) с пресетами (`block-ads`, `ru-direct`, `blocked-vpn` и др.), клиентским буфером и режимами AS-IS/TO-BE.
-- Гео-фильтрация через SRS rule-set (SHA256, streaming); атомарное применение iptables/ipset с гарантированным откатом.
+- Гео-фильтрация через [SRS rule-set](https://sing-box.sagernet.org/configuration/rule-set/) (SHA256, streaming); атомарное применение [iptables](https://www.netfilter.org/projects/iptables/index.html)/[ipset](https://ipset.netfilter.org/) с гарантированным откатом.
 
 **DPI-обход (nfqws2)**
 - `signcraze_dpi_fwd` в mangle FORWARD: desync для всех LAN-устройств (TV, гости, IoT), а не только policy.
 - Selective DPI по SNI (`--dpi-targets`), VPN-exclude (`--dpi-exclude-ips`), auto-update hostlist раз в N часов из upstream.
 
 **Web UI и диагностика**
-- Только из LAN: Zashboard `:9090`, admin REST `:9091`, Routing Editor `:9092`. Без HTTP-аутентификации by design; WAN-доступ блокируется NDM INPUT DROP.
+- Только из LAN: [Zashboard](https://github.com/Zephyruso/zashboard) `:9090`, admin REST `:9091`, Routing Editor `:9092`. Без HTTP-аутентификации by design; WAN-доступ блокируется NDM INPUT DROP.
 - ANSI-цветной CLI (`--status`, `--diag`, `--core-list`); `--diag --json` для скриптов.
 
 **Безопасность релизов**
-- Reproducible builds, cosign keyless OIDC + SLSA provenance, SHA-256 checksums. Firewall watchdog: автовосстановление правил каждые 30 с.
+- Reproducible builds, [cosign](https://www.sigstore.dev/) keyless OIDC + [SLSA](https://slsa.dev/) provenance, SHA-256 checksums. Firewall watchdog: автовосстановление правил каждые 30 с.
 
 ## Поддерживаемые архитектуры
 
-Поддерживаются `mipsle` и `mips` (GOMIPS=softfloat), `arm` (GOARM=7) и `arm64`. Полная матрица совместимости по железу, прошивкам и Entware-суффиксам: [`docs/COMPATIBILITY_MATRIX.md`](docs/COMPATIBILITY_MATRIX.md).
+Поддерживаются `mipsle` и `mips` ([GOMIPS](https://pkg.go.dev/cmd/go#hdr-Environment_variables)=softfloat), `arm` (GOARM=7) и `arm64`. Полная матрица совместимости по железу, прошивкам и Entware-суффиксам: [`docs/COMPATIBILITY_MATRIX.md`](docs/COMPATIBILITY_MATRIX.md).
 
 ## Требования
 
@@ -144,7 +144,7 @@ sign-craze --install
 ```sh
 # На локальной машине: скачать .ipk нужной архитектуры из GitHub Releases
 ARCH=mipsel-3.4
-VER=1.6.1
+VER=1.6.3
 wget "https://github.com/kittylabassistant/sign-craze/releases/download/v${VER}/sign-craze_${VER}_${ARCH}.ipk"
 wget "https://github.com/kittylabassistant/sign-craze/releases/download/v${VER}/sign-craze_${VER}_${ARCH}.ipk.sha256"
 
@@ -167,7 +167,7 @@ sign-craze --install
 
 ### Способ 2: curl | sh (альтернатива)
 
-> BusyBox `wget` на Keenetic без SSL - нужен `curl` (или `wget-ssl` из Entware): `opkg install curl`.
+> [BusyBox](https://busybox.net/) `wget` на Keenetic без SSL - нужен `curl` (или `wget-ssl` из Entware): `opkg install curl`.
 
 ```sh
 # Определить архитектуру автоматически и установить последний релиз
@@ -313,7 +313,7 @@ sign-craze --dpi-update-now
 
 ### VPN-exclude (Reality/VLESS)
 
-Защита TLS-маскировки Reality-handshake: NFQUEUE не трогает трафик к указанным IP.
+Защита TLS-маскировки Reality-handshake: [NFQUEUE](https://www.netfilter.org/projects/libnetfilter_queue/) не трогает трафик к указанным IP.
 Применяется, если sing-box подключается к собственному Reality-серверу или downstream-клиенты на роутере используют тот же VPN-эндпоинт.
 
 ```bash
@@ -335,7 +335,7 @@ sign-craze --restart
 - **9091** - admin REST API sign-craze (статус, конфиг, порты, исключения, DPI targets).
 - **9092** - Routing Editor SPA (визуальный редактор правил маршрутизации).
 
-Порты 9090/9091/9092 слушают на `0.0.0.0`; правила в `filter/INPUT` (owner-comment + префикс) блокируют Zashboard :9090 с WAN-интерфейса. Из локальной сети доступ открыт без аутентификации.
+Серверы биндятся на LAN-bridge IP (`netif.DetectLANAddr`); если LAN-адрес определить не удаётся, `--ui-daemon` отказывается стартовать (fail-secure: UI без auth/TLS не должен оказаться на `0.0.0.0`). Дополнительно правила в `filter/INPUT` (owner-comment + префикс) блокируют порты 9090/9091/9092 с WAN-интерфейса. Из локальной сети доступ открыт без аутентификации.
 
 Запуск: `sign-craze --ui on`.
 
@@ -365,9 +365,6 @@ sign-craze --core-list          Список зарегистрированны�
 sign-craze --core <name>        Переключить активное ядро; routing.json сохраняется, конфиг пересобирается (требует --restart)
 sign-craze --core-install <name> Скачать и установить указанное ядро (sing-box/xray/mihomo)
 sign-craze --install --with-naive  Установка + развёртывание naiveproxy daemon (v1.3.0+)
-
-sign-craze --config-backup      Создать архив state.json в /opt/var/lib/sign-craze
-sign-craze --config-restore <путь> Восстановить конфиг из архива
 
 sign-craze --mode policy|full        Переключить режим маршрутизации
                                      (Legacy-имена `proxy`/`dpi`/`hybrid` мигрируются в `policy` с предупреждением.)
@@ -480,7 +477,7 @@ internal/cli  (диспетчер команд, ANSI-цвет, --no-color)
 
 ```bash
 # 1. Скачать артефакты нужной архитектуры
-gh release download v1.2.3 -p 'sign-craze-mipsle' -p 'sign-craze-mipsle.sig' \
+gh release download v1.6.3 -p 'sign-craze-mipsle' -p 'sign-craze-mipsle.sig' \
   -p 'sign-craze-mipsle.pem' -p 'sha256sums.txt'
 
 # 2. Проверить SHA-256 целостность

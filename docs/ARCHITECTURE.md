@@ -1,6 +1,6 @@
 # sign-craze: Архитектура
 
-> Версия: 2026-06-19. Архитектура v1.6.1.
+> Версия: 2026-07-01. Архитектура v1.6.3.
 
 ## Диаграмма слоёв
 
@@ -46,15 +46,16 @@ singbox         dpi             firewall
 | `internal/core` | registry + абстрактный интерфейс `Core`; регистрирует ядра: sing-box, [xray](https://xtls.github.io/), [mihomo](https://wiki.metacubex.one/) |
 | `internal/core/xray` | адаптер ядра xray; translation `RouteRule → xray rules[]`; `RuleSet` с префиксом `geosite-`/`geoip-` → matcher |
 | `internal/core/mihomo` | адаптер ядра mihomo; translation `RouteRule → TYPE,VALUE,ACTION`; `RuleSets` с `.mrs` URL → `rule-providers:` |
-| `internal/service` | генерация init.d shim; интерфейс `Lifecycle`, связывающий singbox и nfqws2 |
+| `internal/service` | генерация init.d shim; интерфейс `Lifecycle`, связывающий singbox и [nfqws2](https://github.com/nfqws/nfqws2-keenetic) |
 | `internal/geo` | загрузка SRS из sign-craze-dats; конвертация IP-листа → [ipset](https://ipset.netfilter.org/) |
 | `internal/web` | встроенный HTTP-сервер (Zashboard :9090 + admin REST API :9091 + Routing Editor :9092 + DPI targets API) |
 | `internal/locks` | эксклюзивный [flock](https://man7.org/linux/man-pages/man2/flock.2.html) против параллельных запусков |
 | `internal/log` | глобальный `slog.Logger` с ротацией по размеру |
 | `internal/atomicfs` | атомарная запись: write → fsync → rename |
 | `internal/version` | встроенная `VERSION`, build info через `runtime/debug` |
-| `internal/errors` | sentinel-ошибки (`ErrNotInstalled`, `ErrLockHeld`, …) |
 | `pkg/types` | общие типы (`Mode`, `Arch`, `Port`, `RoutingConfig`, `CoreRenderParams`, …) |
+
+Sentinel-ошибки живут в своих пакетах (`locks.ErrLocked`, `ndm.ErrNotFound`, `netif.ErrLANNotFound`, `firewall.ErrFWMarkConflict`, `web.ErrNoFreePort`); отдельного пакета `internal/errors` нет.
 
 ## Поток данных: `--install`
 
@@ -177,7 +178,7 @@ ActiveGeoFormat → c.GeoFormat()    (SRS | DAT | MRS) для preset URL рез�
 | `9091` | Admin REST API sign-craze |
 | `9092` | Routing Editor SPA (Preact) |
 
-Все порты слушают на `0.0.0.0`. Правила в `filter/INPUT` (owner-comment, idempotent) дропают входящий трафик на порт 9090 от WAN-интерфейса.
+Серверы биндятся на LAN-bridge IP (`netif.DetectLANAddr`, fail-secure: при невозможности определить LAN-адрес `--ui-daemon` отказывается стартовать, чтобы UI без auth/TLS не оказался на `0.0.0.0`). Дополнительно правила в `filter/INPUT` (owner-comment, idempotent) дропают входящий трафик на порты 9090/9091/9092 от WAN-интерфейса.
 
 ## Поток данных: `--ui on` и firewall watchdog
 

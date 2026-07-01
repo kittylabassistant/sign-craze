@@ -2,7 +2,7 @@
 
 Этот документ является единым справочником по поддерживаемым архитектурам, прошивкам, устройствам, kernel-модулям и внешним зависимостям. Он заменяет разрозненные упоминания в README. Актуален для sign-craze v0.3.x+ (TUN-режим, без [TPROXY](https://www.kernel.org/doc/html/latest/networking/tproxy.html) как dependency на ядро).
 
-Последнее обновление: v1.6.1 (2026-06-19).
+Последнее обновление: v1.6.3 (2026-07-01).
 
 ---
 
@@ -34,7 +34,7 @@
 
 **Режим `policy`** требует Keenetic NDM RCI версии 5.x (`/rci/show/ip/policy`, `/rci/show/rc/ip/policy`, POST `/rci/`). Если RCI на `127.0.0.1:79` недоступен — sign-craze завершится с ошибкой и предложит переключиться в `--mode full`. Источник: `docs/BEHAVIOR_SPEC.md` §4.
 
-**NDM rebuild iptables**: Keenetic пересобирает iptables при изменении конфигурации (привязка устройства к политике, save startup-config, WAN reconnect). Цепочки sign-craze (`signcraze_policy`, `signcraze`) при этом теряются и восстанавливаются через hook `/opt/etc/ndm/netfilter.d/50-sign-craze`. Источник: `docs/BEHAVIOR_SPEC.md` §3c.
+**NDM rebuild [iptables](https://www.netfilter.org/projects/iptables/index.html)**: Keenetic пересобирает iptables при изменении конфигурации (привязка устройства к политике, save startup-config, WAN reconnect). Цепочки sign-craze (`signcraze_policy`, `signcraze`) при этом теряются и восстанавливаются через hook `/opt/etc/ndm/netfilter.d/50-sign-craze`. Источник: `docs/BEHAVIOR_SPEC.md` §3c.
 
 ---
 
@@ -145,7 +145,7 @@
 | mipsle   | Да        | tar.gz                         |                                                    |
 | mips BE  | **Нет**   | (отсутствует)                  | enfein публикует только little-endian MIPS         |
 
-Версия pin: latest GitHub release. Формат tarball: tar.gz. Источник кросс-сборки: `Makefile` mieru targets (v1.3.0 changelog).
+Версия pin: **v3.32.0** (`Makefile` `MIERU_VERSION`). Формат tarball: tar.gz. Источник кросс-сборки: `Makefile` mieru targets (v1.3.0 changelog).
 
 Путь установки: `/opt/sbin/mieru`. Supervised peer: sign-craze запускает daemon, sing-box подключается через socks5-outbound. Источник: `internal/peer/`.
 
@@ -156,7 +156,7 @@
 - **systemd**: sign-craze не генерирует systemd unit-файлы. Используется только Entware init.d (`/opt/etc/init.d/S99signcraze`). На системах с systemd без Entware установка не поддерживается.
 - **nftables**: sign-craze использует `iptables-legacy`. Если активен `iptables-nft` (nf_tables backend), поведение MARK/CONNMARK может отличаться. Проверьте `iptables --version` — ожидается `legacy`.
 - **MIPS hardfloat**: бинарь из релиза собран с `GOMIPS=softfloat`. Запуск hardfloat-бинаря на роутере без FPU → `SIGILL`.
-- **xray-core на mips/mipsle**: из ветки 26.* при старте не запускается ТОЛЬКО сборка **26.3.27** (текущий latest) — падает с `runtime.futexwakeup ... returned -89` (ENOSYS) на старых ядрах Keenetic (3.4–4.x), регрессия конкретного релиза. Остальные 26.* (более ранние) работают. На mips/mipsle sign-craze ставит pinned custom-build xray v25.12.8 (репо `kittylabassistant/sign-craze-xray`, источник `internal/core/xray/download.go`).
+- **[Xray-core](https://xtls.github.io/) на mips/mipsle**: из ветки 26.* при старте не запускается ТОЛЬКО сборка **26.3.27** (текущий latest) — падает с `runtime.futexwakeup ... returned -89` (ENOSYS) на старых ядрах Keenetic (3.4–4.x), регрессия конкретного релиза. Остальные 26.* (более ранние) работают. На mips/mipsle sign-craze ставит pinned custom-build xray v25.12.8 (репо `kittylabassistant/sign-craze-xray`, источник `internal/core/xray/download.go`).
 - **OpenWrt без Entware**: sign-craze предполагает файловую структуру Entware (`/opt/sbin`, `/opt/etc/init.d`, `/opt/etc/ndm`). На чистом OpenWrt без Entware пути некорректны, NDM hook отсутствует.
 - **KeeneticOS 4.x и ниже**: отсутствует `/rci/show/ip/policy`. Режим `policy` недоступен. Режим `full` теоретически применим, не тестировался.
 - **IPv6 без kernel-модулей**: ip6tables-цепочки создаются по аналогии. Если провайдер не предоставляет IPv6 — цепочки пустые (не ломают работу).
@@ -175,8 +175,8 @@ Sign-craze поддерживает три взаимозаменяемых пр
 
 | Протокол | sing-box | xray | mihomo | Заметки |
 | -------- | -------- | ---- | ------ | ------- |
-| VLESS | ✅ | ✅ | ✅ | См. таблицу 2 для частных режимов |
-| VMess | ✅ | ✅ | ✅ | AEAD by default |
+| [VLESS](https://xtls.github.io/config/) | ✅ | ✅ | ✅ | См. таблицу 2 для частных режимов |
+| [VMess](https://xtls.github.io/config/) | ✅ | ✅ | ✅ | AEAD by default |
 | Shadowsocks (legacy) | ✅ | ✅ | ✅ | aes-256-gcm, chacha20-poly1305 |
 | Shadowsocks 2022 | ✅ | ✅ | ✅ | 2022-blake3-aes-{128,256}-gcm, 2022-blake3-chacha20-poly1305 |
 | Trojan | ✅ | ✅ | ✅ | TLS обязателен |
@@ -214,7 +214,7 @@ Sign-craze поддерживает три взаимозаменяемых пр
 | Native Clash API | ⚠️ | ❌ | ✅ | sing-box даёт compat-stub; xray не имеет; [mihomo](https://wiki.metacubex.one/) native |
 | Proxy-providers (URL-импорт списка) | ❌ | ❌ | ✅ | Clash native |
 | Rule-providers | ❌ | ❌ | ✅ | Clash native |
-| SRS rule-set (geo бинарный формат) | ✅ | ❌ | ❌ | sing-box native |
+| [SRS](https://sing-box.sagernet.org/configuration/rule-set/) rule-set (geo бинарный формат) | ✅ | ❌ | ❌ | sing-box native |
 | `geoip.dat`/`geosite.dat` | ❌ | ✅ | ⚠️ | xray native; mihomo поддерживает legacy v2ray dat |
 | `.mrs` rule-set | ❌ | ❌ | ✅ | mihomo native (с 1.18) |
 | Hysteria 2 obfs-salamander tuning | ✅ | ❌ | ✅ | mihomo шире; sing-box базовый |
@@ -349,14 +349,14 @@ Sign-craze поддерживает три взаимозаменяемых пр
 
 Определить архитектуру роутера: `opkg print-architecture | grep -v all`.
 
-## 11. Автоматические зависимости через opkg Depends
+## 11. Автоматические зависимости через [opkg](https://openwrt.org/docs/guide-user/additional-software/opkg) Depends
 
 Если sign-craze установлен через opkg (feed или offline .ipk),
 opkg автоматически разрешит и установит следующие пакеты:
 
 | Пакет | Назначение |
 |---|---|
-| `ipset` | ipset signcraze_ipv4/ipv6 в режиме full |
+| `ipset` | [ipset](https://ipset.netfilter.org/) signcraze_ipv4/ipv6 в режиме full |
 | `iptables` | основа firewall |
 | `iptables-mod-conntrack-extra` | CONNMARK match в mangle chains |
 | `iptables-mod-tproxy` | xt_TPROXY kernel module для -j TPROXY |

@@ -6,7 +6,7 @@
 
 ### В чём отличие режимов `policy` и `full`?
 
-- **`policy` (по умолчанию)** — sign-craze создаёт IP-policy `sign-craze` в Keenetic через RCI, читает присвоенный Keenetic [fwmark](https://www.man7.org/linux/man-pages/man7/socket.7.html) и ставит [iptables](https://www.netfilter.org/projects/iptables/index.html)-правила с фильтром по этому mark. **Выбор устройств** — через штатный web-UI Keenetic «Приоритеты подключений». Никакого собственного ipset не требуется. Безопасный default.
+- **`policy` (по умолчанию)** — sign-craze создаёт IP-policy `sign-craze` в [Keenetic](https://help.keenetic.com/hc/ru) через RCI, читает присвоенный Keenetic [fwmark](https://www.man7.org/linux/man-pages/man7/socket.7.html) и ставит [iptables](https://www.netfilter.org/projects/iptables/index.html)-правила с фильтром по этому mark. **Выбор устройств** — через штатный web-UI Keenetic «Приоритеты подключений». Никакого собственного ipset не требуется. Безопасный default.
 - **`full` (legacy)** — sign-craze управляет всем: создаёт [ipset](https://ipset.netfilter.org/) `signcraze_ipv4`/`signcraze_ipv6`/`signcraze_excludes`, ставит свой fwmark `0x53` и маршрутизирует **весь** транзитный трафик через TUN. Полезен на не-Keenetic-роутерах или если нужен fine-grained контроль через ipset.
 
 Переключение: `sign-craze --mode policy --restart` или `sign-craze --mode full --restart`.
@@ -36,11 +36,11 @@ grep watchdog /opt/var/log/sign-craze/sign-craze.log | tail -10
 Минимум для активации:
 
 ```sh
-sign-craze --dpi on        # качает [nfqws2](https://github.com/nfqws/nfqws2-keenetic) в /opt/sbin/, генерит /opt/etc/sign-craze/nfqws2.conf, ставит DPIEnabled=true
+sign-craze --dpi on        # качает nfqws2 в /opt/sbin/, генерит /opt/etc/sign-craze/nfqws2.conf, ставит DPIEnabled=true
 sign-craze --restart       # applier добавляет NFQUEUE-правила, lifecycle поднимает nfqws2
 ```
 
-> **nfqws2 загружается из репозитория `github.com/nfqws/nfqws2-keenetic`** в формате Entware `.ipk` (актуальная версия: v1.2.3). Распаковка `.ipk` (outer tar.gz → `data.tar.gz` → бинарь) выполняется автоматически. Если скачивание падает с 404 — убедитесь, что бинарь sign-craze актуальный (`sign-craze --update`).
+> **[nfqws2](https://github.com/nfqws/nfqws2-keenetic) загружается из репозитория `github.com/nfqws/nfqws2-keenetic`** в формате [Entware](https://entware.net/) `.ipk` (актуальная версия: v1.2.3). Распаковка `.ipk` (outer tar.gz → `data.tar.gz` → бинарь) выполняется автоматически. Если скачивание падает с 404 — убедитесь, что бинарь sign-craze актуальный (`sign-craze --update`).
 
 После `--dpi on` состояние сохраняется в `state.json` и переживает ребуты — init.d shim `/opt/etc/init.d/S99signcraze` поднимет `nfqws2` автоматически.
 
@@ -93,7 +93,7 @@ sign-craze поддерживает три взаимозаменяемых пр
 
 | Ядро | Когда использовать |
 |---|---|
-| **[sing-box](https://sing-box.sagernet.org/)** (умолчание) | Большинство конфигураций: VLESS/VMess/Trojan/Shadowsocks, TUN-режим на стоковом ядре Keenetic |
+| **[sing-box](https://sing-box.sagernet.org/)** (умолчание) | Большинство конфигураций: [VLESS/VMess](https://xtls.github.io/config/)/Trojan/Shadowsocks, TUN-режим на стоковом ядре Keenetic |
 | **[xray](https://xtls.github.io/)** | PQ-VLESS (постквантовое шифрование), Vision UDP443, xhttp packet-up режимы — сценарии жёсткого DPI |
 | **[mihomo](https://wiki.metacubex.one/)** | [Hysteria2](https://v2.hysteria.network/), [TUIC](https://github.com/EAimTY/tuic), [WireGuard](https://www.wireguard.com/) — протоколы, нативно реализованные в mihomo/Meta |
 
@@ -151,7 +151,7 @@ sign-craze --restart
 
 ### Как сделать чтобы РФ-сайты не шли через VPN?
 
-Открыть UI `:9092`, применить пресет `ru-direct` (добавляет geoip-ru → direct), затем добавить правило с rule_set `geosite-ru` и outbound=direct, в final поставить VPN-outbound, нажать Apply. После: `sign-craze --restart`. Подробно — [полный рецепт](Recipe-RU-Direct.md).
+Открыть UI `:9092`, применить пресет `ru-direct` (добавляет geoip-ru → direct), затем добавить правило с rule_set `geosite-ru` и outbound=direct, в final поставить VPN-outbound, нажать Apply. После: `sign-craze --restart`. Подробно — [полный рецепт](Recipe-RU-Direct).
 
 ## Web UI
 
