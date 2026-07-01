@@ -468,7 +468,7 @@ href="https://openwrt.org/docs/guide-user/additional-software/opkg">opkg</a>.
 <p>[!NOTE] <strong>Offline-вариант</strong> (feed недоступен): скачайте
 <code>.ipk</code> на десктопе и скопируйте на роутер:</p>
 <div class="sourceCode" id="cb10"><pre
-class="sourceCode sh"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="va">VER</span><span class="op">=</span>1.6.1 <span class="va">ARCH</span><span class="op">=</span>mipsel-3.4</span>
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="va">VER</span><span class="op">=</span>1.6.3 <span class="va">ARCH</span><span class="op">=</span>mipsel-3.4</span>
 <span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="st">&quot;https://github.com/kittylabassistant/sign-craze/releases/download/v</span><span class="va">${VER}</span><span class="st">/sign-craze_</span><span class="va">${VER}</span><span class="st">_</span><span class="va">${ARCH}</span><span class="st">.ipk&quot;</span></span>
 <span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="fu">scp</span> sign-craze_<span class="va">${VER}</span>_<span class="va">${ARCH}</span>.ipk root@192.168.1.1:/tmp/</span>
 <span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="co"># На роутере:</span></span>
@@ -567,7 +567,7 @@ class="sourceCode sh"><code class="sourceCode bash"><span id="cb14-1"><a href="#
 <div class="sourceCode" id="cb15"><pre
 class="sourceCode sh"><code class="sourceCode bash"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--version</span></span></code></pre></div>
 <p>Ожидаемый вывод:</p>
-<pre><code>sign-craze v1.6.1 (commit &lt;актуальный&gt;, built 2026-06-19)
+<pre><code>sign-craze v1.6.3 (commit &lt;актуальный&gt;, built 2026-06-30)
 sing-box: not installed</code></pre>
 <hr />
 <h2 id="6-конфигурация-sign-craze">6. Конфигурация sign-craze</h2>
@@ -755,7 +755,7 @@ NFQUEUE-правила не добавляются. Для активации DP
 <ul>
 <li><strong>Из коробки</strong>:
 <code>sign-craze --install --with-dpi</code> (см. <a
-href="#64-с-dpi-обходом-из-коробки---with-dpi">6.4</a>).</li>
+href="#66-с-dpi-обходом-из-коробки---with-dpi">6.6</a>).</li>
 <li><strong>На существующей установке</strong>:
 <code>sign-craze --dpi on &amp;&amp; sign-craze --restart</code> (см.
 раздел <a href="#9a-selective-dpi-bypass-опционально">9a</a>).</li>
@@ -768,7 +768,7 @@ class="sourceCode sh"><code class="sourceCode bash"><span id="cb28-1"><a href="#
 <pre><code>sing-box: running (PID 12345)
 nfqws2: running (PID 12346)
 режим: policy
-версия: v1.6.1</code></pre>
+версия: v1.6.3</code></pre>
 <hr />
 <h2 id="8-web-ui-опционально">8. Web UI (опционально)</h2>
 <div class="sourceCode" id="cb30"><pre
@@ -800,8 +800,10 @@ iptables-правилами.</p>
 (опционально)</h2>
 <div class="sourceCode" id="cb31"><pre
 class="sourceCode sh"><code class="sourceCode bash"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--update-geo</span></span></code></pre></div>
-<p>Скачивает SRS rule-set файлы с GitHub (manifest-driven, выборочная
-загрузка по SHA256). После обновления:</p>
+<p>Скачивает <a
+href="https://sing-box.sagernet.org/configuration/rule-set/">SRS
+rule-set</a> файлы с GitHub (manifest-driven, выборочная загрузка по
+SHA256). После обновления:</p>
 <div class="sourceCode" id="cb32"><pre
 class="sourceCode sh"><code class="sourceCode bash"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--restart</span></span></code></pre></div>
 <hr />

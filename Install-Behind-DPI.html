@@ -190,7 +190,7 @@ GitHub через тот же mirror chain. Если упадёт на degraded-
 — offline</h2>
 <p>Скачай артефакты на десктоп с быстрым каналом:</p>
 <div class="sourceCode" id="cb5"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co"># с десктопа</span></span>
-<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-fsSLO</span> https://raw.githubusercontent.com/kittylabassistant/sign-craze/v1.6.1/dist/sign-craze-mipsle</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-fsSLO</span> https://raw.githubusercontent.com/kittylabassistant/sign-craze/v1.6.3/dist/sign-craze-mipsle</span>
 <span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-fsSLO</span> https://github.com/SagerNet/sing-box/releases/download/v1.13.13/sing-box-1.13.13-linux-mipsle-softfloat.tar.gz</span>
 <span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-fsSLO</span> https://github.com/nfqws/nfqws2-keenetic/releases/download/v1.2.3/nfqws2-keenetic_1.2.3_mipsel-3.4.ipk</span>
 <span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a></span>
@@ -217,7 +217,8 @@ GitHub через тот же mirror chain. Если упадёт на degraded-
 <span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a><span class="cf">done</span></span>
 <span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--restart</span></span></code></pre></div>
 <h2 id="xray-при-жёстком-dpi">Xray при жёстком DPI</h2>
-<p>Если sing-box не пробивается через DPI (VLESS/VMess детектируются
+<p>Если sing-box не пробивается через DPI (<a
+href="https://xtls.github.io/config/">VLESS/VMess</a> детектируются
 провайдером), <a href="https://xtls.github.io/">xray</a> предлагает
 дополнительные транспортные опции:</p>
 <ul>
@@ -243,11 +244,11 @@ HTTP-загрузчик, менее детектируем чем grpc/ws</li>
 <p>Xray использует <a
 href="https://www.kernel.org/doc/html/latest/networking/tproxy.html">TProxy</a>
 inbound (не TUN), поэтому требует <code>xt_TPROXY</code> модуль в ядре.
-На Keenetic с прошивкой 4.9+ модули <code>xt_TPROXY.ko</code> и
-<code>xt_socket.ko</code> присутствуют в <code>/lib/modules/</code> и
-загружаются автоматически через <code>insmod</code>. На более старых
-прошивках может понадобиться <code>--core sing-box</code> как
-fallback.</p>
+На <a href="https://help.keenetic.com/hc/ru">Keenetic</a> с прошивкой
+4.9+ модули <code>xt_TPROXY.ko</code> и <code>xt_socket.ko</code>
+присутствуют в <code>/lib/modules/</code> и загружаются автоматически
+через <code>insmod</code>. На более старых прошивках может понадобиться
+<code>--core sing-box</code> как fallback.</p>
 <h2 id="vless-url-spx-и-выбор-ядра">VLESS URL: spx и выбор ядра</h2>
 <table>
 <thead>

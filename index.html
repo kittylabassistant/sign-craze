@@ -69,10 +69,12 @@ href="https://github.com/kittylabassistant/sign-craze/blob/main/LICENSE">Лиц�
 src="https://raw.githubusercontent.com/kittylabassistant/sign-craze/main/img/banner_release.jpg"
 alt="sign-craze" /></p>
 <h1 id="sign-craze">sign-craze</h1>
-<p>Go-утилита для управления межсетевым экраном на роутерах Keenetic.
-Поддерживает три прокси-ядра с единым управлением через Web UI: <a
-href="https://github.com/SagerNet/sing-box">sing-box</a> (умолчание),
-<strong>xray</strong> и <strong>mihomo</strong>; дополнительно —
+<p>Go-утилита для управления межсетевым экраном на роутерах <a
+href="https://help.keenetic.com/hc/ru">Keenetic</a>. Поддерживает три
+прокси-ядра с единым управлением через Web UI: <a
+href="https://sing-box.sagernet.org/">sing-box</a> (умолчание), <a
+href="https://xtls.github.io/">xray</a> и <a
+href="https://wiki.metacubex.one/">mihomo</a>; дополнительно —
 supervised peers <strong><a
 href="https://github.com/klzgrad/naiveproxy">naiveproxy</a></strong> и
 <strong><a href="https://github.com/enfein/mieru">mieru</a></strong>
@@ -111,8 +113,9 @@ href="https://github.com/kittylabassistant/sign-craze/blob/main/docs/LICENSE.ru.
 <tbody>
 <tr class="odd">
 <td><strong><a href="Installation.html">Installation</a></strong></td>
-<td>Пошаговая инструкция: от форматирования флешки и opkg/IPK до запуска
-прокси</td>
+<td>Пошаговая инструкция: от форматирования флешки и <a
+href="https://openwrt.org/docs/guide-user/additional-software/opkg">opkg</a>/IPK
+до запуска прокси</td>
 </tr>
 <tr class="even">
 <td><strong><a href="Install-Behind-DPI.html">Install за
@@ -144,7 +147,10 @@ VPN»)</td>
 <li>Управление прокси-ядром: установка, запуск, остановка, обновление,
 откат. Поддерживается три ядра: <strong>sing-box</strong> (умолчание),
 <strong>xray</strong> (PQ-VLESS/Vision UDP443, xhttp packet-up),
-<strong>mihomo</strong> (Hysteria2, TUIC, WireGuard)</li>
+<strong>mihomo</strong> (<a
+href="https://v2.hysteria.network/">Hysteria2</a>, <a
+href="https://github.com/EAimTY/tuic">TUIC</a>, <a
+href="https://www.wireguard.com/">WireGuard</a>)</li>
 <li><strong>Мульти-ядерность (v1.0.0+)</strong>: Web UI
 <code>:9092</code> полностью унифицирован — routing, inbound, outbound и
 пресеты работают одинаково для всех трёх ядер. Несовместимые конструкции
@@ -160,7 +166,9 @@ sing-box</li>
 <li>Два режима маршрутизации: <code>policy</code> (Keenetic IP Policy
 через RCI, default) и <code>full</code> (legacy с собственным
 fwmark/ipset)</li>
-<li>Атомарное применение правил iptables/ipset с гарантированным
+<li>Атомарное применение правил <a
+href="https://www.netfilter.org/projects/iptables/index.html">iptables</a>/<a
+href="https://ipset.netfilter.org/">ipset</a> с гарантированным
 откатом</li>
 <li>DPI bypass через <code>nfqws2</code> (opt-in, <strong>off by
 default</strong>) — включается <code>sign-craze --dpi on</code>;
@@ -170,9 +178,11 @@ selective режим <code>--dpi-targets</code> ограничивает desync
 <li>Firewall watchdog: автоматическое восстановление правил после ndm
 reconciliation (защита от "перестаёт проксировать через несколько
 часов")</li>
-<li>Гео-фильтрация через SRS rule-set (выборочная загрузка по
-SHA256)</li>
-<li>Встроенный Web UI (только из LAN): Zashboard на порту
+<li>Гео-фильтрация через <a
+href="https://sing-box.sagernet.org/configuration/rule-set/">SRS
+rule-set</a> (выборочная загрузка по SHA256)</li>
+<li>Встроенный Web UI (только из LAN): <a
+href="https://github.com/Zephyruso/zashboard">Zashboard</a> на порту
 <code>9090</code> (реальное дерево прокси и счётчики трафика через Clash
 API реверс-прокси на sing-box), admin REST API на <code>9091</code>,
 Routing Editor SPA на <code>9092</code></li>
@@ -196,8 +206,9 @@ v1.5.0). Отдельно DPI-пресеты
 <li>ANSI-цветной вывод CLI с opt-out <code>--no-color</code> /
 <code>NO_COLOR</code> / <code>FORCE_COLOR</code> (v1.2.0)</li>
 <li>Два канала установки: бинарь из GitHub Releases
-(<code>install.sh</code>) или <strong>opkg/IPK-пакет для
-Entware</strong> (<code>opkg install sign-craze</code>, v1.6.0)</li>
+(<code>install.sh</code>) или <strong>opkg/IPK-пакет для <a
+href="https://entware.net/">Entware</a></strong>
+(<code>opkg install sign-craze</code>, v1.6.0)</li>
 </ul>
 <h2 id="поддерживаемые-архитектуры">Поддерживаемые архитектуры</h2>
 <table>
@@ -234,7 +245,7 @@ Entware</strong> (<code>opkg install sign-craze</code>, v1.6.0)</li>
 <p>Целевой размер бинаря после <code>upx --lzma</code>: ≤ 4 МБ.
 RAM-бюджет: 128 МБ (общий RSS sing-box + sign-craze + nfqws2).</p>
 <h2 id="история-версий-ключевое">История версий (ключевое)</h2>
-<p>Текущая версия — <strong>v1.6.1</strong>. Полный журнал изменений — в
+<p>Текущая версия — <strong>v1.6.3</strong>. Полный журнал изменений — в
 <a
 href="https://github.com/kittylabassistant/sign-craze/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 <table>
