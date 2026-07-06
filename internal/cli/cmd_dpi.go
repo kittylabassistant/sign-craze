@@ -29,6 +29,14 @@ func init() {
 	Register(Cmd{Long: "--dpi-update-now", Help: "немедленно скачать и применить hostlist из dpi_update_urls", Handler: handleDPIUpdateNow})
 }
 
+// dpiTargetsStatePath — путь к state.json, которым пользуется handleDPITargets
+// (через state.NewDPITargetsManager). var (а не прямая ссылка на константу
+// state.DefaultPath) — по тем же причинам, что и portsStatePath в cmd_ports.go:
+// юнит-тесты подменяют путь на временный файл, иначе тест бил бы в
+// /opt/etc/sign-craze/state.json, недоступный на запись вне роутера.
+// В проде значение равно state.DefaultPath.
+var dpiTargetsStatePath = state.DefaultPath
+
 func handleDPI(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("--dpi: требуется аргумент on|off")
@@ -258,34 +266,57 @@ func handleDPITargets(ctx context.Context, args []string) error {
 	}
 
 	return withLock(ctx, func() error {
-		st, err := loadState()
-		if err != nil {
-			return err
-		}
-		st.DPITargets = targets
-
-		// Регенерация конфига имеет смысл только если DPI уже включён.
-		// Иначе конфиг будет создан при следующем `--dpi on` с актуальными targets.
-		if st.DPIEnabled {
-			iface, ifErr := detectISPInterface(ctx)
-			if ifErr != nil {
-				return fmt.Errorf("--dpi-targets: %w", ifErr)
-			}
-			if err := writeDPIConfig(iface, st); err != nil {
-				return fmt.Errorf("--dpi-targets: %w", err)
-			}
-		}
-
-		if err := saveState(st); err != nil {
-			return err
-		}
-		if len(targets) == 0 {
-			fmt.Println("DPI targets очищены (desync применяется ко всему трафику).")
-		} else {
-			fmt.Printf("DPI targets: %d домен(ов). Перезапустите: sign-craze --restart\n", len(targets))
-		}
-		return nil
+		return setDPITargets(ctx, dpiTargetsStatePath, targets)
 	})
+}
+
+// setDPITargets сохраняет targets через state.NewDPITargetsManager — тот же
+// менеджер (и тот же lock-файл на state.json), которым пользуется Web UI.
+// Раньше handleDPITargets мутировал ВЕСЬ *state.State в памяти
+// (st.DPITargets = targets) и сохранял его целиком через saveState() под
+// ДРУГИМ локом (locks.DefaultPath, см. withLock) — гонка с Web UI (B4):
+// raw Save мог затереть конкурентную правку Web UI (например, добавленный
+// порт), примененную и сохранённую менеджером между raw Load и raw Save.
+//
+// Порядок действий важен: SetTargets сохраняет targets ПЕРВЫМ (атомарно, под
+// общим с Web UI локом). Регенерация nfqws2-конфига — side-effect, которого
+// нет в state.json, поэтому она выполняется ПОСЛЕ успешного SetTargets, на
+// свежепрочитанном через state.Load состоянии (нужны актуальные
+// DPIEnabled/DPIStrategy/DPITargets). Если регенерация конфига упадёт —
+// targets в state.json уже сохранены (см. подводные камни в описании фикса).
+//
+// Вынесено из handleDPITargets отдельной функцией, чтобы тестировать мутацию
+// без внешнего withLock (системный /opt/var/lock/sign-craze.lock, путь
+// захардкожен в lock.go и не подменяется в юнит-тестах).
+func setDPITargets(ctx context.Context, statePath string, targets []string) error {
+	mgr := state.NewDPITargetsManager(statePath)
+	if err := mgr.SetTargets(ctx, targets); err != nil {
+		return fmt.Errorf("--dpi-targets: %w", err)
+	}
+
+	st, err := state.Load(statePath)
+	if err != nil {
+		return fmt.Errorf("--dpi-targets: %w", err)
+	}
+
+	// Регенерация конфига имеет смысл только если DPI уже включён.
+	// Иначе конфиг будет создан при следующем `--dpi on` с актуальными targets.
+	if st.DPIEnabled {
+		iface, ifErr := detectISPInterface(ctx)
+		if ifErr != nil {
+			return fmt.Errorf("--dpi-targets: %w", ifErr)
+		}
+		if err := writeDPIConfig(iface, st); err != nil {
+			return fmt.Errorf("--dpi-targets: %w", err)
+		}
+	}
+
+	if len(targets) == 0 {
+		fmt.Println("DPI targets очищены (desync применяется ко всему трафику).")
+	} else {
+		fmt.Printf("DPI targets: %d домен(ов). Перезапустите: sign-craze --restart\n", len(targets))
+	}
+	return nil
 }
 
 func handleDPITargetsList(_ context.Context, _ []string) error {

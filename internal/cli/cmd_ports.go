@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/kittylabassistant/sign-craze/internal/state"
 )
 
 func init() {
@@ -15,6 +17,23 @@ func init() {
 
 const maxPortRangeSize = 1000
 
+// portsStatePath — путь к state.json, которым пользуются handlePortAdd/Del/List.
+// var (а не прямая ссылка на константу state.DefaultPath), чтобы юнит-тесты
+// могли подменить путь на временный файл: без этого тесты били бы напрямую в
+// /opt/etc/sign-craze/state.json, который недоступен на запись вне роутера.
+// В проде значение равно state.DefaultPath.
+var portsStatePath = state.DefaultPath
+
+// handlePortAdd, handlePortDel и handlePortList раньше мутировали state.json
+// напрямую через loadState()/saveState() под CLI-локом (locks.DefaultPath).
+// Web UI для тех же данных использует state.NewPortsManager, который лочит
+// ДРУГОЙ файл (statePath + ".lock", см. withStateLock в internal/state/managers.go).
+// Два независимых flock на один state.json не исключали гонку CLI vs Web UI
+// (TOCTOU: raw Load → mutate → raw Save мог затереть конкурентную правку,
+// применённую и сохранённую менеджером между raw Load и raw Save) — баг B4.
+// Фикс: обе стороны используют один и тот же state.NewPortsManager, а значит
+// один и тот же lock-файл.
+
 func handlePortAdd(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("--port-add: требуется порт или диапазон")
@@ -24,26 +43,28 @@ func handlePortAdd(ctx context.Context, args []string) error {
 		return fmt.Errorf("--port-add: %w", err)
 	}
 	return withLock(ctx, func() error {
-		st, err := loadState()
-		if err != nil {
-			return err
-		}
-		exist := make(map[uint16]bool, len(st.Ports))
-		for _, p := range st.Ports {
-			exist[p] = true
-		}
-		for _, p := range ports {
-			if !exist[p] {
-				st.Ports = append(st.Ports, p)
-				exist[p] = true
-			}
-		}
-		if err := saveState(st); err != nil {
-			return err
-		}
-		fmt.Printf("Добавлено %d портов. Применить: sign-craze --restart\n", len(ports))
-		return nil
+		return addPorts(ctx, portsStatePath, ports)
 	})
+}
+
+// addPorts добавляет каждый порт из уже развёрнутого диапазона через
+// state.NewPortsManager — тот же менеджер (и тот же lock-файл на state.json),
+// которым пользуется Web UI. AddPort вызывается поштучно: дедуп и идемпотентность
+// уже реализованы в PortsManager.AddPort, батчить незачем.
+//
+// Вынесено из handlePortAdd отдельной функцией, чтобы тестировать саму мутацию
+// без внешнего withLock: тот лочит системный /opt/var/lock/sign-craze.lock —
+// путь захардкожен в lock.go и не подменяется в юнит-тестах (доп. сериализация
+// CLI, к самой гонке B4 отношения не имеет).
+func addPorts(ctx context.Context, statePath string, ports []uint16) error {
+	mgr := state.NewPortsManager(statePath)
+	for _, p := range ports {
+		if err := mgr.AddPort(ctx, int(p)); err != nil {
+			return fmt.Errorf("--port-add: %w", err)
+		}
+	}
+	fmt.Printf("Добавлено %d портов. Применить: sign-craze --restart\n", len(ports))
+	return nil
 }
 
 func handlePortDel(ctx context.Context, args []string) error {
@@ -54,40 +75,36 @@ func handlePortDel(ctx context.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("--port-del: %w", err)
 	}
-	delSet := make(map[uint16]bool, len(ports))
-	for _, p := range ports {
-		delSet[p] = true
-	}
 	return withLock(ctx, func() error {
-		st, err := loadState()
-		if err != nil {
-			return err
-		}
-		out := st.Ports[:0]
-		for _, p := range st.Ports {
-			if !delSet[p] {
-				out = append(out, p)
-			}
-		}
-		st.Ports = out
-		if err := saveState(st); err != nil {
-			return err
-		}
-		fmt.Println("Порты удалены. Применить: sign-craze --restart")
-		return nil
+		return delPorts(ctx, portsStatePath, ports)
 	})
 }
 
-func handlePortList(_ context.Context, _ []string) error {
-	st, err := loadState()
+// delPorts удаляет каждый порт из уже развёрнутого диапазона через
+// state.NewPortsManager (см. комментарий addPorts). Удаление порта, которого
+// нет в state — no-op (семантика PortsManager.DeletePort), ошибка не возвращается.
+func delPorts(ctx context.Context, statePath string, ports []uint16) error {
+	mgr := state.NewPortsManager(statePath)
+	for _, p := range ports {
+		if err := mgr.DeletePort(ctx, int(p)); err != nil {
+			return fmt.Errorf("--port-del: %w", err)
+		}
+	}
+	fmt.Println("Порты удалены. Применить: sign-craze --restart")
+	return nil
+}
+
+func handlePortList(ctx context.Context, _ []string) error {
+	mgr := state.NewPortsManager(portsStatePath)
+	list, err := mgr.ListPorts(ctx)
 	if err != nil {
 		return err
 	}
-	if len(st.Ports) == 0 {
+	if len(list) == 0 {
 		fmt.Println("(пусто)")
 		return nil
 	}
-	for _, p := range st.Ports {
+	for _, p := range list {
 		fmt.Println(p)
 	}
 	return nil
