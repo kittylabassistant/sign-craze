@@ -1091,16 +1091,16 @@ outbounds — Phase 2 (требует port allocator).
 
 ### 8.4 Lifecycle naive (порядок старт/стоп)
 
-**Старт** (`--start`, после `core.Start`):
-1. `core.Start` - поднять sing-box/xray/mihomo с outbound `naive` (process chain).
-2. `naive.Start` - запустить бинарь `/opt/sbin/naive` с конфигом `/opt/etc/sign-craze/naive/config.json`, PID в `/opt/var/run/sign-craze-naive.pid`.
-3. Проверка: TCP `127.0.0.1:<local_port>` отвечает в течение 5 с - иначе откат.
+**Старт** (`--start`, ДО рендера конфига и `core.Start`):
+1. `naive.Start` - запустить бинарь `/opt/sbin/naive`, PID в `/opt/var/run/sign-craze-naive.pid`. Naive поднимается ПЕРВЫМ: `sing-box check` (внутри рендера/валидации конфига) проверяет доступность `127.0.0.1:<NaiveListenPort>` — к этому моменту порт уже должен слушаться.
+2. Рендер+валидация конфига ядра (`ensureConfigFreshForCore`).
+3. `core.Start` - поднять sing-box/xray/mihomo с outbound `naive` (process chain).
 
-**Стоп** (`--stop`, обратный порядок):
-1. `naive.Stop` - SIGTERM → ждать 5 с → SIGKILL → удалить PID-файл.
+**Стоп** (`--stop`):
+1. `naive.Stop` - SIGTERM → ждать 5 с → SIGKILL → удалить PID-файл (до ядра: sing-box держит подключение к `127.0.0.1:<NaiveListenPort>`).
 2. `core.Stop` - стандартный lifecycle ядра.
 
-**Инвариант Inv-Naive-Order**: naive всегда стартует ПОСЛЕ ядра и стопится ДО ядра (process chain dependency). Нарушение → coredump в naive или зависшие соединения.
+**Инвариант Inv-Naive-Order**: naive стартует ДО ядра (иначе `sing-box check` падает на недоступном локальном порту) и стопится ДО ядра. Источник: `internal/cli/cmd_lifecycle.go` (doStart/doStop).
 
 **Watchdog (Phase 2 из ADR-0021, pending)**: автоматический рестарт naive при крахе через `--service-watchdog`. Текущий статус - отслеживается в `tasks/todo.md` Phase 16.
 
