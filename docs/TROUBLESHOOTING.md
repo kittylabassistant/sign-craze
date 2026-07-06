@@ -14,7 +14,7 @@
 
 ```bash
 sign-craze --status          # 1. что сейчас живо
-sign-craze --diag            # 2. PASS/WARN/FAIL по 12 проверкам
+sign-craze --diag            # 2. PASS/WARN/FAIL по 14 проверкам
 ```
 
 Если `--diag` нашёл FAIL — найди симптом в таблице ниже и следуй fix. Если симптома нет — [собери support bundle](#сбор-support-bundle) и открой issue.
@@ -26,7 +26,7 @@ sign-craze --diag            # 2. PASS/WARN/FAIL по 12 проверкам
 | Команда | Что показывает | Когда применять |
 | --------- | ---------------- | ----------------- |
 | `sign-craze --status` | sing-box/nfqws2 запущены, режим, версии | Первая проверка |
-| `sign-craze --diag` | PASS/WARN/FAIL по 12 проверкам: бинари, конфиг, маршруты, [ipset](https://ipset.netfilter.org/), geo, RCI-policy | Полная самодиагностика |
+| `sign-craze --diag` | PASS/WARN/FAIL по 14 проверкам: бинари, конфиг, маршруты, [ipset](https://ipset.netfilter.org/), geo, RCI-policy, mieru-peers, rule-set URL | Полная самодиагностика |
 | `sign-craze --version` | Версия sign-craze + sing-box | Нужна при создании issue |
 | `tail -f /opt/var/log/sign-craze/sign-craze.log` | Структурированные события (slog) | Ошибки старта, reapply, firewall |
 | `tail -f /opt/var/log/sign-craze/sing-box.log` | Лог sing-box | sing-box упал или не соединяется |
@@ -108,6 +108,7 @@ sign-craze --diag            # 2. PASS/WARN/FAIL по 12 проверкам
 | `--update-geo` падает с OOM или роутер ребутится | **Исправлено** (safety-fixes #14 — streaming write). Старые версии читали .srs (10–30 МБ) в RAM | `sign-craze --version` | Mitigation: используйте build с tagged `auth_cost_lowmem.go` (применяется автоматически для GOARCH=mips/mipsle). Временно: запускать ночью; убедиться что swap активен: `free -m` |
 | `--diag` → `geo-files WARN` | `--update-geo` не запускался > 7 дней | `ls -la /opt/var/lib/sign-craze/geo/*.srs` | `sign-craze --update-geo && sign-craze --restart` |
 | `--update-geo` падает на скачивании | GitHub недоступен или rate-limit | `curl -s -o /dev/null -w "%{http_code}" https://github.com` | Retry; или скопировать .srs вручную в `/opt/var/lib/sign-craze/geo/` |
+| Ядро падает при `--start`/`--restart` с `unexpected status: 404 Not Found` или `invalid ... rule-set file` | `routing.json` содержит `rule_set.URL`, который отдаёт 404 либо файл не того формата (например JSON вместо скомпилированного `.srs`/`.mrs`) | `sign-craze --diag` → строка `rule-set-urls` (WARN с деталями по конкретному `rule_set.Tag`; сам чек никогда не FAIL) | v1.6.4+: почините URL в Routing UI `:9092` до `--restart` — `--diag` ловит проблему заранее. Добавление нового rule_set с уже подтверждённым 404/mismatch через Routing UI отклоняется на POST `/api/rule_sets` (400) ещё на этапе сохранения |
 
 ### Автостарт после ребута
 
@@ -166,14 +167,14 @@ sign-craze --diag            # 2. PASS/WARN/FAIL по 12 проверкам
 
 ### [xray](https://xtls.github.io/) не стартует: "запустите --update-geo --core xray"
 
-**Симптом:** после `--core-install xray` команда `--start --core xray` падает с ошибкой `geosite.dat не найден`.
+**Симптом:** после переключения на xray (`sign-craze --core xray && sign-craze --restart`) старт падает с ошибкой `geosite.dat отсутствует для xray; запустите --update-geo --core xray` (или тем же текстом про `geoip.dat`).
 
-**Причина:** `--core-install xray` устанавливает только бинарь xray. Geo-данные (`geosite.dat`/`geoip.dat`) загружаются отдельно через `--update-geo --core xray` (источник: `internal/core/xray/render_rules.go:78-84`, lessons.md 2026-05-12).
+**Причина:** geo-данные не скачиваются при каждом `--restart` — их докачивает `--core-install xray` (автоматически, при установке бинаря ядра) или явный `--update-geo --core xray`. Загрузка идёт от `Loyalsoldier/v2ray-rules-dat` в `/opt/etc/sign-craze/xray/assets`; если она не удалась при `--core-install` (например, сеть была недоступна) — это только warning в логе, установка бинаря всё равно завершается успешно. Рендер конфига xray перед стартом проверяет наличие обоих файлов и требует их явно (источник: `internal/core/xray/render_rules.go`).
 
 **Решение:**
 ```sh
 sign-craze --update-geo --core xray
-sign-craze --start --core xray
+sign-craze --restart
 ```
 
 ### xray не стартует на mips/mipsle: `runtime.futexwakeup ... returned -89`
@@ -268,6 +269,8 @@ ipset list 2>&1 | head -50 >> /tmp/diag.txt
 - свежесть гео-файлов
 - свободность lock-файла
 - состояние Keenetic policy в RCI
+- статус supervised-peers mieru
+- доступность и формат rule_set.URL из routing.json
 
 **Redaction**: `--diag` не собирает содержимое конфига (URL прокси), пароли, данные трафика. Безопасно прикладывать к публичному issue.
 

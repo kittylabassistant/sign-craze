@@ -141,11 +141,15 @@ sign-craze --restart
 
 ### Почему пресет block-ads не работает на xray?
 
-Пресет `block-ads` использует rule_set `geosite-category-ads-all` из SagerNet/sing-geosite (`.srs` формат). Xray не использует механизм rule_set — вместо этого sign-craze автоматически транслирует `geosite-category-ads-all` в xray matcher `domain: ["geosite:category-ads-all"]`, что требует наличия `geosite.dat` на роутере.
+Пресет `block-ads` использует rule_set `geosite-category-ads-all` из SagerNet/sing-geosite (`.srs` формат). Xray не использует механизм rule_set — вместо этого sign-craze автоматически транслирует `geosite-category-ads-all` в xray matcher `domain: ["geosite:category-ads-all"]`, что требует наличия `geosite.dat` на роутере (скачивается через `sign-craze --update-geo --core xray`).
 
-Если xray у вас работает через встроенные geosite/geoip данные — пресет будет работать. Если нет — Validate покажет warning `refilter rule_set без .dat-эквивалента`.
+Если `geosite.dat` скачан — пресет будет работать. Если нет — Validate покажет warning `refilter rule_set без .dat-эквивалента`.
 
 Для надёжной блокировки рекламы на xray добавьте явное правило через **Routing → + Добавить** с полем `domain_keyword` или `domain_suffix`, либо переключитесь на sing-box (`--core sing-box`) где `.srs` работает нативно.
+
+### Xray пишет «geosite.dat отсутствует для xray» — что делать?
+
+Выполните `sign-craze --update-geo --core xray` — команда скачает `geosite.dat`/`geoip.dat` в `/opt/etc/sign-craze/xray/assets` (с проверкой SHA256 и структуры), затем повторите `sign-craze --start`.
 
 ## Routing
 

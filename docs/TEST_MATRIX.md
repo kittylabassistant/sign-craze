@@ -24,26 +24,35 @@
 |-----------------------------|:----:|:-----------:|:------:|:------------:|-------------------------------------------------------------------------------------------------------------|
 | `internal/atomicfs`         | ✅   | ❌          | ❌      | ❌            | `atomicfs/atomicfs_test.go`                                                                                 |
 | `internal/backup`           | ✅   | ❌          | ❌      | ✅            | `backup/backup_test.go`, `backup/helper_test.go`                                                            |
-| `internal/cli`              | ✅   | ❌          | ❌      | ✅            | `cli/smoke_test.go`, `cli/dispatch_test.go`, `cli/cmd_reapply_test.go`, `cli/color_test.go`, `cli/cores_sync_test.go` |
+| `internal/cli`              | ✅   | ❌          | ❌      | ✅            | `cli/smoke_test.go`, `cli/dispatch_test.go`, `cli/cmd_reapply_test.go`, `cli/color_test.go`, `cli/cores_sync_test.go`, `cli/cmd_ports_test.go`, `cli/cmd_update_test.go`, `cli/cmd_core_test.go` |
 | `internal/diag`             | ✅   | ❌          | ⚠️      | ✅            | `diag/diag_test.go`                                                                                         |
-| `internal/dpi`              | ✅   | ❌          | ⚠️      | ✅            | `dpi/config_test.go`, `dpi/lifecycle_test.go`, `dpi/download_test.go`, `dpi/install_test.go`, `dpi/update_test.go` |
+| `internal/dpi`              | ✅   | ❌          | ⚠️      | ✅            | `dpi/config_test.go`, `dpi/lifecycle_test.go`, `dpi/download_test.go`, `dpi/install_test.go`, `dpi/update_test.go`, `dpi/presets_test.go` |
 | `internal/exectx`           | ✅   | ❌          | ❌      | ❌            | `exectx/exec_test.go`                                                                                       |
 | `internal/firewall`         | ✅   | ✅          | ⚠️      | ✅            | `firewall/{applier,iptables,ipset,ipset_persist,route,preflight}_test.go`, `firewall/integration_test.go`   |
 | `internal/firewall/modes`   | ✅   | ❌          | ⚠️      | ✅            | `modes/{tproxy,hybrid,excludes,ports,policy_dpi,policy_tproxy}_test.go`                                     |
-| `internal/geo`              | ✅   | ❌          | ⚠️      | ✅            | `geo/{srs,ipset,decompile}_test.go`                                                                         |
+| `internal/geo`              | ✅   | ❌          | ⚠️      | ✅            | `geo/{srs,ipset,decompile,dat,mrs}_test.go`                                                                 |
 | `internal/ghrelease`        | ✅   | ❌          | ❌      | ❌            | `ghrelease/downloader_test.go`                                                                              |
 | `internal/locks`            | ✅   | ❌          | ⚠️      | ✅            | `locks/file_test.go`                                                                                        |
 | `internal/log`              | ✅   | ❌          | ❌      | ❌            | `log/log_test.go`                                                                                           |
 | `internal/ndm`              | ✅   | ❌          | ✅      | ✅            | `ndm/policy_test.go`, `ndm/wan_test.go`                                                                     |
 | `internal/proxyparse`       | ✅   | ❌          | ❌      | ❌            | `proxyparse/parse_test.go`                                                                                  |
 | `internal/selfupdate`       | ✅   | ❌          | ⚠️      | ✅            | `selfupdate/update_test.go`                                                                                 |
-| `internal/service`          | ✅   | ❌          | ⚠️      | ✅            | `service/{lifecycle,netfilter_hook,shim}_test.go`                                                           |
+| `internal/service`          | ✅   | ❌          | ⚠️      | ✅            | `service/{lifecycle,netfilter_hook,shim,writeutil}_test.go`                                                 |
 | `internal/singbox`          | ✅   | ❌          | ⚠️      | ✅            | `singbox/{config,download,install,version}_test.go`                                                         |
 | `internal/state`            | ✅   | ❌          | ❌      | ❌            | `state/state_test.go`, `state/managers_test.go`                                                             |
 | `internal/version`          | ✅   | ❌          | ❌      | ❌            | `version/version_test.go`                                                                                   |
 | `internal/naiveproxy`       | ✅   | ❌          | ⚠️      | ✅            | `naiveproxy/{config,download,extract,lifecycle}_test.go`                                                    |
 | `internal/peer`             | ✅   | ❌          | ⚠️      | ✅            | `peer/{mieru_config,mieru_peer,portalloc}_test.go`                                                          |
 | `internal/web`              | ✅   | ❌          | ⚠️      | ✅            | `web/{api,clash,server}_test.go`, `web/routingui_multicore_test.go`, `web/routingui_handlers_test.go`       |
+| `internal/core`             | ✅   | ❌          | ❌      | ✅            | `core/{checkconfig,detect,download,registry,validate}_test.go`                                              |
+| `internal/core/xray`        | ✅   | ❌          | ❌      | ✅            | `core/xray/{check,check_golden,coreadapter,download,install,render,render_rules,validate,version}_test.go` |
+| `internal/core/mihomo`      | ✅   | ❌          | ❌      | ✅            | `core/mihomo/{check,check_golden,download,install,render,render_rules,validate,version}_test.go`            |
+| `internal/core/corearchive` | ✅   | ❌          | ❌      | ❌            | `core/corearchive/{binarystream,install}_test.go`                                                           |
+| `internal/routing`          | ✅   | ❌          | ❌      | ✅            | `routing/{store,rulesetcheck}_test.go`                                                                      |
+| `internal/netif`            | ✅   | ❌          | ❌      | ❌            | `netif/{lan,wan}_test.go`                                                                                   |
+| `internal/preset`           | ✅   | ❌          | ❌      | ✅            | `preset/preset_test.go`                                                                                     |
+| `internal/elfcheck`         | ✅   | ❌          | ❌      | ❌            | `elfcheck/elfcheck_interp_test.go`                                                                           |
+| `pkg/types`                 | ✅   | ❌          | ❌      | ❌            | `pkg/types/{types,routing,outbound_canonical}_test.go`                                                       |
 
 **Легенда:** ✅ покрыто / ❌ не покрыто / ⚠️ частично (сценарий в test-roadmap, не автоматизирован)
 
@@ -193,7 +202,7 @@ go test -tags=integration -v -timeout 60s ./internal/firewall/...
 
 ## 4.5. Регрессии и hardening-тесты (v1.4.0)
 
-**Файл:** `internal/firewall/applier_test.go`, `internal/service/lifecycle_test.go`, `internal/core/xray/render_test.go`
+**Файл:** `internal/firewall/applier_test.go`, `internal/service/lifecycle_test.go`, `internal/core/xray/render_test.go`, `internal/routing/store_test.go`
 
 | Тест                                             | Что проверяет                                                                                    |
 |--------------------------------------------------|--------------------------------------------------------------------------------------------------|
@@ -201,8 +210,8 @@ go test -tags=integration -v -timeout 60s ./internal/firewall/...
 | `TestService_DefaultShimPath_IsS99`              | Путь init.d shim = `/opt/etc/init.d/S99signcraze` (расположен после S51dropbear)                |
 | `TestRender_Geosite_NoDat_ReturnsError`          | xray без `geosite.dat` возвращает ошибку с подсказкой `--update-geo --core xray`               |
 | `TestRender_Geoip_NoDat_ReturnsError`            | xray без `geoip.dat` возвращает ошибку с подсказкой `--update-geo --core xray`                 |
-| `TestRender_GeoAssets_DatPresent_OK`             | Успешный путь: оба dat-файла присутствуют → рендер без ошибок                                  |
-| `TestFilterUnreferencedRuleSets`                 | (skipped — fix отложен) фильтрация неиспользуемых rule-set из routing.json                     |
+| `TestRender_Geosite_DatPresent_OK`               | Успешный путь: оба dat-файла присутствуют → рендер без ошибок                                  |
+| `TestFilterUnreferencedRuleSets`                 | `internal/routing/store_test.go` — фильтрация неиспользуемых rule-set из routing.json (активен, не skipped) |
 | `FuzzMieruWireProto`                             | Fuzz-корпус: 3 файла в `internal/peer/testdata/fuzz/` — см. §4.4                                |
 
 ---
@@ -214,6 +223,7 @@ go test -tags=integration -v -timeout 60s ./internal/firewall/...
 
 **Скрипты:** `scripts/e2e/run.sh` запускает оркестрованный прогон через шаги:
 `00-build` → `01-install` → `02-policy` → `03-dpi-hostlist` → `04-reboot` → `99-uninstall`.
+Шаги `01`-`99` (кроме `00-build`) подключают общий `scripts/e2e/lib.sh`.
 
 Детальные сценарии: `tasks/test-roadmap.md` §2–§26. Ключевые E2E-чекпоинты:
 
@@ -243,18 +253,27 @@ go test -tags=integration -v -timeout 60s ./internal/firewall/...
 | `test`                    | `go mod tidy && go vet ./... && go test -race -timeout 5m ./...`    | push main, PR     |
 | `lint`                    | `golangci-lint` (errcheck, govet, staticcheck, revive, errorlint)   | push main, PR     |
 | `build` (×4)              | cross-compile: `arm64`, `arm7`, `mipsle`, `mips`                    | push main, PR     |
-| `singbox-check`           | golden canonical sing-box configs → `sing-box check`                | push main, PR     |
-| `firewall-integration`    | Docker `--privileged` → `internal/firewall/integration_test.go`     | push main, PR     |
-| `xray-check`              | golden canonical xray configs → `xray test`                         | push main, PR     |
-| `mihomo-check`            | golden canonical mihomo YAML → `mihomo -t`                          | push main, PR     |
+| `firewall-integration`    | Docker `--privileged` → `internal/firewall/integration_test.go` (`needs: [build, test]`) | push main, PR |
+
+Golden-проверки ядер живут в трёх ОТДЕЛЬНЫХ workflow-файлах (не в `ci.yml`) — каждый тонкий caller переиспользуемого `.github/workflows/core-golden.yml` (`workflow_call`, единственный job `golden`, `name: ${{ inputs.core-name }} check golden`). Отображаемое имя GitHub-check составное: `<job-id вызывающего файла> / <core-name> check golden`.
+
+| Файл                     | Job-id           | Отображаемое имя check                  | Тест-путь                          | Триггер  |
+|--------------------------|------------------|------------------------------------------|-------------------------------------|----------|
+| `singbox-check.yml`      | `singbox-check`  | `singbox-check / sing-box check golden`  | `./internal/singbox/...`            | push, PR |
+| `xray-integration.yml`   | `xray-check`     | `xray-check / xray check golden`         | `./internal/core/xray/...`          | push, PR |
+| `mihomo-integration.yml` | `mihomo-check`   | `mihomo-check / mihomo check golden`     | `./internal/core/mihomo/...`        | push, PR |
 
 **Build-tag CI mapping:**
 
 | Build tag / CI job | Назначение |
 |-------------------|------------|
-| `singboxcheck` (CI `singbox-check`) | валидация canonical sing-box конфигов через `sing-box check` |
-| `xraycheck` (CI `xray-check`) | валидация canonical xray конфигов через `xray test` |
-| `mihomocheck` (CI `mihomo-check`) | валидация canonical mihomo YAML через `mihomo -t` |
+| `singboxcheck` (CI `singbox-check / sing-box check golden`) | валидация canonical sing-box конфигов через `sing-box check` |
+| `xraycheck` (CI `xray-check / xray check golden`) | валидация canonical xray конфигов через `xray test` |
+| `mihomocheck` (CI `mihomo-check / mihomo check golden`) | валидация canonical mihomo YAML через `mihomo -t` |
+
+Все workflow (`ci.yml`, `core-golden.yml`, `release.yml`) используют
+`go-version-file: go.mod` — единый источник версии Go без хардкода строки
+версии.
 
 ### Что НЕ запускается в CI (ручная процедура)
 

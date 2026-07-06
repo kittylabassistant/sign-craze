@@ -152,8 +152,9 @@ GitHub Security Advisories, см.
 
 5. **PR description:** что сделано, зачем, как тестировалось.
    Скриншоты для web-UI. Ссылка на issue (`Closes #N`).
-6. **CI зелёный:** `ci.yml`, `firewall-integration.yml`,
-   `singbox-check.yml` и релевантные integration workflows
+6. **CI зелёный:** `ci.yml` (включает джобу `firewall-integration`,
+   privileged Docker), reusable `core-golden.yml` (вызывается из
+   `singbox-check.yml`/`xray-integration.yml`/`mihomo-integration.yml`)
    должны пройти. Падающий CI блокирует merge.
 7. **Размер PR:** желательно ≤ 400 строк изменённого кода
    без учёта тестов. Большие изменения дробите на серию PR
@@ -217,7 +218,7 @@ Smoke-test в QEMU `qemu-user-static` ловит часть проблем
   `types.RouteRule → <core native rule>`. Логика трансляции не смешивается
   с рендером шаблона (`render.go`). При добавлении нового матчера в
   `types.RouteRule` обновите все три `render_rules.go` и добавьте
-  table-driven тест-кейс в `render_routing_test.go` того же пакета.
+  table-driven тест-кейс в `render_rules_test.go` того же пакета.
 - **Errors:** обязательная обёртка `fmt.Errorf("context: %w", err)`.
   Сравнение через `errors.Is`/`errors.As`. Без `panic` в runtime
   (только в `init` и при невозможной ситуации).
@@ -237,12 +238,14 @@ Smoke-test в QEMU `qemu-user-static` ловит часть проблем
   - **Мульти-ядерные e2e тесты:** `internal/web/routingui_multicore_test.go`.
     При изменении Routing Editor или адаптера ядра запускайте эти тесты явно:
     `go test ./internal/web/ -run TestE2E_FullFlow`.
-  - **Синхронизация ValidCores:** `internal/state/cores_sync_test.go` (таг `core`).
+  - **Синхронизация ValidCores:** `internal/cli/cores_sync_test.go`
+    (`TestValidCoresMatchesRegistry`, без build tag — часть обычного `go test ./...`).
     Обязателен при добавлении или удалении ядра из registry.
   - **Per-core CI**: тесты под конкретный бинарь-ядро помечаются тагами
-    `xraycheck`, `mihomocheck`, `singboxcheck` и запускаются в отдельных
-    CI-джобах (см. `.github/workflows/`). Локально:
-    `go test -tags xraycheck ./internal/core/xray/... -run TestRender_Routing`.
+    `xraycheck`, `mihomocheck`, `singboxcheck` и запускаются через reusable
+    `core-golden.yml` из caller-джоб `xray-integration.yml`/`mihomo-integration.yml`/
+    `singbox-check.yml`. Локально:
+    `go test -tags xraycheck ./internal/core/xray/... -run TestXrayCheck_Golden`.
 - **Форматирование:** `gofmt` обязателен (CI ловит
   несоответствие). `goimports` приветствуется.
 - **Lint:** `golangci-lint` (см. `.golangci.yml`, если есть; иначе

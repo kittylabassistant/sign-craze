@@ -2,7 +2,7 @@
 
 Этот документ является единым справочником по поддерживаемым архитектурам, прошивкам, устройствам, kernel-модулям и внешним зависимостям. Он заменяет разрозненные упоминания в README. Актуален для sign-craze v0.3.x+ (TUN-режим, без [TPROXY](https://www.kernel.org/doc/html/latest/networking/tproxy.html) как dependency на ядро).
 
-Последнее обновление: v1.6.4 (2026-07-06).
+Последнее обновление: v1.6.4 (2026-07-07).
 
 ---
 
@@ -290,7 +290,7 @@ Sign-craze поддерживает три взаимозаменяемых пр
 |--------|----------|------|--------|---------------------------------------|
 | `.srs` (SRS бинарный) | ✅ native | ❌ warning | ❌ warning | sing-box: прямая передача в `rule_set`; xray/mihomo: warning при validate |
 | `.mrs` (mihomo rule-set) | ❌ warning | ❌ warning | ✅ native | mihomo: `.srs` URL из routing.json конвертируется в `.mrs` через `ruleSetSources`-таблицу |
-| `geoip.dat` / `geosite.dat` | ❌ | ✅ native | ⚠️ legacy v2ray | xray: ищет dat-файлы в рабочей директории или `XRAY_ASSET_LOCATION` |
+| `geoip.dat` / `geosite.dat` | ❌ | ✅ native | ⚠️ legacy v2ray | xray: sign-craze скачивает и верифицирует (SHA256) через `--update-geo --core xray` в `/opt/etc/sign-craze/xray/assets` |
 | `geoip:<tag>` matcher (inline) | ✅ | ✅ | ✅ | все ядра: inline матчер в правиле без внешнего файла |
 | `geosite:<tag>` matcher (inline) | ✅ | ✅ | ✅ | все ядра: inline матчер в правиле без внешнего файла |
 
@@ -300,7 +300,9 @@ Sign-craze поддерживает три взаимозаменяемых пр
 
 1. URL из `rule_set_sources` → маппинг через `ruleSetSources` translation table.
 2. `geoip:` и `geosite:` prefix-матчеры записываются в правило напрямую (`ip` / `domain` поля routing rule).
-3. `.dat`-файлы xray ищет сам; sign-craze не управляет их загрузкой — только geo-файлы для sing-box/mihomo обновляются через `--update-geo`.
+3. `.dat`-файлы (geosite.dat/geoip.dat) sign-craze скачивает и верифицирует сам: `--update-geo --core xray` (и автоматически при `--core-install xray`) кладёт их в `/opt/etc/sign-craze/xray/assets` с SHA256-проверкой против `Loyalsoldier/v2ray-rules-dat`. Рендер конфига xray проверяет наличие обоих файлов перед стартом и подсказывает `--update-geo --core xray`, если их нет (`internal/core/xray/render_rules.go`).
+
+**Обновление geo-данных по ядру** (`sign-craze --update-geo [--core <name>]`): `sing-box` — прежнее поведение, manifest `.srs` (SHA256, streaming) + заполнение kernel ipset; `xray` — `.dat` из Loyalsoldier/v2ray-rules-dat, как выше; `mihomo` — no-op (rule-providers mihomo скачивает сам, `--update-geo` только печатает подсказку).
 
 **Пример трансляции:**
 
