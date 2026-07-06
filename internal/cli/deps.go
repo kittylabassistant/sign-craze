@@ -210,6 +210,39 @@ func saveState(s *state.State) error {
 	return state.Save(state.DefaultPath, s)
 }
 
+// withStateMutationLock/Load/Save — сеймы поверх withLock/loadState/saveState,
+// подменяемые в тестах. Продакшен всегда идёт через реальные реализации
+// (значения по умолчанию ниже): withLock/loadState/saveState жёстко используют
+// абсолютные пути (/opt/var/lock/sign-craze.lock, /opt/etc/sign-craze/state.json),
+// недоступные для записи вне роутера/root, поэтому withStateMutation нельзя
+// протестировать "по-настоящему" — тесты подставляют фейки вместо этих трёх var.
+var (
+	withStateMutationLock = withLock
+	withStateMutationLoad = loadState
+	withStateMutationSave = saveState
+)
+
+// withStateMutation — общий скелет CLI-хендлеров, которые сериализованно
+// (withLock) читают state.json, мутируют один-два поля и сохраняют обратно:
+// withLock → loadState → mutate → saveState. Если mutate вернёт ошибку —
+// saveState НЕ вызывается, state.json не трогается.
+//
+// Печать результата (Printf/Println) остаётся на call-site ПОСЛЕ успешного
+// возврата withStateMutation — сам хелпер ничего не печатает и лок к моменту
+// печати уже снят.
+func withStateMutation(ctx context.Context, mutate func(*state.State) error) error {
+	return withStateMutationLock(ctx, func() error {
+		st, err := withStateMutationLoad()
+		if err != nil {
+			return err
+		}
+		if err := mutate(st); err != nil {
+			return err
+		}
+		return withStateMutationSave(st)
+	})
+}
+
 // configPath — путь к /opt/etc/sign-craze/config.json (sing-box).
 // Используется legacy кодом (ConfigRW в cmd_ui для админ REST API).
 // Для активного ядра используйте core.Active(state.Core).ConfigPath().

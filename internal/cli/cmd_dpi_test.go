@@ -11,6 +11,70 @@ import (
 	"github.com/kittylabassistant/sign-craze/internal/state"
 )
 
+// --- withStateMutation: поведенческие тесты хелпера (R14) ---
+//
+// withStateMutation в проде идёт через реальные withLock/loadState/saveState,
+// жёстко привязанные к /opt/var/lock/sign-craze.lock и
+// /opt/etc/sign-craze/state.json — недоступным для записи вне роутера/root.
+// Поэтому тесты подменяют сеймы withStateMutationLock/Load/Save фейками;
+// t.Cleanup восстанавливает оригиналы. t.Parallel() здесь не используется
+// (см. cmd_ports_test.go) — безопасно мутировать пакетные var.
+
+func TestWithStateMutation_ХэппиПас(t *testing.T) {
+	origLock, origLoad, origSave := withStateMutationLock, withStateMutationLoad, withStateMutationSave
+	t.Cleanup(func() {
+		withStateMutationLock, withStateMutationLoad, withStateMutationSave = origLock, origLoad, origSave
+	})
+
+	withStateMutationLock = func(_ context.Context, fn func() error) error { return fn() }
+	loaded := &state.State{}
+	withStateMutationLoad = func() (*state.State, error) { return loaded, nil }
+	var saved *state.State
+	withStateMutationSave = func(s *state.State) error {
+		saved = s
+		return nil
+	}
+
+	err := withStateMutation(context.Background(), func(s *state.State) error {
+		s.DPIEnabled = true
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("withStateMutation: %v", err)
+	}
+	if saved == nil || !saved.DPIEnabled {
+		t.Fatalf("saveState должен был получить мутированный state, получено: %+v", saved)
+	}
+}
+
+func TestWithStateMutation_ОшибкаМутации_НеСохраняет(t *testing.T) {
+	origLock, origLoad, origSave := withStateMutationLock, withStateMutationLoad, withStateMutationSave
+	t.Cleanup(func() {
+		withStateMutationLock, withStateMutationLoad, withStateMutationSave = origLock, origLoad, origSave
+	})
+
+	withStateMutationLock = func(_ context.Context, fn func() error) error { return fn() }
+	withStateMutationLoad = func() (*state.State, error) { return &state.State{}, nil }
+	saveCalled := false
+	withStateMutationSave = func(*state.State) error {
+		saveCalled = true
+		return nil
+	}
+
+	err := withStateMutation(context.Background(), func(*state.State) error {
+		return fmt.Errorf("инжектированная ошибка мутации")
+	})
+	if err == nil {
+		t.Fatal("ожидалась инжектированная ошибка мутации")
+	}
+	if !strings.Contains(err.Error(), "инжектированная ошибка мутации") {
+		t.Fatalf("ошибка должна прийти из mutate, получено: %v", err)
+	}
+	if saveCalled {
+		t.Error("saveState не должен был вызываться при ошибке mutate")
+	}
+}
+
 func TestValidateDPIStrategy_Допустимые(t *testing.T) {
 	ok := []string{
 		"--dpi-desync=fake,split2",

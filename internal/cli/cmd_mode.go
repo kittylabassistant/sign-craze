@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/kittylabassistant/sign-craze/internal/state"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
@@ -25,19 +26,17 @@ func handleMode(ctx context.Context, args []string) error {
 		return fmt.Errorf("--mode: %w", err)
 	}
 
-	return withLock(ctx, func() error {
-		st, err := loadState()
-		if err != nil {
-			return err
-		}
-		st.Mode = m
-		if err := saveState(st); err != nil {
-			return err
-		}
-		if err := regenerateConfig(ctx, st); err != nil {
-			return fmt.Errorf("--mode: regenerate config: %w", err)
-		}
-		fmt.Printf("Режим установлен в %q. Применить: sign-craze --restart\n", m)
+	var st *state.State
+	if err := withStateMutation(ctx, func(s *state.State) error {
+		s.Mode = m
+		st = s
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+	if err := regenerateConfig(ctx, st); err != nil {
+		return fmt.Errorf("--mode: regenerate config: %w", err)
+	}
+	fmt.Printf("Режим установлен в %q. Применить: sign-craze --restart\n", m)
+	return nil
 }

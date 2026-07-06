@@ -42,6 +42,23 @@ func withStateLock(parent context.Context, statePath string, fn func() error) er
 	return fn()
 }
 
+// withState — общий скелет Load→mutate→Save под withStateLock. Вынесен из
+// AddPort/DeletePort/AddExclude/DeleteExclude/SetTargets: единственное, чем
+// эти методы отличались друг от друга — что именно мутировать в *State.
+// Если mutate вернёт ошибку — Save НЕ вызывается (диск не тронут).
+func withState(ctx context.Context, statePath string, mutate func(*State) error) error {
+	return withStateLock(ctx, statePath, func() error {
+		s, err := Load(statePath)
+		if err != nil {
+			return err
+		}
+		if err := mutate(s); err != nil {
+			return err
+		}
+		return Save(statePath, s)
+	})
+}
+
 // SingboxVersion — функция получения версии sing-box; var для подмены в тестах.
 // По умолчанию вызывает singbox.BinaryVersion (внедряется в init()).
 var SingboxVersion = func(_ context.Context, _ exectx.Runner, _ string) (string, error) {
@@ -199,27 +216,19 @@ func (m *portsManager) AddPort(ctx context.Context, port int) error {
 	if port <= 0 || port > 65535 {
 		return fmt.Errorf("ports: некорректный порт %d", port)
 	}
-	return withStateLock(ctx, m.statePath, func() error {
-		s, err := Load(m.statePath)
-		if err != nil {
-			return err
-		}
+	return withState(ctx, m.statePath, func(s *State) error {
 		for _, p := range s.Ports {
 			if int(p) == port {
 				return nil // идемпотентно
 			}
 		}
 		s.Ports = append(s.Ports, uint16(port))
-		return Save(m.statePath, s)
+		return nil
 	})
 }
 
 func (m *portsManager) DeletePort(ctx context.Context, port int) error {
-	return withStateLock(ctx, m.statePath, func() error {
-		s, err := Load(m.statePath)
-		if err != nil {
-			return err
-		}
+	return withState(ctx, m.statePath, func(s *State) error {
 		out := s.Ports[:0]
 		for _, p := range s.Ports {
 			if int(p) != port {
@@ -227,7 +236,7 @@ func (m *portsManager) DeletePort(ctx context.Context, port int) error {
 			}
 		}
 		s.Ports = out
-		return Save(m.statePath, s)
+		return nil
 	})
 }
 
@@ -264,27 +273,19 @@ func (m *excludesManager) AddExclude(ctx context.Context, cidr string) error {
 		}
 		cidr = fmt.Sprintf("%s/%d", ip.String(), bits)
 	}
-	return withStateLock(ctx, m.statePath, func() error {
-		s, err := Load(m.statePath)
-		if err != nil {
-			return err
-		}
+	return withState(ctx, m.statePath, func(s *State) error {
 		for _, e := range s.Excludes {
 			if e == cidr {
 				return nil
 			}
 		}
 		s.Excludes = append(s.Excludes, cidr)
-		return Save(m.statePath, s)
+		return nil
 	})
 }
 
 func (m *excludesManager) DeleteExclude(ctx context.Context, cidr string) error {
-	return withStateLock(ctx, m.statePath, func() error {
-		s, err := Load(m.statePath)
-		if err != nil {
-			return err
-		}
+	return withState(ctx, m.statePath, func(s *State) error {
 		out := s.Excludes[:0]
 		for _, e := range s.Excludes {
 			if e != cidr {
@@ -292,7 +293,7 @@ func (m *excludesManager) DeleteExclude(ctx context.Context, cidr string) error 
 			}
 		}
 		s.Excludes = out
-		return Save(m.statePath, s)
+		return nil
 	})
 }
 
@@ -325,13 +326,9 @@ func (m *dpiTargetsManager) SetTargets(ctx context.Context, targets []string) er
 		}
 		clean = append(clean, t)
 	}
-	return withStateLock(ctx, m.statePath, func() error {
-		s, err := Load(m.statePath)
-		if err != nil {
-			return err
-		}
+	return withState(ctx, m.statePath, func(s *State) error {
 		s.DPITargets = clean
-		return Save(m.statePath, s)
+		return nil
 	})
 }
 

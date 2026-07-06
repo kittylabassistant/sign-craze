@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 )
@@ -109,6 +110,59 @@ func TestPortsManager_ConcurrentAdd_NoLostUpdates(t *testing.T) {
 	}
 	if len(list) != N {
 		t.Errorf("len(ports) = %d, ожидалось %d (потеряны записи?): %v", len(list), N, list)
+	}
+}
+
+// TestWithState_ХэппиПас — mutate успешно применяется и попадает на диск.
+// Регрессионный тест для хелпера withState, вынесенного из
+// AddPort/DeletePort/AddExclude/DeleteExclude/SetTargets (Load→mutate→Save
+// под withStateLock).
+func TestWithState_ХэппиПас(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	if err := Save(path, &State{Ports: []uint16{80}}); err != nil {
+		t.Fatalf("Save initial: %v", err)
+	}
+
+	err := withState(context.Background(), path, func(s *State) error {
+		s.Ports = append(s.Ports, 443)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("withState: %v", err)
+	}
+
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(got.Ports) != 2 || got.Ports[0] != 80 || got.Ports[1] != 443 {
+		t.Errorf("Ports = %v, ожидалось [80 443]", got.Ports)
+	}
+}
+
+// TestWithState_ОшибкаМутации_НеСохраняет — если mutate возвращает ошибку,
+// Save не должен вызываться: state.json остаётся в исходном виде.
+func TestWithState_ОшибкаМутации_НеСохраняет(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	if err := Save(path, &State{Ports: []uint16{80}}); err != nil {
+		t.Fatalf("Save initial: %v", err)
+	}
+
+	wantErr := errors.New("инжектированная ошибка мутации")
+	err := withState(context.Background(), path, func(s *State) error {
+		s.Ports = append(s.Ports, 9999) // не должно попасть на диск
+		return wantErr
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("ожидалась инжектированная ошибка, получено: %v", err)
+	}
+
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(got.Ports) != 1 || got.Ports[0] != 80 {
+		t.Errorf("после ошибки мутации Ports = %v, ожидалось [80] (Save не должен был вызваться)", got.Ports)
 	}
 }
 
