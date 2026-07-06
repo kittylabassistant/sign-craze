@@ -3,23 +3,15 @@
 # Запускать на хосте разработчика.
 set -eu
 
-KEENETIC_HOST="${KEENETIC_HOST:?Укажите KEENETIC_HOST}"
-KEENETIC_USER="${KEENETIC_USER:-root}"
-KEENETIC_KEY="${KEENETIC_KEY:-${HOME}/.ssh/keenetic}"
+# shellcheck source=scripts/e2e/lib.sh
+. "$(dirname "$0")/lib.sh"
+
+# Короткий ConnectTimeout: во время ожидания перезагрузки роутер недоступен,
+# и мы не хотим, чтобы каждая попытка ssh зависала на дефолтном таймауте.
+SSH_OPTS="-o ConnectTimeout=5"
+
 REBOOT_TIMEOUT=180  # секунд ожидания восстановления SSH
 POLL_INTERVAL=5     # секунд между попытками
-STEP="04-reboot"
-
-log()  { printf '[%s] %s\n' "${STEP}" "$*"; }
-fail() { log "FAIL:${STEP}: $*"; exit 1; }
-pass() { log "PASS:${STEP}"; }
-
-ssh_cmd() {
-    # shellcheck disable=SC2029
-    ssh -i "${KEENETIC_KEY}" -o StrictHostKeyChecking=accept-new \
-        -o ConnectTimeout=5 \
-        "${KEENETIC_USER}@${KEENETIC_HOST}" "$@"
-}
 
 # ---------- инициируем перезагрузку ----------
 log "Отправляем команду reboot на роутер..."

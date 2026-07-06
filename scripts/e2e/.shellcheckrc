@@ -1,0 +1,6 @@
+# Конфиг shellcheck для scripts/e2e/.
+# 01-04, 99 подключают lib.sh динамически: `. "$(dirname "$0")/lib.sh"`.
+# external-sources=true позволяет shellcheck реально прочитать lib.sh
+# по указанному в директиве `# shellcheck source=...` пути и проверить
+# использование переменных/функций из него (например SSH_OPTS в ssh_cmd).
+external-sources=true

@@ -3,20 +3,8 @@
 # Запускать на хосте разработчика.
 set -eu
 
-KEENETIC_HOST="${KEENETIC_HOST:?Укажите KEENETIC_HOST}"
-KEENETIC_USER="${KEENETIC_USER:-root}"
-KEENETIC_KEY="${KEENETIC_KEY:-${HOME}/.ssh/keenetic}"
-STEP="99-uninstall"
-
-log()  { printf '[%s] %s\n' "${STEP}" "$*"; }
-fail() { log "FAIL:${STEP}: $*"; exit 1; }
-pass() { log "PASS:${STEP}"; }
-
-ssh_cmd() {
-    # shellcheck disable=SC2029
-    ssh -i "${KEENETIC_KEY}" -o StrictHostKeyChecking=accept-new \
-        "${KEENETIC_USER}@${KEENETIC_HOST}" "$@"
-}
+# shellcheck source=scripts/e2e/lib.sh
+. "$(dirname "$0")/lib.sh"
 
 # ---------- удаление ----------
 log "Запускаем --uninstall на роутере..."
