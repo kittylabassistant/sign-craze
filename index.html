@@ -113,9 +113,8 @@ href="https://github.com/kittylabassistant/sign-craze/blob/main/docs/LICENSE.ru.
 <tbody>
 <tr class="odd">
 <td><strong><a href="Installation.html">Installation</a></strong></td>
-<td>Пошаговая инструкция: от форматирования флешки и <a
-href="https://openwrt.org/docs/guide-user/additional-software/opkg">opkg</a>/IPK
-до запуска прокси</td>
+<td>Пошаговая инструкция: от форматирования флешки до запуска
+прокси</td>
 </tr>
 <tr class="even">
 <td><strong><a href="Install-Behind-DPI.html">Install за
@@ -205,10 +204,8 @@ v1.5.0). Отдельно DPI-пресеты
 скриптов и мониторинга (v1.4.0)</li>
 <li>ANSI-цветной вывод CLI с opt-out <code>--no-color</code> /
 <code>NO_COLOR</code> / <code>FORCE_COLOR</code> (v1.2.0)</li>
-<li>Два канала установки: бинарь из GitHub Releases
-(<code>install.sh</code>) или <strong>opkg/IPK-пакет для <a
-href="https://entware.net/">Entware</a></strong>
-(<code>opkg install sign-craze</code>, v1.6.0)</li>
+<li>Установка бинаря из GitHub Releases через <code>install.sh</code>
+(curl/wget | sh, либо offline bundle)</li>
 </ul>
 <h2 id="поддерживаемые-архитектуры">Поддерживаемые архитектуры</h2>
 <table>
@@ -245,7 +242,7 @@ href="https://entware.net/">Entware</a></strong>
 <p>Целевой размер бинаря после <code>upx --lzma</code>: ≤ 4 МБ.
 RAM-бюджет: 128 МБ (общий RSS sing-box + sign-craze + nfqws2).</p>
 <h2 id="история-версий-ключевое">История версий (ключевое)</h2>
-<p>Текущая версия — <strong>v1.6.3</strong>. Полный журнал изменений — в
+<p>Текущая версия — <strong>v1.6.4</strong>. Полный журнал изменений — в
 <a
 href="https://github.com/kittylabassistant/sign-craze/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
 <table>
@@ -289,8 +286,13 @@ builds</td>
 </tr>
 <tr class="odd">
 <td>v1.6.x</td>
-<td>opkg/IPK канал дистрибуции для Entware; удаление мёртвого кода и
-bcrypt auth-каркаса</td>
+<td>удаление мёртвого кода и bcrypt auth-каркаса</td>
+</tr>
+<tr class="even">
+<td>v1.6.4</td>
+<td>Cleanup-pass: <code>--update-geo --core xray</code> (гео-данные для
+xray), установка только через <code>install.sh</code>
+(opkg/.ipk-дистрибуция вырезана)</td>
 </tr>
 </tbody>
 </table>
