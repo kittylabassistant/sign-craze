@@ -29,7 +29,7 @@
 - ПК с Linux, macOS или Windows.
 - Подписка на VPN/прокси-сервис: URL формата `vless://...`, `vmess://...`, `ss://...`, `trojan://...`, `http://...` или `socks5://...`.
 - SSH-клиент (встроен в Linux/macOS, для Windows — PuTTY или встроенный `ssh.exe`).
-- Пакеты `iptables` и `ipset` в Entware (`opkg install iptables ipset`) — нужны для firewall-правил sign-craze. При установке sign-craze через opkg ставятся автоматически как зависимости; при установке через `curl | sh` доустановите их вручную перед `sign-craze --start`.
+- Пакеты `iptables` и `ipset` в Entware (`opkg install iptables ipset`) — нужны для firewall-правил sign-craze; доустановите их вручную перед `sign-craze --start`.
 
 ---
 
@@ -265,52 +265,11 @@ free -m
 
 ## 5. Установка sign-craze
 
-### 5.1. Способ 1: opkg (рекомендуется)
-
-Если Entware установлен (шаги 3–4 выполнены) — используйте [opkg](https://openwrt.org/docs/guide-user/additional-software/opkg). Даёт автоматические обновления через `opkg upgrade`, проверку подписи и автоматическую установку зависимостей (ipset, iptables, curl и др.).
-
-```sh
-# Определить архитектуру роутера
-opkg print-architecture | grep -v all
-# Примеры: mipsel-3.4 (MT7621 / Giga / Ultra), armv7-3.2 (KN-1011), aarch64-3.10 (Hero 4G+)
-
-ARCH=mipsel-3.4   # подставьте вашу архитектуру
-
-# Добавить публичный ключ feed
-mkdir -p /opt/etc/opkg/keys
-curl -fsSL https://kittylabassistant.github.io/sign-craze/entware/sign-craze-feed.pub \
-  > /opt/etc/opkg/keys/sign-craze-feed.pub
-
-# Подключить feed
-echo "src/gz signcraze https://kittylabassistant.github.io/sign-craze/entware/${ARCH}" \
-  >> /opt/etc/opkg.conf
-echo "option signed_packages 'sign-craze-feed'" >> /opt/etc/opkg.conf
-
-# Установить
-opkg update
-opkg install sign-craze
-```
-
-Обновления: `opkg upgrade sign-craze`. Удаление: `opkg remove sign-craze` (конфиги в `/opt/etc/sign-craze/` сохраняются).
-
-> [!NOTE]
-> **Offline-вариант** (feed недоступен): скачайте `.ipk` на десктопе и скопируйте на роутер:
-> ```sh
-> VER=1.6.3 ARCH=mipsel-3.4
-> wget "https://github.com/kittylabassistant/sign-craze/releases/download/v${VER}/sign-craze_${VER}_${ARCH}.ipk"
-> scp sign-craze_${VER}_${ARCH}.ipk root@192.168.1.1:/tmp/
-> # На роутере:
-> opkg install /tmp/sign-craze_${VER}_${ARCH}.ipk
-> ```
-> Переход с `install.sh` на opkg: скрипт `preinst` автоматически сохранит старый бинарь как `/opt/sbin/sign-craze.pre-opkg`; конфиги в `/opt/etc/sign-craze/` не трогаются.
-
-После установки через opkg — перейдите к [шагу 6 (конфигурация)](#6-конфигурация-sign-craze).
-
-### 5.2. Способ 2: curl | sh (альтернатива)
+### 5.1. Способ 1: curl | sh (рекомендуется)
 
 > **Важно**: [BusyBox](https://busybox.net/) `wget` на Keenetic собран **без SSL** и не поддерживает HTTPS — выдаст `not an http or ftp url`. Также BusyBox `od` не поддерживает опцию `-t`. Поэтому установка идёт через `curl` (с `-k` — без проверки сертификатов) или через `wget-ssl` из Entware.
 
-#### 5.2.1. Установить curl (один раз)
+#### 5.1.1. Установить curl (один раз)
 
 ```sh
 opkg update
@@ -323,7 +282,7 @@ opkg install curl
 opkg install wget-ssl
 ```
 
-#### 5.2.2. Запустить установщик
+#### 5.1.2. Запустить установщик
 
 ```sh
 # По SSH, в Entware shell на роутере
@@ -345,7 +304,7 @@ https_proxy=http://<host>:<port> curl -fsSL https://github.com/kittylabassistant
 - Проверит SHA256 (если файл `.sha256` доступен).
 - Атомарно установит в `/opt/sbin/sign-craze`.
 
-#### 5.2.3. Возможные ошибки
+#### 5.1.3. Возможные ошибки
 
 | Ошибка | Причина | Решение |
 |--------|---------|---------|

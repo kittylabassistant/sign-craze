@@ -16,7 +16,7 @@ Go-утилита для управления межсетевым экрано�
 
 | Страница | Содержание |
 | ---------- | ----------- |
-| **[Installation](Installation)** | Пошаговая инструкция: от форматирования флешки и [opkg](https://openwrt.org/docs/guide-user/additional-software/opkg)/IPK до запуска прокси |
+| **[Installation](Installation)** | Пошаговая инструкция: от форматирования флешки до запуска прокси |
 | **[Install за DPI](Install-Behind-DPI)** | Установка, когда GitHub/CDN недоступны напрямую (offline-метод) |
 | **[Routing](Routing)** | Как работает маршрутизация, порты, пресеты |
 | **[Routing Reference](Routing-Reference)** | Справочник: схема `routing.json`, теги, rule-sets |
@@ -40,7 +40,7 @@ Go-утилита для управления межсетевым экрано�
 - Резервное копирование и восстановление конфигурации
 - Диагностический режим: `--diag` с PASS/WARN/FAIL по каждому пункту; `--diag --json` — машиночитаемый вывод для скриптов и мониторинга (v1.4.0)
 - ANSI-цветной вывод CLI с opt-out `--no-color` / `NO_COLOR` / `FORCE_COLOR` (v1.2.0)
-- Два канала установки: бинарь из GitHub Releases (`install.sh`) или **opkg/IPK-пакет для [Entware](https://entware.net/)** (`opkg install sign-craze`, v1.6.0)
+- Установка бинаря из GitHub Releases через `install.sh` (curl/wget | sh, либо offline bundle)
 
 ## Поддерживаемые архитектуры
 
@@ -65,7 +65,7 @@ Go-утилита для управления межсетевым экрано�
 | v1.3.0 | Supervised peers: naiveproxy + mieru (process chain через sing-box) |
 | v1.4.x | Пост-аудитный hardening: firewall batching, `--diag --json`, cosign/SLSA provenance, reproducible builds |
 | v1.5.0 | CLI `--preset <name>` / `--preset-list` — пресеты роутинга прямо при установке |
-| v1.6.x | opkg/IPK канал дистрибуции для Entware; удаление мёртвого кода и bcrypt auth-каркаса |
+| v1.6.x | удаление мёртвого кода и bcrypt auth-каркаса |
 
 ## Структура файлов на роутере
 

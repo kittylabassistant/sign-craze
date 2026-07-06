@@ -44,22 +44,17 @@ Go-утилита для управления межсетевым экрано�
 
 ## TL;DR / Быстрый старт
 
-Sign-craze управляет firewall-правилами на роутере [Keenetic](https://help.keenetic.com/hc/ru) и запускает прокси-ядро ([sing-box](https://sing-box.sagernet.org/), [xray](https://xtls.github.io/) или [mihomo](https://wiki.metacubex.one/)) для обхода DPI. Установка через [opkg](https://openwrt.org/docs/guide-user/additional-software/opkg) ([Entware](https://entware.net/)) — рекомендуемый способ:
+Sign-craze управляет firewall-правилами на роутере [Keenetic](https://help.keenetic.com/hc/ru) и запускает прокси-ядро ([sing-box](https://sing-box.sagernet.org/), [xray](https://xtls.github.io/) или [mihomo](https://wiki.metacubex.one/)) для обхода DPI. Установка через `install.sh` ([Entware](https://entware.net/) обязателен):
 
 ```sh
-# Определить arch роутера
-opkg print-architecture | grep -v all   # пример: mipsel-3.4
-ARCH=mipsel-3.4
-
-# Добавить feed и установить
-echo "src/gz signcraze https://kittylabassistant.github.io/sign-craze/entware/${ARCH}" >> /opt/etc/opkg.conf
-opkg update && opkg install sign-craze
+# Определить архитектуру и установить последний релиз
+curl -fsSL https://github.com/kittylabassistant/sign-craze/releases/latest/download/install.sh | sh
 
 # Настроить (запросит URL прокси, ядро, режим)
 sign-craze --install
 ```
 
-Подробная инструкция: [wiki/Installation](https://github.com/kittylabassistant/sign-craze/wiki) · [Способ 2: curl | sh](#способ-2-curl--sh-альтернатива) · [Способ 3: offline bundle](#способ-3-offline-bundle-альтернатива).
+Подробная инструкция: [wiki/Installation](https://github.com/kittylabassistant/sign-craze/wiki) · [Способ 2: offline bundle](#способ-2-offline-bundle-альтернатива).
 
 ## Возможности
 
@@ -92,80 +87,11 @@ sign-craze --install
 - Роутер Keenetic с установленным [Entware](https://help.keenetic.com/hc/ru/articles/360021214160)
 - Доступ к интернету с роутера (для загрузки sing-box при установке)
 - Свободное место на `/opt`: минимум 30 МБ
-- Пакеты `iptables` и `ipset` — нужны для firewall-правил. При установке через opkg (Способ 1) ставятся автоматически как зависимости; при установке через `curl | sh` (Способ 2) поставьте вручную: `opkg install iptables ipset`
+- Пакеты `iptables` и `ipset` — нужны для firewall-правил, поставьте вручную перед установкой: `opkg install iptables ipset`
 
 ## Установка
 
-### Способ 1: opkg (рекомендуется)
-
-Если Entware установлен на роутере, используйте opkg - это даёт автоматические обновления через `opkg upgrade`, проверку подписи и установку зависимостей.
-
-#### 1.1 Через opkg feed (рекомендуется)
-
-```sh
-# 1. Скачать публичный ключ feed для верификации подписи
-mkdir -p /opt/etc/opkg/keys
-curl -fsSL https://kittylabassistant.github.io/sign-craze/entware/sign-craze-feed.pub \
-  > /opt/etc/opkg/keys/sign-craze-feed.pub
-
-# 2. Определить архитектуру роутера (выбрать одну из 4)
-ARCH=mipsel-3.4   # или aarch64-3.10, armv7-3.2, mips-3.4
-
-# 3. Добавить feed в opkg.conf
-echo "src/gz signcraze https://kittylabassistant.github.io/sign-craze/entware/${ARCH}" \
-  >> /opt/etc/opkg.conf
-echo "option signed_packages 'sign-craze-feed'" >> /opt/etc/opkg.conf
-
-# 4. Установить
-opkg update
-opkg install sign-craze
-
-# 5. Настроить (интерактивно)
-sign-craze --install
-```
-
-Обновления через `opkg upgrade sign-craze` - opkg сам скачает новую версию, проверит подпись, запустит postinst скрипт (`--restart` если сервис был активен).
-
-Удаление: `opkg remove sign-craze` (конфиги в `/opt/etc/sign-craze/` сохраняются).
-
-Как определить архитектуру роутера: `opkg print-architecture | grep -v all`.
-
-| Роутер (примеры) | Архитектура |
-|---|---|
-| Keenetic Giga/Ultra/Hopper (MT7621) | `mipsel-3.4` |
-| Keenetic KN-1011 (ARM Cortex-A7) | `armv7-3.2` |
-| Keenetic Hero 4G+ / новые ARM64 | `aarch64-3.10` |
-| Старые big-endian MIPS | `mips-3.4` |
-
-#### 1.2 Offline установка .ipk (без feed)
-
-Если нет интернета на роутере или feed недоступен:
-
-```sh
-# На локальной машине: скачать .ipk нужной архитектуры из GitHub Releases
-ARCH=mipsel-3.4
-VER=1.6.3
-wget "https://github.com/kittylabassistant/sign-craze/releases/download/v${VER}/sign-craze_${VER}_${ARCH}.ipk"
-wget "https://github.com/kittylabassistant/sign-craze/releases/download/v${VER}/sign-craze_${VER}_${ARCH}.ipk.sha256"
-
-# Проверить sha256
-sha256sum -c "sign-craze_${VER}_${ARCH}.ipk.sha256"
-
-# Скопировать на роутер
-scp sign-craze_${VER}_${ARCH}.ipk root@192.168.1.1:/tmp/
-
-# На роутере
-opkg install /tmp/sign-craze_${VER}_${ARCH}.ipk
-sign-craze --install
-```
-
-#### Миграция с install.sh на opkg
-
-Если sign-craze уже установлен через `install.sh` (старый способ), при `opkg install` скрипт `preinst` автоматически сохранит существующий бинарь как `/opt/sbin/sign-craze.pre-opkg` и продолжит установку. Конфиги в `/opt/etc/sign-craze/` не трогаются. После проверки что новый бинарь работает (`sign-craze --version`), старый бэкап можно удалить: `rm /opt/sbin/sign-craze.pre-opkg`.
-
----
-
-### Способ 2: curl | sh (альтернатива)
+### Способ 1: curl | sh (рекомендуется)
 
 > [BusyBox](https://busybox.net/) `wget` на Keenetic без SSL - нужен `curl` (или `wget-ssl` из Entware): `opkg install curl`.
 
@@ -194,7 +120,7 @@ sign-craze --start
 > `sing-box` загружается с GitHub Releases во время `--install` и **не входит** в sign-craze.
 > `nfqws2` загружается **только при первом `sign-craze --dpi on`** или при `sign-craze --install --with-dpi`. DPI-обход отключён по умолчанию (opt-in). Флаг `--with-dpi` устанавливает nfqws2 + blob-файлы и сразу включает DPI с preset `discord-youtube` (out-of-box работа YouTube + Discord). См. [wiki/FAQ → «Работает ли DPI/nfqws2 из коробки»](https://github.com/kittylabassistant/sign-craze/wiki/FAQ#работает-ли-dpinfqws2-из-коробки).
 
-### Способ 3: offline bundle (альтернатива)
+### Способ 2: offline bundle (альтернатива)
 
 Если на роутере нет интернета: скачайте bundle на машине с интернетом, перенесите по `scp` и запустите локально.
 

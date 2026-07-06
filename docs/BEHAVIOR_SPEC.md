@@ -34,7 +34,6 @@
 - [6. Web UI API](#6-web-ui-api)
 - [7. Supervised peers — внешние процессы, управляемые sign-craze](#7-supervised-peers--внешние-процессы-управляемые-sign-craze)
 - [8. Supervised peers — naiveproxy](#8-supervised-peers--naiveproxy)
-- [§10. opkg lifecycle](#10-opkg-lifecycle)
 
 ---
 
@@ -1106,49 +1105,3 @@ outbounds — Phase 2 (требует port allocator).
 **Watchdog (Phase 2 из ADR-0021, pending)**: автоматический рестарт naive при крахе через `--service-watchdog`. Текущий статус - отслеживается в `tasks/todo.md` Phase 16.
 
 **Логи**: stderr-лог `/opt/var/log/sign-craze/naive.stderr.log`. PID watchdog (после Phase 2): `/opt/var/run/sign-craze-naive-watchdog.pid`.
-
----
-
-## §10. opkg lifecycle
-
-Все 4 hook-скрипта (preinst/postinst/prerm/postrm) - POSIX sh,
-никаких bash-isms. Запускаются [opkg](https://openwrt.org/docs/guide-user/additional-software/opkg) на роутере с busybox sh.
-
-### preinst (install | upgrade)
-
-- При install и при существовании `/opt/sbin/sign-craze` не из opkg-пакета:
-  `mv /opt/sbin/sign-craze /opt/sbin/sign-craze.pre-opkg`.
-- Никогда не блокирует установку (всегда `exit 0`).
-- При upgrade ничего не делает.
-
-### postinst (install | upgrade | configure)
-
-- Если `/opt/etc/sign-craze/state.json` существует (upgrade path):
-  - Если сервис запущен (`--status` показывает running) - `sign-craze --restart`.
-  - Иначе пропускает restart.
-- Иначе (fresh install path):
-  - Печатает многострочную подсказку с командами `sign-craze --install` (interactive) и `--install-auto` (без вопросов).
-- НИКОГДА не вызывает `--install-auto` или `--start` автоматически.
-
-Обоснование: `--install` требует пользовательских решений (proxy URL,
-preset, core). `--service-start` на cold boot не идемпотентен (см.
-инцидент 2026-05-07 в `tasks/lessons.md`).
-
-### prerm (remove | upgrade | failed-upgrade)
-
-- При upgrade: `exit 0` (postinst новой версии сделает restart).
-- При remove: если state.json существует и бинарь существует -
-  `sign-craze --stop || true`.
-
-### postrm (remove | purge | upgrade | failed-upgrade | abort-install)
-
-- remove: печатает что конфиги сохранены, инструкция для полной очистки.
-- purge: `rm -rf /opt/etc/sign-craze /opt/var/lib/sign-craze /opt/var/log/sign-craze`
-  и `rm -f /opt/etc/init.d/S99signcraze /opt/etc/ndm/netfilter.d/50-sign-craze`.
-
-### Инварианты opkg-пакета
-
-- IPK содержит ТОЛЬКО `/opt/sbin/sign-craze` (бинарь).
-- `Conffiles:` пустой - конфиги генерируются `sign-craze --install`, opkg не задаёт вопросов при upgrade.
-- init.d shim (`S99signcraze`), NDM hook (`50-sign-craze`), state.json, config.json, routing.json - создаются ТОЛЬКО самим бинарём через `--install`.
-- Бинари ядер (sing-box, xray, mihomo) скачиваются sign-craze отдельно при `--install`.

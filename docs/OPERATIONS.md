@@ -50,48 +50,6 @@
 
 > Если sign-craze уже установлен (существует `state.json` или `/opt/sbin/sing-box`), `--install` завершится ошибкой. Используйте `--reinstall` для переустановки поверх.
 
-### 2.0 Установка через opkg (рекомендуется)
-
-opkg обеспечивает: feed-based upgrade (`opkg update && opkg upgrade sign-craze`), dependency tracking (автоустановка [ipset](https://ipset.netfilter.org/), iptables-mod-tproxy и других зависимостей), атомарный rollback при конфликте файлов. Жизненный цикл preinst/postinst/prerm/postrm — [docs/BEHAVIOR_SPEC.md](BEHAVIOR_SPEC.md) §10.
-
-**Через feed:**
-
-```sh
-# Скачать публичный ключ feed
-mkdir -p /opt/etc/opkg/keys
-curl -fsSL https://kittylabassistant.github.io/sign-craze/entware/sign-craze-feed.pub \
-  > /opt/etc/opkg/keys/sign-craze-feed.pub
-
-# Добавить feed (выбрать архитектуру: aarch64-3.10 / armv7-3.2 / mipsel-3.4 / mips-3.4)
-ARCH=mipsel-3.4
-echo "src/gz signcraze https://kittylabassistant.github.io/sign-craze/entware/${ARCH}" \
-  >> /opt/etc/opkg.conf
-echo "option signed_packages 'sign-craze-feed'" >> /opt/etc/opkg.conf
-
-opkg update
-opkg install sign-craze
-sign-craze --install
-```
-
-**Offline install (без feed):**
-
-```sh
-# Скачать .ipk из GitHub Releases
-ARCH=mipsel-3.4
-VER=1.6.3
-wget "https://github.com/kittylabassistant/sign-craze/releases/download/v${VER}/sign-craze_${VER}_${ARCH}.ipk"
-sha256sum -c "sign-craze_${VER}_${ARCH}.ipk.sha256"
-opkg install ./sign-craze_${VER}_${ARCH}.ipk
-sign-craze --install
-```
-
-**Проверка после установки:**
-
-```sh
-sign-craze --version
-opkg list-installed | grep sign-craze
-```
-
 ### 2.1 Интерактивная установка
 
 ```sh
@@ -198,17 +156,6 @@ ip rule show | grep 0x53     # [fwmark/SO_MARK](https://www.man7.org/linux/man-p
 ---
 
 ## 5. Обновление
-
-### 5.0 opkg upgrade
-
-Если sign-craze установлен через opkg (feed или offline .ipk):
-
-```sh
-opkg update
-opkg upgrade sign-craze
-```
-
-При upgrade: `prerm upgrade` → замена бинаря → `postinst upgrade` (restart если сервис был запущен). Пользовательские файлы (state.json, config.json, routing.json) не трогаются. Полный жизненный цикл preinst/postinst/prerm/postrm — [docs/BEHAVIOR_SPEC.md](BEHAVIOR_SPEC.md) §10.
 
 ### 5.1 Обновить sign-craze (self-update)
 
@@ -577,19 +524,6 @@ ls /opt/sbin/sing-box 2>/dev/null
 ls /opt/sbin/sign-craze 2>/dev/null
 iptables -t mangle -L signcraze_policy 2>&1   # No chain/target
 ```
-
-### 11.2 Удаление через opkg
-
-```sh
-# Удалить пакет (конфиги в /opt/etc/sign-craze/ сохраняются)
-opkg remove sign-craze
-
-# Опционально: полная очистка конфигов и логов
-rm -rf /opt/etc/sign-craze /opt/var/lib/sign-craze /opt/var/log/sign-craze
-rm -f /opt/etc/init.d/S99signcraze /opt/etc/ndm/netfilter.d/50-sign-craze
-```
-
-> Рекомендуется сначала `sign-craze --uninstall` (остановит сервис, отвяжет IP-policy через RCI), затем `opkg remove`. Жизненный цикл postrm — [docs/BEHAVIOR_SPEC.md](BEHAVIOR_SPEC.md) §10.
 
 ---
 

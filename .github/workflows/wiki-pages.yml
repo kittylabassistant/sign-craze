@@ -1,7 +1,7 @@
 name: Wiki Pages
 
-# Рендерит wiki/*.md в статический сайт и публикует в корень ветки gh-pages
-# рядом с opkg feed (entware/). keep_files: true сохраняет feed нетронутым.
+# Рендерит wiki/*.md в статический сайт и публикует в корень ветки gh-pages.
+# keep_files: true не затирает прочее содержимое ветки gh-pages.
 
 on:
   push:
@@ -16,8 +16,7 @@ on:
 permissions:
   contents: write
 
-# Не публиковать параллельно с самим собой. Feed (opkg-feed.yml) стейджит только
-# entware/, а публикация сайта идёт с keep_files: true — взаимного затирания нет.
+# Не публиковать параллельно с самим собой.
 concurrency:
   group: gh-pages-wiki
   cancel-in-progress: false
