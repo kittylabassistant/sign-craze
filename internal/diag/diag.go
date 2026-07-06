@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/kittylabassistant/sign-craze/internal/locks"
 	"github.com/kittylabassistant/sign-craze/internal/ndm"
 	"github.com/kittylabassistant/sign-craze/internal/peer"
+	"github.com/kittylabassistant/sign-craze/internal/routing"
 	"github.com/kittylabassistant/sign-craze/internal/service"
 	"github.com/kittylabassistant/sign-craze/internal/singbox"
 	"github.com/kittylabassistant/sign-craze/internal/state"
@@ -48,6 +50,7 @@ type Deps struct {
 	GeoDir        string // /opt/var/lib/sign-craze/geo
 	LockPath      string // /opt/var/lock/sign-craze.lock
 	GeoMaxAgeDays int    // 7 — после превышения WARN
+	RoutingPath   string // /opt/etc/sign-craze/routing.json — источник rule_sets для чека rule-set-urls
 }
 
 // DefaultDeps возвращает Deps со стандартными путями.
@@ -62,6 +65,7 @@ func DefaultDeps(runner exectx.Runner, sb, dpi service.Lifecycle) Deps {
 		GeoDir:        "/opt/var/lib/sign-craze/geo",
 		LockPath:      locks.DefaultPath,
 		GeoMaxAgeDays: 7,
+		RoutingPath:   routing.DefaultPath,
 	}
 }
 
@@ -81,6 +85,7 @@ func DefaultChecks(d Deps) []Check {
 		checkLockFree(d.LockPath),
 		checkKeeneticPolicy(),
 		checkMieruPeers(),
+		checkRuleSetURLs(d.RoutingPath),
 	}
 }
 
@@ -283,6 +288,69 @@ func checkGeoFiles(dir string, maxAgeDays int) Check {
 			return Result{Name: "geo-files", Status: WARN, Detail: fmt.Sprintf("%d файлов, последнее обновление %s назад", srsCount, age.Round(time.Hour))}
 		}
 		return Result{Name: "geo-files", Status: PASS, Detail: fmt.Sprintf("%d файлов, актуально", srsCount)}
+	}
+}
+
+// ruleSetHTTPClient — клиент для checkRuleSetURLs. Таймаут целиком на ctx
+// (общий бюджет на все rule_set сразу оборачивается внутри самого чека) —
+// клиент собственного Timeout не имеет, чтобы не дублировать бюджет.
+var ruleSetHTTPClient = &http.Client{}
+
+// checkRuleSetURLs проверяет доступность и соответствие формата каждого
+// rule_set.URL из routing.json (см. tasks/lessons.md, инцидент 2026-05-12:
+// sing-box падал на старте с "unexpected status: 404 Not Found", затем с
+// "invalid sing-box rule-set file" после смены URL на mismatched-формат).
+//
+// Никогда не возвращает FAIL: routing UI — опциональная подсистема, а
+// отсутствие сети (offline-роутер) — не авария sign-craze. Проблемы с
+// конкретными rule_set и недоступность сети reportятся как WARN.
+func checkRuleSetURLs(routingPath string) Check {
+	return func(ctx context.Context) Result {
+		path := routingPath
+		if path == "" {
+			path = routing.DefaultPath
+		}
+		cfg, err := routing.Load(path)
+		if err != nil {
+			return Result{Name: "rule-set-urls", Status: WARN, Detail: fmt.Sprintf("routing.json повреждён, пропуск: %v", err)}
+		}
+		if cfg == nil || len(cfg.RuleSets) == 0 {
+			return Result{Name: "rule-set-urls", Status: PASS, Detail: "пропуск: routing.json отсутствует или rule_sets не заданы"}
+		}
+
+		// Общий таймаут на все rule_set сразу (не per-URL) — не даём diag
+		// зависнуть, даже если rule_set'ов много.
+		checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+
+		var problems []string
+		var unreachable []string
+		checked := 0
+		for _, rs := range cfg.RuleSets {
+			if rs.URL == "" {
+				continue
+			}
+			checked++
+			res := routing.CheckRuleSetURL(checkCtx, ruleSetHTTPClient, rs)
+			switch {
+			case res.Mismatch:
+				problems = append(problems, fmt.Sprintf("%s: %s", rs.Tag, res.Detail))
+			case res.Unreachable:
+				unreachable = append(unreachable, rs.Tag)
+			}
+		}
+
+		if checked == 0 {
+			return Result{Name: "rule-set-urls", Status: PASS, Detail: "пропуск: нет rule_set с URL (только local/inline)"}
+		}
+		if len(problems) > 0 {
+			return Result{Name: "rule-set-urls", Status: WARN, Detail: strings.Join(problems, "; ")}
+		}
+		if len(unreachable) > 0 {
+			return Result{Name: "rule-set-urls", Status: WARN,
+				Detail: fmt.Sprintf("пропущено: сеть недоступна (%s)", strings.Join(unreachable, ", "))}
+		}
+		return Result{Name: "rule-set-urls", Status: PASS, Detail: fmt.Sprintf("%d rule_set URL проверено, ок", checked)}
 	}
 }
 

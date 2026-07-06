@@ -2,14 +2,18 @@ package web
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/kittylabassistant/sign-craze/internal/routing"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
@@ -891,5 +895,157 @@ func TestRoutingCommit_EmptyRulesIsValid(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("PUT /api/routing с пустыми правилами: %d body=%s",
 			rec.Code, rec.Body.String())
+	}
+}
+
+// ===== rule_set.URL validation при добавлении (инцидент 2026-05-12, tasks/lessons.md) =====
+
+// makeTestServerWithRuleSetChecker — Server с RoutingUI deps и реальным
+// RuleSetChecker (через routing.CheckRuleSetURL), как это делает production
+// wiring в internal/cli/cmd_ui.go. Unreachable → nil (не блокирует), Mismatch
+// → error (блокирует, apiRuleSetsAdd вернёт 400).
+func makeTestServerWithRuleSetChecker(t *testing.T) (*Server, string) {
+	t.Helper()
+	s, routingPath := makeTestServerWithRouting(t)
+	client := &http.Client{Timeout: 3 * time.Second}
+	s.cfg.RoutingUI.RuleSetChecker = func(ctx context.Context, ref types.RuleSetRef) error {
+		res := routing.CheckRuleSetURL(ctx, client, ref)
+		if res.Unreachable {
+			return nil
+		}
+		if res.Mismatch {
+			return fmt.Errorf("%s", res.Detail)
+		}
+		return nil
+	}
+	return s, routingPath
+}
+
+// TestRuleSetsAdd_NoChecker_SkipsValidation — RuleSetChecker не сконфигурирован
+// (nil, как в makeTestServerWithRouting) → проверка полностью пропускается,
+// добавление проходит независимо от доступности URL. Регрессионный тест на
+// то, что этот фикс не меняет поведение существующих тестов (см.
+// TestE2E_CustomRuleSet в routingui_e2e_test.go — URL на example.com, без
+// реального сервера).
+func TestRuleSetsAdd_NoChecker_SkipsValidation(t *testing.T) {
+	s, _ := makeTestServerWithRouting(t)
+	rec := do(s, authReq("POST", "/api/rule_sets", types.RuleSetRef{
+		Tag: "no-checker", Type: "remote", URL: "https://unreachable.invalid/x.srs",
+	}))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("без RuleSetChecker: ожидался 201, получено %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestRuleSetsAdd_Checker404_400 — сервер отвечает 404 → 400 с понятным
+// текстом причины, rule_set не сохраняется.
+func TestRuleSetsAdd_Checker404_400(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	s, _ := makeTestServerWithRuleSetChecker(t)
+	rec := do(s, authReq("POST", "/api/rule_sets", types.RuleSetRef{
+		Tag: "ru-sites", Type: "remote", Format: "binary", URL: srv.URL + "/geosite-ru.srs",
+	}))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("404 rule_set: ожидался 400, получено %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "404") {
+		t.Errorf("тело ответа не объясняет причину: %s", rec.Body.String())
+	}
+
+	rec = do(s, authReq("GET", "/api/rule_sets", nil))
+	var rss []types.RuleSetRef
+	_ = json.Unmarshal(rec.Body.Bytes(), &rss)
+	if len(rss) != 0 {
+		t.Errorf("rule_set с 404 не должен был сохраниться: %+v", rss)
+	}
+}
+
+// TestRuleSetsAdd_CheckerFormatMismatch_400 — JSON source вместо compiled SRS
+// под .srs URL (ровно кейс инцидента 2026-05-12) → 400.
+func TestRuleSetsAdd_CheckerFormatMismatch_400(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"version": 2, "rules": []}`))
+	}))
+	defer srv.Close()
+
+	s, _ := makeTestServerWithRuleSetChecker(t)
+	rec := do(s, authReq("POST", "/api/rule_sets", types.RuleSetRef{
+		Tag: "ru-sites", Type: "remote", Format: "binary", URL: srv.URL + "/geosite-category-ru.srs",
+	}))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("format mismatch: ожидался 400, получено %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestRuleSetsAdd_CheckerOK_201 — корректный compiled rule-set проходит
+// проверку и сохраняется.
+func TestRuleSetsAdd_CheckerOK_201(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(append([]byte("SRS"), make([]byte, 16)...))
+	}))
+	defer srv.Close()
+
+	s, _ := makeTestServerWithRuleSetChecker(t)
+	rec := do(s, authReq("POST", "/api/rule_sets", types.RuleSetRef{
+		Tag: "geoip-ru", Type: "remote", Format: "binary", URL: srv.URL + "/geoip-ru.srs",
+	}))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("валидный rule_set: ожидался 201, получено %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(s, authReq("GET", "/api/rule_sets", nil))
+	var rss []types.RuleSetRef
+	_ = json.Unmarshal(rec.Body.Bytes(), &rss)
+	if len(rss) != 1 || rss[0].Tag != "geoip-ru" {
+		t.Errorf("валидный rule_set не сохранён: %+v", rss)
+	}
+}
+
+// TestRuleSetsAdd_CheckerUnreachable_StillAdds — сервер недоступен (offline
+// роутер) → проверка не блокирует добавление, иначе оператор без интернета
+// не смог бы отредактировать routing.json вообще.
+func TestRuleSetsAdd_CheckerUnreachable_StillAdds(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	url := srv.URL + "/geoip-ru.srs"
+	srv.Close()
+
+	s, _ := makeTestServerWithRuleSetChecker(t)
+	rec := do(s, authReq("POST", "/api/rule_sets", types.RuleSetRef{
+		Tag: "geoip-ru", Type: "remote", URL: url,
+	}))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("сеть недоступна: ожидался 201 (проверка пропущена), получено %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestRuleSetsAdd_CheckerInvalidJSON_StillHandledByCrudAdd — невалидный JSON
+// тела не должен ломаться о предварительное чтение в apiRuleSetsAdd: ошибку
+// в итоге всё равно возвращает crudAdd тем же способом, что и раньше.
+func TestRuleSetsAdd_CheckerInvalidJSON_StillHandledByCrudAdd(t *testing.T) {
+	s, _ := makeTestServerWithRuleSetChecker(t)
+	req := httptest.NewRequest("POST", "/api/rule_sets", strings.NewReader("{not json"))
+	req.Header.Set("Content-Type", "application/json")
+	req.Host = "127.0.0.1:9092"
+	req.Header.Set("Origin", "http://127.0.0.1:9092")
+
+	rec := do(s, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("невалидный JSON: ожидался 400, получено %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestRuleSetsAdd_CheckerNoURL_SkipsCheck — rule_set без URL (type=local) не
+// должен дёргать RuleSetChecker вообще (нет смысла проверять пустой URL).
+func TestRuleSetsAdd_CheckerNoURL_SkipsCheck(t *testing.T) {
+	s, _ := makeTestServerWithRuleSetChecker(t)
+	rec := do(s, authReq("POST", "/api/rule_sets", types.RuleSetRef{
+		Tag: "local-set", Type: "local", Path: "/opt/etc/sign-craze/local.srs",
+	}))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("local rule_set без URL: ожидался 201, получено %d body=%s", rec.Code, rec.Body.String())
 	}
 }
