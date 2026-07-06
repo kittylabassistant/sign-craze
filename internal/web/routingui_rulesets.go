@@ -6,68 +6,27 @@ import (
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
+// ruleSetSpec — параметризация generic CRUD (routingui_crud.go) под срез RuleSets.
+// Update-хендлера для rule_sets нет (не зарегистрирован в server.go) — только
+// List/Add/Delete.
+var ruleSetSpec = crudSpec[types.RuleSetRef]{
+	entity: "rule_set",
+	get:    func(cfg *types.RoutingConfig) []types.RuleSetRef { return cfg.RuleSets },
+	set:    func(cfg *types.RoutingConfig, v []types.RuleSetRef) { cfg.RuleSets = v },
+	tagOf:  func(rs types.RuleSetRef) string { return rs.Tag },
+}
+
+// apiRuleSetsList — GET /api/rule_sets.
 func (s *Server) apiRuleSetsList(w http.ResponseWriter, r *http.Request) {
-	cfg, err := s.loadRoutingConfig()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	writeJSON(w, cfg.RuleSets)
+	crudList(s, w, r, ruleSetSpec)
 }
 
+// apiRuleSetsAdd — POST /api/rule_sets.
 func (s *Server) apiRuleSetsAdd(w http.ResponseWriter, r *http.Request) {
-	var rs types.RuleSetRef
-	if !decodeJSON(w, r, &rs) {
-		return
-	}
-	if err := rs.Validate(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	cfg, err := s.loadRoutingConfig()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	for _, existing := range cfg.RuleSets {
-		if existing.Tag == rs.Tag {
-			http.Error(w, "rule_set с таким tag уже существует", http.StatusConflict)
-			return
-		}
-	}
-	cfg.RuleSets = append(cfg.RuleSets, rs)
-	if err := s.saveRoutingConfig(cfg); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusCreated)
-	writeJSON(w, rs)
+	crudAdd(s, w, r, ruleSetSpec)
 }
 
+// apiRuleSetsDelete — DELETE /api/rule_sets/{tag}.
 func (s *Server) apiRuleSetsDelete(w http.ResponseWriter, r *http.Request) {
-	tag := r.PathValue("tag")
-	cfg, err := s.loadRoutingConfig()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	out := cfg.RuleSets[:0]
-	found := false
-	for _, rs := range cfg.RuleSets {
-		if rs.Tag == tag {
-			found = true
-			continue
-		}
-		out = append(out, rs)
-	}
-	if !found {
-		http.Error(w, "rule_set не найден", http.StatusNotFound)
-		return
-	}
-	cfg.RuleSets = out
-	if err := s.saveRoutingConfig(cfg); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+	crudDelete(s, w, r, ruleSetSpec)
 }
