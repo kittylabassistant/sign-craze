@@ -1,11 +1,38 @@
 package dpi
 
+import "slices"
+
 // Preset — именованный набор доменов для selective DPI desync.
 // Передаётся в nfqws2 через --hostlist=<file>, где каждый домен на отдельной строке.
 type Preset struct {
 	Name        string
 	Description string
 	Targets     []string
+}
+
+// discordTargets — домены Discord: чат, голос, видео, CDN.
+var discordTargets = []string{
+	"discord.com",
+	"discordapp.com",
+	"discord.gg",
+	"discordapp.net",
+	"discord.media",
+	"discord.gift",
+	"cdn.discordapp.com",
+	"media.discordapp.net",
+}
+
+// youtubeTargets — домены YouTube: страница, видео, QUIC, мобильное API.
+var youtubeTargets = []string{
+	"youtube.com",
+	"www.youtube.com",
+	"m.youtube.com",
+	"youtu.be",
+	"youtubei.googleapis.com",
+	"yt3.ggpht.com",
+	"i.ytimg.com",
+	"googlevideo.com",
+	"ytimg.com",
 }
 
 // Builtin — встроенные пресеты DPI targets.
@@ -17,42 +44,20 @@ var Builtin = []Preset{
 	{
 		Name:        "discord",
 		Description: "Discord: чат, голос, видео, CDN.",
-		Targets: []string{
-			"discord.com",
-			"discordapp.com",
-			"discord.gg",
-			"discordapp.net",
-			"discord.media",
-			"discord.gift",
-			"cdn.discordapp.com",
-			"media.discordapp.net",
-		},
+		Targets:     discordTargets,
 	},
 	{
 		Name:        "youtube",
 		Description: "YouTube: страница, видео, QUIC, мобильное API.",
-		Targets: []string{
-			"youtube.com",
-			"www.youtube.com",
-			"m.youtube.com",
-			"youtu.be",
-			"youtubei.googleapis.com",
-			"yt3.ggpht.com",
-			"i.ytimg.com",
-			"googlevideo.com",
-			"ytimg.com",
-		},
+		Targets:     youtubeTargets,
 	},
 	{
 		Name:        "discord-youtube",
 		Description: "Объединённый пресет: Discord + YouTube.",
-		Targets: []string{
-			"discord.com", "discordapp.com", "discord.gg", "discordapp.net",
-			"discord.media", "discord.gift", "cdn.discordapp.com", "media.discordapp.net",
-			"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be",
-			"youtubei.googleapis.com", "yt3.ggpht.com", "i.ytimg.com",
-			"googlevideo.com", "ytimg.com",
-		},
+		// Конкатенация вместо повторного перечисления доменов — порядок сохранён
+		// (сначала discord, затем youtube), дрейф между списками ловит тест
+		// TestBuiltin_DiscordYoutubeРавенОбъединениюDiscordИYoutube.
+		Targets: slices.Concat(discordTargets, youtubeTargets),
 	},
 }
 
