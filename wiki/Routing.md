@@ -117,6 +117,8 @@ xray test -c /opt/etc/sign-craze/xray/config.json
 mihomo -t -d /opt/etc/sign-craze/mihomo/
 ```
 
+При добавлении rule_set с URL (Tab **Rule Sets** → «+ Добавить» или `POST /api/rule_sets`) URL проверяется на доступность и формат; битый URL отклоняется с ошибкой 400, при отсутствии сети проверка пропускается.
+
 ## Применение изменений
 
 ```sh

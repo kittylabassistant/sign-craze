@@ -66,7 +66,7 @@ routing.json
 |---|---|---|
 | sing-box | `.srs` | SagerNet/sing-geosite, SagerNet/sing-geoip |
 | mihomo | `.mrs` | MetaCubeX/meta-rules-dat |
-| xray | translation в matcher | URL не нужен — geosite:/geoip: данные встроены в xray |
+| xray | translation в matcher | URL не нужен — geosite:/geoip: данные из `geosite.dat`/`geoip.dat` (`sign-craze --update-geo --core xray`) |
 
 Если переключили ядро и в `routing.json` остались URL старого формата — Validate покажет предупреждение. Чтобы обновить URL: повторно применить пресет (кнопка **Пресеты ▾** в UI или `POST /api/presets/<name>/apply`).
 
@@ -147,6 +147,8 @@ POST   /api/apply                            → {"needs_restart": true}
 ```
 
 После добавления тег `my-list` доступен в поле `rule_set` любого правила.
+
+При добавлении URL проверяется доступность и формат (magic-байты): подтверждённый 404 или несоответствие формата → ошибка 400. Если сети нет — проверка пропускается, офлайн-редактирование работает.
 
 **Persistence:** изменения сохраняются в `/opt/etc/sign-craze/routing.json`. Файлы с `"version": 0` (отсутствующее поле) мигрируют в `"version": 1` автоматически при чтении — вручную исправлять не нужно.
 

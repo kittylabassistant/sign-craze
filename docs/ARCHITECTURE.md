@@ -1,6 +1,6 @@
 # sign-craze: Архитектура
 
-> Версия: 2026-07-06. Архитектура v1.6.4.
+> Версия: 2026-07-07. Архитектура v1.6.4.
 
 ## Диаграмма слоёв
 
@@ -43,17 +43,19 @@ singbox         dpi             firewall
 | `internal/singbox` | загрузка, установка, генерация конфига, версия [sing-box](https://sing-box.sagernet.org/) |
 | `internal/naiveproxy` | adapter [naiveproxy](https://github.com/klzgrad/naiveproxy): download/extract/install/lifecycle (supervised peer) |
 | `internal/peer` | supervised-peer scaffolding + [mieru](https://github.com/enfein/mieru) core + port allocator |
-| `internal/core` | registry + абстрактный интерфейс `Core`; регистрирует ядра: sing-box, [xray](https://xtls.github.io/), [mihomo](https://wiki.metacubex.one/) |
+| `internal/core` | registry + абстрактный интерфейс `Core`; регистрирует ядра: sing-box, [xray](https://xtls.github.io/), [mihomo](https://wiki.metacubex.one/); общие хелперы для адаптеров — `DeadlineCtx`/`CheckConfigError` (единый формат таймаута/ошибки `check`/`test`/`-t`), `FromFetchResult` (адаптер `ghrelease.FetchResult` → `DownloadResult`), `RejectSupervisedPeer` (xray/mihomo отклоняют mieru/naive outbound — эти протоколы работают только под sing-box) |
 | `internal/core/xray` | адаптер ядра xray; translation `RouteRule → xray rules[]`; `RuleSet` с префиксом `geosite-`/`geoip-` → matcher |
 | `internal/core/mihomo` | адаптер ядра mihomo; translation `RouteRule → TYPE,VALUE,ACTION`; `RuleSets` с `.mrs` URL → `rule-providers:` |
+| `internal/core/corearchive` | общий каркас установки бинарей xray/mihomo из архива: `BinaryStream` (потоковый ридер) + `CheckELF` (ELF-magic проверка) + `InstallWithRollback` (backup → атомарная запись → опциональная `CheckConfig`-валидация → откат при неудаче). sing-box этот пакет не использует — там валидация конфига происходит ДО подмены бинаря (`PrepareAndValidate`), архитектура сознательно другая |
 | `internal/service` | генерация init.d shim; интерфейс `Lifecycle`, связывающий singbox и [nfqws2](https://github.com/nfqws/nfqws2-keenetic) |
-| `internal/geo` | загрузка SRS из sign-craze-dats; конвертация IP-листа → [ipset](https://ipset.netfilter.org/) |
+| `internal/geo` | sing-box: загрузка/декомпиляция `.srs` из sign-craze-dats, конвертация IP-листа → [ipset](https://ipset.netfilter.org/); xray: `ValidateDAT`/`DownloadDAT` — `.dat` (geosite/geoip, protobuf wire-format) из [Loyalsoldier/v2ray-rules-dat](https://github.com/Loyalsoldier/v2ray-rules-dat), sha256-verify; mihomo: `ValidateMRSHeader` — только диагностика `.mrs` на диске (загрузку rule-providers делает сам mihomo, downloader не реализуется) |
+| `internal/routing` | `routing.json` load/save (core-agnostic, `store.go`); `CheckRuleSetURL` (`rulesetcheck.go`) — HEAD/GET-Range запрос + сверка magic-байт формата для `rule_set.URL` перед сохранением через Web UI |
 | `internal/web` | встроенный HTTP-сервер (Zashboard :9090 + admin REST API :9091 + Routing Editor :9092 + DPI targets API) |
 | `internal/locks` | эксклюзивный [flock](https://man7.org/linux/man-pages/man2/flock.2.html) против параллельных запусков |
 | `internal/log` | глобальный `slog.Logger` с ротацией по размеру |
 | `internal/atomicfs` | атомарная запись: write → fsync → rename |
 | `internal/version` | встроенная `VERSION`, build info через `runtime/debug` |
-| `pkg/types` | общие типы (`Mode`, `Arch`, `Port`, `RoutingConfig`, `CoreRenderParams`, …) |
+| `pkg/types` | общие типы (`Mode`, `Arch`, `Port`, `RoutingConfig`, `CoreRenderParams`, …); `Outbound.Canonical()` — нормализация полей Outbound в `Canonical`, используется рендерами ядер и `core.RejectSupervisedPeer` |
 
 Sentinel-ошибки живут в своих пакетах (`locks.ErrLocked`, `ndm.ErrNotFound`, `netif.ErrLANNotFound`, `firewall.ErrFWMarkConflict`, `web.ErrNoFreePort`); отдельного пакета `internal/errors` нет.
 
@@ -74,6 +76,9 @@ cli/install.Run
 
 ```plain
 cli/doStart
+  → если st.NaiveEnabled: newNaiveLifecycleFromOutbound(ob).Start   (ДО рендера
+      конфига ядра — sing-box.CheckConfig проверяет доступность
+      127.0.0.1:NaiveListenPort, naive обязан быть готов к этому моменту)
   → mustActiveCore()               (из registry по state.Core)
   → ensureConfigFreshForCore(ctx, c, st)
       → routing.Load(routing.json)          (RoutingConfig или nil если не создан)
@@ -94,6 +99,61 @@ cli/doStart
 Ключевой инвариант: `ensureConfigFreshForCore` пишет в `c.ConfigPath()` (не в
 захардкоженный `/opt/etc/sign-craze/config.json`), поэтому Apply через UI
 корректно обновляет конфиг активного ядра — xray, mihomo или sing-box.
+
+## Поток данных: `--stop`
+
+```plain
+cli/doStop
+  → stopAllCoreLifecycles(ctx)
+  → newNaiveLifecycle().Stop(ctx)
+```
+
+`stopAllCoreLifecycles` (`internal/cli/cmd_lifecycle.go`) останавливает КАЖДОЕ
+зарегистрированное прокси-ядро (`core.Names()`), а не только активное
+(`state.Core`) — фикс бага B2: неактивное установленное ядро могло остаться
+running-процессом (orphan) после смены `--core`. Ошибка `Stop` одного ядра
+логируется и не прерывает остановку остальных.
+
+naive-демон останавливается ДО sing-box (sing-box держит SOCKS5-подключение к
+его локальному порту) — симметрично `--start` выше, где naive стартует ДО
+рендера конфига и запуска ядра.
+
+## Поток данных: `--update-geo`
+
+`--update-geo [--core <name>]` обновляет geo-данные явно указанного ядра, либо
+активного (`state.Core`), если флаг не передан; флаг не мутирует `state.Core` —
+это разовый override вызова (`coreFromArgsOrActive`, `cli/cmd_update.go`).
+Ветвление идёт по `Core.GeoFormat()`, без хардкода имени ядра:
+
+- **`core.GeoSRS`** (sing-box, default) — без изменений: `geo.FetchManifest` →
+  `geo.Update` → декомпиляция `.srs` → заполнение kernel ipset
+  (`signcraze_ipv4`/`signcraze_ipv6`) + сохранение дампа для restore при ребуте.
+- **`core.GeoDAT`** (xray) — `geo.DownloadDAT(ctx, cacheDir, dstDir)` скачивает
+  `geosite.dat`/`geoip.dat` из [Loyalsoldier/v2ray-rules-dat](https://github.com/Loyalsoldier/v2ray-rules-dat)
+  (sha256-verify по `<file>.sha256sum`) в `<c.ConfigDir()>/assets` — тот же
+  путь, что `RenderConfig` проставляет в `GeoAssetsDir`. `--core-install xray`
+  тоже скачивает `.dat` (`installGeoDATAssets`, `cli/cmd_core.go`) — неудача
+  скачивания не фейлит установку бинаря, только Warn + подсказка повторить
+  вручную через `--update-geo --core xray`.
+- **`core.GeoMRS`** (mihomo) — no-op: mihomo скачивает свои rule-providers сам
+  (`geo.ValidateMRSHeader` в `geo/mrs.go` — только pre-flight/diag валидатор
+  файла на диске, downloader для `.mrs` не реализуется).
+
+## CLI/Web UI: общий lock для ports и dpi-targets (bug B4)
+
+`--port-add`/`--port-del`/`--port-list` и `--dpi-targets` мутируют
+`state.json` через `state.NewPortsManager`/`state.NewDPITargetsManager` — те же
+менеджеры (и тот же lock-файл `state.json`+`.lock`), которыми пользуется Web
+UI. Раньше CLI мутировал `state.json` напрямую (`loadState`/`saveState`) под
+ДРУГИМ локом (`locks.DefaultPath`) — два независимых `flock` не исключали
+TOCTOU-гонку CLI vs Web UI (сохранение одной стороны могло затереть только что
+применённую правку другой). `--port-list` возвращает отсортированный список
+(`sort.Ints`).
+
+Остальные `--dpi-*`-хендлеры (`strategy`/`exclude-ips`/`update-urls`/
+`update-interval`) используют более простой `cli.withStateMutation`
+(`withLock` → `loadState` → mutate → `saveState`) — дедуп повторяющегося
+скелета CLI-мутаций, не связанный с гонкой B4.
 
 ## Unified routing (v1.0.0)
 
@@ -226,7 +286,7 @@ NFQUEUE-цепочка `signcraze_dpi_fwd` живёт в `mangle FORWARD`, а н
 - Self-traffic sing-box (`SO_MARK=0x53`) отсекается mark-фильтром.
 - Legacy `signcraze_policy_dpi` сохранён в коде только для cleanup при апгрейде с v1.0.x.
 
-Связанные файлы: `internal/firewall/modes/policy.go::DPIForwardChainName`, `applier.go::applyPolicyMode`, тесты `policy_dpi_test.go`.
+Связанные файлы: `internal/firewall/modes/policy.go::DPIForwardChainName`, `applier.go::applyPolicyMode`, дедуп-хелперы `applier.go::precleanupDPIForwardJump` (снимает jump `mangle FORWARD -j signcraze_dpi_fwd` перед пересборкой batch — `iptables-restore --noflush` не трогает существующие правила в системных цепочках) и `applier.go::appendDPIForwardRules` (добавляет объявление цепочки + DPI-правила в batch), общие для всех policy-путей (TUN-mode/TProxyReal/Redirect), тесты `policy_dpi_test.go`.
 
 ## SSH/admin bypass + NDM debounce (v1.1.1)
 
@@ -236,6 +296,7 @@ NFQUEUE-цепочка `signcraze_dpi_fwd` живёт в `mangle FORWARD`, а н
 
 - **`LocalBypassRules`** + `ensureLANBypass`: правило `-d <LAN_IP> -j RETURN` на pos=1 в `signcraze_policy` (mangle TPROXY-real, nat REDIRECT, mangle TUN). LAN_IP автодетект через `netif.DetectLANAddr`.
 - **`AdminPortsBypassRulesForChain`**: defense-in-depth — bypass для портов 22/222 TCP+UDP. `AdminPortsBypassRules` → back-compat обёртка.
+- **`ensurePolicyBypass(ctx, table)`**: дедуп-обёртка над `ensureLANBypass` + `ensureAdminPortsBypass` (порядок вызовов жёстко зафиксирован — LAN bypass ОБЯЗАН быть первым), переиспользуемая всеми тремя policy-путями вместо дублирования пары вызовов в каждом.
 - **`ndm.GetHostsWithPolicy`** + **`UnsetHostPolicy`**: `doUninstall` сначала отвязывает все хосты от policy через RCI, потом `DeletePolicy`. Reboot после `--uninstall` восстанавливает доступ без factory reset.
 - **netfilter.d hook**: `flock -x -n` + pending-маркер + trailing debounce. Пачка из 10 NDM-событий = 2 reapply (один сразу, один в конце пачки) вместо 10 параллельных fork/exec.
 

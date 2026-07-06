@@ -281,7 +281,7 @@ sign-craze --restart / -r       Перезапуск (stop + start)
 sign-craze --status  / -s       Показать состояние сервисов
 
 sign-craze --update  / -u       Обновить sign-craze
-sign-craze --update-geo / -g    Обновить гео-файлы (SRS rule-set)
+sign-craze --update-geo / -g    Обновить geo-данные активного ядра (или --core <name>): sing-box - SRS rule-set, xray - geosite.dat/geoip.dat, mihomo - no-op (сам качает rule-providers)
 sign-craze --update-core        Обновить бинарь активного ядра (sing-box/xray/mihomo)
 sign-craze --update-naive       Обновить бинарь naiveproxy (v1.3.0+)
 sign-craze --dpi-update         Переустановить актуальную версию nfqws2

@@ -359,6 +359,8 @@ sign-craze --core-install mihomo   # скачать mihomo в /opt/sbin/mihomo
 
 Ядро скачивается с GitHub Releases через тот же mirror chain, что и sign-craze (Fastly raw.githubusercontent.com как приоритетный канал). SHA256 проверяется автоматически.
 
+> Для xray гео-ассеты (`geosite.dat`/`geoip.dat`) докачиваются в `/opt/etc/sign-craze/xray/assets` автоматически после `--core-install xray` (с проверкой SHA256 и структуры). Если их всё же нет — `sign-craze --start` завершится ошибкой «geosite.dat отсутствует для xray»; решение — `sign-craze --update-geo --core xray`.
+
 ### 6.2. Supervised peers: naiveproxy и mieru (v1.3.0+)
 
 sign-craze поддерживает [naiveproxy](https://github.com/klzgrad/naiveproxy) и [mieru](https://github.com/enfein/mieru) как supervised peers — запускаются как daemon рядом с sing-box (process chain через socks5-outbound). Работают **только** с ядром sing-box; xray и mihomo такие конфиги отклоняют с подсказкой `--core sing-box`.

@@ -1,6 +1,6 @@
 # OWNERSHIP.md — System-state ownership sign-craze
 
-> Версия: 2026-07-01. Автор: @kittylabassistant.
+> Версия: 2026-07-07. Автор: @kittylabassistant.
 
 ---
 
@@ -126,10 +126,10 @@ Sign-craze устанавливает jump-правила в `mangle PREROUTING`
 | `/opt/sbin/sign-craze`  | sign-craze            | `--uninstall`         | —                                                                     | `service/shim.go:18`                  |
 | `/opt/sbin/sing-box`    | sign-craze (managed)  | `--uninstall`         | **CAUTION:** XKeen может использовать тот же путь. Не удалять при detected XKeen | `singbox/install.go:23` |
 | `/opt/sbin/nfqws2`      | sign-craze (managed)  | `--uninstall`         | **CAUTION:** nfqws2-keenetic может быть установлен независимо         | `dpi/install.go:16`                   |
-| `/opt/sbin/xray`        | sign-craze (managed, опционально) | `--uninstall` | Устанавливается только при `--core-install xray`                  | `internal/core/xray/install.go`       |
-| `/opt/sbin/mihomo`      | sign-craze (managed, опционально) | `--uninstall` | Устанавливается только при `--core-install mihomo`                | `internal/core/mihomo/install.go`     |
+| `/opt/sbin/xray`        | sign-craze (managed, опционально) | `--uninstall` | Устанавливается только при `--core-install xray`                  | `internal/core/xray/install.go` (через `core/corearchive.InstallWithRollback`) |
+| `/opt/sbin/mihomo`      | sign-craze (managed, опционально) | `--uninstall` | Устанавливается только при `--core-install mihomo`                | `internal/core/mihomo/install.go` (через `core/corearchive.InstallWithRollback`) |
 | `/opt/sbin/naive`       | sign-craze (managed, опционально) | `--uninstall` | Устанавливается только при `--with-naive` или `--proxy naive+...` | `internal/naiveproxy/install.go`      |
-| `/opt/sbin/mieru`       | sign-craze (managed, опционально) | `--uninstall` | Устанавливается только при `--with-mieru` или `--proxy mierus://...` | `internal/peer/mieru/install.go`   |
+| `/opt/sbin/mieru`       | sign-craze (lifecycle only — бинарь sign-craze не скачивает) | не удаляется sign-craze (только останавливает процесс/pidfile при `--uninstall`) | Бинарь собирается отдельно (`make mieru`, ADR-0020) и разворачивается оператором вручную — CLI-флага `--with-mieru` не существует; sign-craze запускает его как supervised peer, если в outbounds есть `mieru://`/`mierus://` | `internal/peer/mieru_peer.go` (`DefaultMieruBinPath`) — отдельного install.go для mieru нет |
 
 ### 6.4 Директории конфигурации ядер (опциональные)
 
@@ -138,6 +138,7 @@ Sign-craze устанавливает jump-правила в `mangle PREROUTING`
 | Путь                              | Условие создания          |
 |-----------------------------------|---------------------------|
 | `/opt/etc/sign-craze/xray/`       | `--core-install xray`     |
+| `/opt/etc/sign-craze/xray/assets/` | `--core-install xray` или `--update-geo --core xray` — `geosite.dat`/`geoip.dat` через `geo.DownloadDAT` (`internal/geo/dat.go`), источник [Loyalsoldier/v2ray-rules-dat](https://github.com/Loyalsoldier/v2ray-rules-dat) |
 | `/opt/etc/sign-craze/mihomo/`     | `--core-install mihomo`   |
 | `/opt/etc/sign-craze/naive/`      | `--with-naive`            |
 

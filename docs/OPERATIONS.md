@@ -95,8 +95,8 @@ ls /opt/etc/init.d/S99signcraze
 ## 3. Запуск, остановка, перезапуск
 
 ```sh
-sign-craze --start      # применить firewall + запустить sing-box
-sign-craze --stop       # остановить sing-box + убрать правила
+sign-craze --start      # применить firewall + запустить активное ядро
+sign-craze --stop       # остановить ВСЕ зарегистрированные ядра (sing-box/xray/mihomo, не только активное) + убрать правила
 sign-craze --restart    # stop + start
 sign-craze --status     # состояние, режим, версии
 ```
@@ -165,15 +165,20 @@ sign-craze --update
 
 Скачивает последний GitHub Release для текущей архитектуры, проверяет SHA256, атомарно заменяет `/opt/sbin/sign-craze`. Сервис **не перезапускается** автоматически - `--restart` после.
 
-### 5.2 Обновить geo-файлы (SRS rule-set)
+### 5.2 Обновить geo-данные
 
 ```sh
-sign-craze --update-geo
+sign-craze --update-geo               # для активного ядра (state.Core)
+sign-craze --update-geo --core xray   # разовый override без смены активного ядра
 ```
 
-Загружает [geosite/geoip/.srs](https://sing-box.sagernet.org/configuration/rule-set/) в `/opt/var/lib/sign-craze/geo/`, декомпилирует в CIDR, заполняет `signcraze_ipv4/ipv6`, сохраняет дамп в `/opt/share/sign-craze/ipset.dump`. Если sing-box ещё не установлен — заполнение ipset пропускается с предупреждением.
+Поведение зависит от активного (или явно указанного через `--core`) ядра:
 
-Рекомендуется через `cron`:
+- **sing-box** (по умолчанию) — загружает [geosite/geoip/.srs](https://sing-box.sagernet.org/configuration/rule-set/) в `/opt/var/lib/sign-craze/geo/`, декомпилирует в CIDR, заполняет `signcraze_ipv4/ipv6`, сохраняет дамп в `/opt/share/sign-craze/ipset.dump`. Если sing-box ещё не установлен — заполнение ipset пропускается с предупреждением.
+- **xray** — загружает и верифицирует по SHA256 `geosite.dat`/`geoip.dat` (источник `Loyalsoldier/v2ray-rules-dat`) в `/opt/etc/sign-craze/xray/assets`. Без этого шага первый `--start` на xray завершится ошибкой `geosite.dat отсутствует для xray; запустите --update-geo --core xray` (или аналогично для `geoip.dat`).
+- **mihomo** — no-op: rule-providers mihomo скачивает самостоятельно при старте, `--update-geo` только выводит информационное сообщение.
+
+Рекомендуется через `cron` (для активного ядра, отличного от sing-box — добавьте `--core <name>`):
 
 ```sh
 # /opt/etc/cron.weekly/sign-craze-geo
@@ -222,6 +227,8 @@ sign-craze --core-install mihomo
 | `--core <sing-box\|xray\|mihomo>` | Переключить активное ядро; требует `--restart` |
 | `--core-install <name>` | Скачать и установить ядро для текущей архитектуры |
 
+> `--core-install xray` дополнительно докачивает `geosite.dat`/`geoip.dat` в `/opt/etc/sign-craze/xray/assets` (см. §5.2). Ошибка загрузки geo-данных не проваливает установку бинаря — только предупреждение с подсказкой повторить через `--update-geo --core xray`.
+
 > Смена ядра не пересоздаёт конфиг автоматически — конфиг генерируется заново при следующем `--restart`. `--restart` вызывает `ensureConfigFreshForCore` — генерирует конфиг только для **активного** ядра.
 
 ### routing.json — core-agnostic
@@ -242,7 +249,7 @@ sign-craze --core-install mihomo
 
 1. `ensureConfigFreshForCore` определяет активное ядро через `state.Core`.
 2. Генерирует конфиг ядра из `routing.json` + `state.json`.
-3. Для **[xray](https://xtls.github.io/)**: `rule_set` URL-источники транслируются в `geosite:` / `geoip:` матчеры; `.dat`-файлы ядро ищет сам.
+3. Для **[xray](https://xtls.github.io/)**: `rule_set` URL-источники транслируются в `geosite:` / `geoip:` матчеры; `.dat`-файлы (`geosite.dat`/`geoip.dat`) обновляются отдельно через `--update-geo --core xray` (см. §5.2), не при каждом Apply.
 4. Для **[mihomo](https://wiki.metacubex.one/)**: `.srs` URL конвертируется в `.mrs` и прописывается в `rule-providers`.
 5. Для **sing-box**: `.srs` rule-set передаётся напрямую; TUN inbound создаётся если `needsTUN(core) == true`.
 6. Firewall (iptables/ipset) применяется через единый `Applier.Apply` — не зависит от ядра.
@@ -548,6 +555,8 @@ service-nfqws2       [WARN] не запущен
 geo-files            [WARN] 3 файлов, последнее обновление 10h0m0s назад
 lock-free            [PASS] свободна
 keenetic-policy      [PASS] name=sign-craze mark=0xffffaab table=4098 permit=false
+mieru-peers          [PASS] пропуск: mieru-outbound'ов нет
+rule-set-urls        [PASS] 3 rule_set URL проверено, ок
 ```
 
 Возвращает ненулевой exit при наличии хотя бы одного `FAIL`.
@@ -560,7 +569,9 @@ keenetic-policy      [PASS] name=sign-craze mark=0xffffaab table=4098 permit=fal
 - Процессы sing-box и nfqws2
 - Возраст geo (WARN > 7 дней)
 - Lock-файл
-- IP-policy в Keenetic RCI (только в `policy`)
+- IP-policy в Keenetic RCI (только в `policy`; сверяет mark из RCI с закешированным в `state.json`)
+- Статус supervised-peers mieru (`mieru-peers`; PASS-skip, если mieru-outbound'ов нет)
+- Доступность и формат `rule_set.URL` из `routing.json` (`rule-set-urls`; ловит 404 и format-mismatch до `--restart`, никогда не FAIL — максимум WARN)
 
 Сбор для support:
 
