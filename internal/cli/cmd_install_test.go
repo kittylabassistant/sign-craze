@@ -61,10 +61,10 @@ func TestWizardURL_VLESS_PopulatesCanonical(t *testing.T) {
 	}
 }
 
-// TestWizardURL_Socks5_LegacyFallback проверяет, что socks5 URL корректно
-// обрабатывается (ParseCanonical поддерживает socks5, поэтому canonical-поля заполнены).
-// Protocol может быть socks5 — это норма; главное, что Outbound базовые поля заполнены.
-func TestWizardURL_Socks5_LegacyFallback(t *testing.T) {
+// TestWizardURL_Socks5_Canonical проверяет, что socks5 URL обрабатывается
+// через ParseCanonical. Legacy-парсер proxyparse.Parse удалён — другого пути
+// разбора URL в проекте больше нет, поэтому Protocol обязан быть заполнен.
+func TestWizardURL_Socks5_Canonical(t *testing.T) {
 	rawURL := "socks5://alice:pass@10.0.0.1:1080"
 	input := rawURL + "\n"
 
@@ -89,13 +89,49 @@ func TestWizardURL_Socks5_LegacyFallback(t *testing.T) {
 	if o.Port != 1080 {
 		t.Errorf("Port = %d, ожидалось 1080", o.Port)
 	}
+	if o.Protocol != types.ProtocolSocks5 {
+		t.Errorf("Protocol = %q, ожидалось %q", o.Protocol, types.ProtocolSocks5)
+	}
 	// Проверяем вывод: строка "Outbound:" должна присутствовать
 	if !strings.Contains(out.String(), "Outbound:") {
 		t.Errorf("ожидалась строка Outbound: в выводе, получено: %q", out.String())
 	}
-	// Protocol заполнен через ParseCanonical (socks5 поддерживается)
-	if o.Protocol == "" {
-		t.Log("Protocol пустой — socks5 через legacy Parse, это допустимо")
+}
+
+// TestWizardURL_UnknownSecurity_ReturnsError фиксирует ужесточение валидации
+// после удаления legacy-парсера: раньше при ошибке ParseCanonical (неизвестный
+// security=...) срабатывал fallback на proxyparse.Parse, который security
+// молча игнорировал и возвращал валидный Outbound без TLS. Теперь fallback
+// удалён — такой URL обязан вернуть понятную ошибку парсинга, а не тихий
+// даунгрейд до "outbound без TLS".
+func TestWizardURL_UnknownSecurity_ReturnsError(t *testing.T) {
+	rawURL := "vless://test-uuid@vless.example.com:443?security=garbage"
+	input := rawURL + "\n"
+
+	r := bufio.NewReader(bytes.NewBufferString(input))
+	out := &bytes.Buffer{}
+
+	obs, err := wizardURL(r, out)
+	if err == nil {
+		t.Fatalf("ожидалась ошибка для security=garbage, получено obs=%+v", obs)
+	}
+	if !strings.Contains(err.Error(), "security") {
+		t.Errorf("ошибка должна упоминать security, получено: %v", err)
+	}
+}
+
+// TestParseProxyURLToOutbound_PbkWithoutReality_ReturnsError фиксирует ещё один
+// случай ужесточения: pbk задан, но security != reality. Legacy-парсер такой
+// pbk молча отбрасывал; ParseCanonical (единственный парсер теперь) возвращает
+// ошибку.
+func TestParseProxyURLToOutbound_PbkWithoutReality_ReturnsError(t *testing.T) {
+	url := "vless://test-uuid@vless.example.com:443?security=tls&pbk=PUBLIC_KEY"
+	_, _, err := parseProxyURLToOutbound(url)
+	if err == nil {
+		t.Fatal("ожидалась ошибка: pbk задан без security=reality")
+	}
+	if !strings.Contains(err.Error(), "pbk") {
+		t.Errorf("ошибка должна упоминать pbk, получено: %v", err)
 	}
 }
 

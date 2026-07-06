@@ -15,9 +15,10 @@
 //   - naive+https://user:pass@host:port?params
 //   - naive+quic://user:pass@host:port?params
 //
-// Parse является legacy-функцией (обратная совместимость). Для новых вызовов
-// использовать ParseCanonical — возвращает Outbound + Canonical с полной
-// структурой transport/TLS/proto.
+// ParseCanonical возвращает Outbound + Canonical с полной структурой
+// transport/TLS/proto. Legacy-функция Parse удалена (cleanup 2026-07):
+// canonical-парсер покрывает все её схемы и строже валидирует параметры
+// (неизвестный security= или pbk без reality — ошибка, а не тихий игнор).
 //
 // Используется wizard'ом команды `--install`. Парсит то, что вбил пользователь;
 // тонкости конфигурации (TLS, transport, flow) можно настроить через UI или

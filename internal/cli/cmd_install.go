@@ -517,9 +517,13 @@ func detectCoreFromProxyURL(url string) (recommended string, allCompatible []str
 // singbox/render.go (renderCanonical, case ProtocolNaive) падал с "NaiveListenPort
 // не выделен" уже на PrepareAndValidate при --install.
 //
-// Порядок шагов: ParseCanonical → fallback legacy Parse (пока сохраняется,
-// удаление — отдельная фаза) → перенос canonical-полей в Outbound →
-// naive-порт-дефолт → Validate → RecommendCore.
+// Порядок шагов: ParseCanonical (единственный парсер — legacy proxyparse.Parse
+// удалён) → перенос canonical-полей в Outbound → naive-порт-дефолт →
+// Validate → RecommendCore.
+//
+// ParseCanonical строже legacy-парсера: например, неизвестный security=
+// у VLESS/... или pbk/sid без security=reality теперь возвращают ошибку
+// вместо тихого игнорирования — осознанное ужесточение валидации.
 //
 // Naive-порт-дефолт обязан жить именно здесь (на этапе парсинга URL, до
 // Validate() и записи в state.json), а не в рендере ядра:
@@ -528,22 +532,16 @@ func detectCoreFromProxyURL(url string) (recommended string, allCompatible []str
 // в render, а не тут, порты sing-box outbound'а и naive-демона могут разойтись.
 //
 // Возвращает Outbound с встроенным canonical и имя рекомендованного ядра
-// для auto-detect. recommendedCore="" при невалидном URL или fallback-парсе
-// без canonical-данных.
+// для auto-detect. recommendedCore="" при невалидном/несовместимом URL.
 func parseURLToOutbound(url string) (types.Outbound, string, error) {
 	o, canon, err := proxyparse.ParseCanonical(url)
 	if err != nil {
-		var legacyErr error
-		o, legacyErr = proxyparse.Parse(url)
-		if legacyErr != nil {
-			return types.Outbound{}, "", fmt.Errorf("парсинг URL: %w", err)
-		}
-	} else {
-		o.Protocol = canon.Protocol
-		o.Transport = canon.Transport
-		o.TLS = canon.TLS
-		o.Proto = canon.Proto
+		return types.Outbound{}, "", fmt.Errorf("парсинг URL: %w", err)
 	}
+	o.Protocol = canon.Protocol
+	o.Transport = canon.Transport
+	o.TLS = canon.TLS
+	o.Proto = canon.Proto
 	// Для naive outbound: выставить NaiveListenPort если не задан.
 	if o.Protocol == types.ProtocolNaive {
 		if o.Proto == nil {
@@ -626,9 +624,9 @@ func wizardURL(r *bufio.Reader, out io.Writer) ([]types.Outbound, error) {
 		return nil, nil
 	}
 
-	// Общий парсер: ParseCanonical → fallback legacy Parse → naive-порт-дефолт →
-	// Validate → RecommendCore. Тексты ошибок ("парсинг URL: %w", "валидация:
-	// %w") формирует parseURLToOutbound — здесь просто пробрасываем их дальше.
+	// Общий парсер: ParseCanonical → naive-порт-дефолт → Validate → RecommendCore.
+	// Тексты ошибок ("парсинг URL: %w", "валидация: %w") формирует
+	// parseURLToOutbound — здесь просто пробрасываем их дальше.
 	o, _, err := parseURLToOutbound(url)
 	if err != nil {
 		return nil, err
