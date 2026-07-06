@@ -299,6 +299,39 @@ func singboxParamsForInstall(s *state.State) singbox.ConfigParams {
 	return params
 }
 
+// installValidatedSingboxBinary валидирует новый бинарь sing-box через
+// PrepareAndValidate (распаковка tarball во временный путь, рендер и проверка
+// конфига через sing-box check -c) и атомарно переносит его в
+// singbox.DefaultBinPath. Извлечено из идентичного блока, дублировавшегося в
+// doInstall (cmd_install.go) и handleUpdateCore (cmd_update.go) — отличались
+// только префиксы ошибок ("--install:"/"--update-core:"), которые остаются на
+// call-site (caller оборачивает возвращённую ошибку).
+//
+// Бинарь переносится потоково через os.Open + BackupAndReplaceFromReader, а не
+// BackupAndReplace([]byte): на 128MB-роутерах чтение ~12MB бинаря целиком в
+// память (os.ReadFile) удваивает расход RAM (файл + копия в []byte) и рискует
+// OOM-Kill.
+func installValidatedSingboxBinary(ctx context.Context, tarPath string, st *state.State) error {
+	params := singboxParamsForInstall(st)
+
+	tempBin, err := singbox.PrepareAndValidate(ctx, exectx.OS, singbox.DefaultCacheDir, tarPath, configPath(), params)
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(filepath.Dir(tempBin))
+
+	binFile, err := os.Open(tempBin)
+	if err != nil {
+		return fmt.Errorf("открытие валидированного бинаря: %w", err)
+	}
+	_, err = atomicfs.BackupAndReplaceFromReader(singbox.DefaultBinPath, binFile, 0o755)
+	_ = binFile.Close()
+	if err != nil {
+		return fmt.Errorf("установка бинаря: %w", err)
+	}
+	return nil
+}
+
 // regenerateConfig — core-aware регенерация конфига активного ядра.
 // Резолвит ядро по state.Core, рендерит через c.RenderConfig (включая RoutingConfig),
 // атомарно записывает в c.ConfigPath() и вызывает c.CheckConfig для валидации.

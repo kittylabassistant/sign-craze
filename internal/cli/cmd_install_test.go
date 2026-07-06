@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kittylabassistant/sign-craze/internal/state"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
@@ -271,5 +272,106 @@ func TestParseProxyURLToOutbound_NaiveHTTPS(t *testing.T) {
 	}
 	if o.Port != 8443 {
 		t.Errorf("Port=%d, ожидалось 8443", o.Port)
+	}
+}
+
+// TestParseInstallFlags — табличный тест общего парсера флагов install-хендлеров
+// (--core/--proxy/--with-dpi/--with-naive/--preset/--inbound), вынесенного из
+// четырёх дублировавших друг друга handleInstall/handleInstallAuto/
+// handleInstallOffline/handleReinstall. Проверяет разбор всех флагов в
+// пробельной и equals-форме, дефолт --inbound=state.DefaultInbound при
+// отсутствии флага и поведение с неизвестным флагом/позиционным аргументом:
+// parseStringFlag/parseBoolFlag не валидируют неизвестные токены, а оставляют
+// их в rest в исходном порядке — parseInstallFlags этот контракт не меняет
+// (rest нужен handleInstallOffline для позиционного пути к tarball).
+func TestParseInstallFlags(t *testing.T) {
+	cases := []struct {
+		name     string
+		args     []string
+		want     installFlags
+		wantRest []string
+	}{
+		{
+			name: "все флаги, пробельная форма",
+			args: []string{
+				"--core", "xray",
+				"--proxy", "vless://uuid@host:443",
+				"--with-dpi",
+				"--with-naive",
+				"--preset", "ru-direct",
+				"--inbound", "tun",
+			},
+			want: installFlags{
+				core:      "xray",
+				proxy:     "vless://uuid@host:443",
+				withDPI:   true,
+				withNaive: true,
+				preset:    "ru-direct",
+				inbound:   "tun",
+			},
+			wantRest: []string{},
+		},
+		{
+			name: "все флаги, equals-форма",
+			args: []string{
+				"--core=mihomo",
+				"--proxy=socks5://10.0.0.1:1080",
+				"--with-dpi",
+				"--with-naive",
+				"--preset=block-ads",
+				"--inbound=tproxy",
+			},
+			want: installFlags{
+				core:      "mihomo",
+				proxy:     "socks5://10.0.0.1:1080",
+				withDPI:   true,
+				withNaive: true,
+				preset:    "block-ads",
+				inbound:   "tproxy",
+			},
+			wantRest: []string{},
+		},
+		{
+			name: "дефолты: ни один флаг не передан",
+			args: []string{},
+			want: installFlags{
+				inbound: state.DefaultInbound,
+			},
+			wantRest: []string{},
+		},
+		{
+			name: "неизвестный флаг и позиционный аргумент остаются в rest",
+			args: []string{"/tmp/offline.tar.gz", "--unknown-flag", "--core", "sing-box"},
+			want: installFlags{
+				core:    "sing-box",
+				inbound: state.DefaultInbound,
+			},
+			wantRest: []string{"/tmp/offline.tar.gz", "--unknown-flag"},
+		},
+		{
+			name: "оборванный флаг без значения остаётся в rest",
+			args: []string{"--core"},
+			want: installFlags{
+				inbound: state.DefaultInbound,
+			},
+			wantRest: []string{"--core"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, rest := parseInstallFlags(tc.args)
+			if got != tc.want {
+				t.Errorf("parseInstallFlags(%v) = %+v, want %+v", tc.args, got, tc.want)
+			}
+			if len(rest) != len(tc.wantRest) {
+				t.Fatalf("rest = %v, want %v", rest, tc.wantRest)
+			}
+			for i := range rest {
+				if rest[i] != tc.wantRest[i] {
+					t.Errorf("rest[%d] = %q, want %q", i, rest[i], tc.wantRest[i])
+				}
+			}
+		})
 	}
 }

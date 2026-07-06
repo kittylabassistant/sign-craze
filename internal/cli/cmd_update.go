@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/firewall"
 	"github.com/kittylabassistant/sign-craze/internal/geo"
@@ -152,23 +151,8 @@ func handleUpdateCore(ctx context.Context, _ []string) error {
 			if err != nil {
 				return fmt.Errorf("--update-core: state: %w", err)
 			}
-			params := singboxParamsForInstall(st)
-
-			tempBin, err := singbox.PrepareAndValidate(ctx, exectx.OS, singbox.DefaultCacheDir, res.Path, configPath(), params)
-			if err != nil {
+			if err := installValidatedSingboxBinary(ctx, res.Path, st); err != nil {
 				return fmt.Errorf("--update-core: %w", err)
-			}
-			defer os.RemoveAll(filepath.Dir(tempBin))
-
-			// Стримим бинарь, чтобы не держать ~12MB в Go heap (см. cmd_install.go).
-			binFile, err := os.Open(tempBin)
-			if err != nil {
-				return fmt.Errorf("--update-core: открытие валидированного бинаря: %w", err)
-			}
-			_, err = atomicfs.BackupAndReplaceFromReader(singbox.DefaultBinPath, binFile, 0o755)
-			_ = binFile.Close()
-			if err != nil {
-				return fmt.Errorf("--update-core: установка бинаря: %w", err)
 			}
 		} else {
 			if err := c.Install(ctx, exectx.OS, res.Path); err != nil {

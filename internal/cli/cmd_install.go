@@ -76,46 +76,57 @@ func parseBoolFlag(args []string, name string) (found bool, rest []string) {
 	return
 }
 
-func handleInstall(ctx context.Context, args []string) error {
-	coreName, rest := parseStringFlag(args, "core")
-	proxyURL, rest := parseStringFlag(rest, "proxy")
-	withDPI, rest := parseBoolFlag(rest, "with-dpi")
-	withNaive, rest := parseBoolFlag(rest, "with-naive")
-	presetName, rest := parseStringFlag(rest, "preset")
-	inbound, _ := parseStringFlag(rest, "inbound")
-	if inbound == "" {
-		inbound = state.DefaultInbound
+// installFlags хранит флаги, общие для всех install-хендлеров:
+// --core, --proxy, --with-dpi, --with-naive, --preset, --inbound.
+type installFlags struct {
+	core      string
+	proxy     string
+	withDPI   bool
+	withNaive bool
+	preset    string
+	inbound   string
+}
+
+// parseInstallFlags разбирает флаги, общие для handleInstall/handleInstallAuto/
+// handleInstallOffline/handleReinstall: --core, --proxy, --with-dpi,
+// --with-naive, --preset, --inbound. Раньше каждый хендлер дублировал этот
+// разбор независимо — теперь единственная точка.
+//
+// inbound по умолчанию — state.DefaultInbound, если --inbound не передан.
+// rest — остаток args после извлечения всех шести флагов: неизвестные флаги и
+// позиционные аргументы (путь к tarball для --install-offline) остаются в нём
+// без изменений и в исходном порядке.
+func parseInstallFlags(args []string) (installFlags, []string) {
+	var f installFlags
+	rest := args
+	f.core, rest = parseStringFlag(rest, "core")
+	f.proxy, rest = parseStringFlag(rest, "proxy")
+	f.withDPI, rest = parseBoolFlag(rest, "with-dpi")
+	f.withNaive, rest = parseBoolFlag(rest, "with-naive")
+	f.preset, rest = parseStringFlag(rest, "preset")
+	f.inbound, rest = parseStringFlag(rest, "inbound")
+	if f.inbound == "" {
+		f.inbound = state.DefaultInbound
 	}
+	return f, rest
+}
+
+func handleInstall(ctx context.Context, args []string) error {
+	f, _ := parseInstallFlags(args)
 	return withLock(ctx, func() error {
-		return doInstall(ctx, installInteractive, "", false, coreName, proxyURL, withDPI, withNaive, inbound, presetName)
+		return doInstall(ctx, installInteractive, "", false, f.core, f.proxy, f.withDPI, f.withNaive, f.inbound, f.preset)
 	})
 }
 
 func handleInstallAuto(ctx context.Context, args []string) error {
-	coreName, rest := parseStringFlag(args, "core")
-	proxyURL, rest := parseStringFlag(rest, "proxy")
-	withDPI, rest := parseBoolFlag(rest, "with-dpi")
-	withNaive, rest := parseBoolFlag(rest, "with-naive")
-	presetName, rest := parseStringFlag(rest, "preset")
-	inbound, _ := parseStringFlag(rest, "inbound")
-	if inbound == "" {
-		inbound = state.DefaultInbound
-	}
+	f, _ := parseInstallFlags(args)
 	return withLock(ctx, func() error {
-		return doInstall(ctx, installAuto, "", false, coreName, proxyURL, withDPI, withNaive, inbound, presetName)
+		return doInstall(ctx, installAuto, "", false, f.core, f.proxy, f.withDPI, f.withNaive, f.inbound, f.preset)
 	})
 }
 
 func handleInstallOffline(ctx context.Context, args []string) error {
-	coreName, rest := parseStringFlag(args, "core")
-	proxyURL, rest := parseStringFlag(rest, "proxy")
-	withDPI, rest := parseBoolFlag(rest, "with-dpi")
-	withNaive, rest := parseBoolFlag(rest, "with-naive")
-	presetName, rest := parseStringFlag(rest, "preset")
-	inbound, rest := parseStringFlag(rest, "inbound")
-	if inbound == "" {
-		inbound = state.DefaultInbound
-	}
+	f, rest := parseInstallFlags(args)
 	if len(rest) == 0 {
 		return fmt.Errorf("--install-offline: требуется путь к tarball")
 	}
@@ -123,31 +134,24 @@ func handleInstallOffline(ctx context.Context, args []string) error {
 	// установки (например, валидация конфига упала), пользователь явно
 	// указывает локальный tarball — переустановка поверх ожидаемое поведение.
 	return withLock(ctx, func() error {
-		return doInstall(ctx, installOffline, rest[0], true, coreName, proxyURL, withDPI, withNaive, inbound, presetName)
+		return doInstall(ctx, installOffline, rest[0], true, f.core, f.proxy, f.withDPI, f.withNaive, f.inbound, f.preset)
 	})
 }
 
 func handleReinstall(ctx context.Context, args []string) error {
-	coreName, rest := parseStringFlag(args, "core")
-	proxyURL, rest := parseStringFlag(rest, "proxy")
-	withDPI, rest := parseBoolFlag(rest, "with-dpi")
-	withNaive, rest := parseBoolFlag(rest, "with-naive")
-	presetName, rest := parseStringFlag(rest, "preset")
-	inbound, _ := parseStringFlag(rest, "inbound")
-	if inbound == "" {
-		inbound = state.DefaultInbound
-	}
+	f, _ := parseInstallFlags(args)
+	coreName := f.core
 	if coreName == "" {
 		if prevSt, loadErr := loadState(); loadErr == nil && prevSt.Core != "" {
 			coreName = prevSt.Core
 		}
 	}
 	mode := installAuto
-	if proxyURL != "" {
+	if f.proxy != "" {
 		mode = installInteractive
 	}
 	return withLock(ctx, func() error {
-		return doInstall(ctx, mode, "", true, coreName, proxyURL, withDPI, withNaive, inbound, presetName)
+		return doInstall(ctx, mode, "", true, coreName, f.proxy, f.withDPI, f.withNaive, f.inbound, f.preset)
 	})
 }
 
@@ -314,26 +318,8 @@ func doInstall(ctx context.Context, mode installMode, offlineTar string, force b
 	// только потом атомарно переносит). Для остальных ядер используем общий путь:
 	// Install → RenderConfig → WriteFileAtomic → CheckConfig.
 	if coreName == "sing-box" {
-		params := singboxParamsForInstall(st)
-
-		tempBin, err := singbox.PrepareAndValidate(ctx, exectx.OS, singbox.DefaultCacheDir, tarPath, configPath(), params)
-		if err != nil {
+		if err := installValidatedSingboxBinary(ctx, tarPath, st); err != nil {
 			return fmt.Errorf("--install: %w", err)
-		}
-		defer os.RemoveAll(filepath.Dir(tempBin))
-
-		// Атомарно перенести валидированный бинарь в финальный путь.
-		// Стримим через io.Reader: на 128MB-роутерах os.ReadFile(~12MB) +
-		// BackupAndReplace([]byte) даёт OOM-Kill (binary в RAM × 2 — copy
-		// в map[]byte). BackupAndReplaceFromReader держит только малый буфер.
-		binFile, err := os.Open(tempBin)
-		if err != nil {
-			return fmt.Errorf("--install: открытие валидированного бинаря: %w", err)
-		}
-		_, err = atomicfs.BackupAndReplaceFromReader(singbox.DefaultBinPath, binFile, 0o755)
-		_ = binFile.Close()
-		if err != nil {
-			return fmt.Errorf("--install: установка бинаря: %w", err)
 		}
 	} else {
 		// Общий путь: Install → RenderConfig → WriteFileAtomic → CheckConfig.
