@@ -1,0 +1,56 @@
+name: core check golden (reusable)
+
+# Переиспользуемый workflow: общий каркас golden-проверки прокси-ядра
+# (sing-box / xray / mihomo). Конкретное ядро и способ его установки
+# передаются через inputs при вызове из caller-workflow'ов:
+# singbox-check.yml, xray-integration.yml, mihomo-integration.yml.
+on:
+  workflow_call:
+    inputs:
+      core-name:
+        description: "Человекочитаемое имя ядра для названий шагов (sing-box / xray / mihomo)"
+        required: true
+        type: string
+      core-version:
+        description: "Версия ядра (только для отображения в логах шага установки)"
+        required: true
+        type: string
+      install:
+        description: "Многострочный shell-скрипт установки бинаря ядра в /usr/local/bin"
+        required: true
+        type: string
+      test-path:
+        description: "Go-путь пакета с тестами ядра, например ./internal/singbox/..."
+        required: true
+        type: string
+      build-tag:
+        description: "Build tag golden-теста, например singboxcheck"
+        required: true
+        type: string
+      golden-run:
+        description: "Имя golden-теста для -run, например TestSingBoxCheck_Golden"
+        required: true
+        type: string
+
+jobs:
+  golden:
+    name: ${{ inputs.core-name }} check golden
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Установка ${{ inputs.core-name }} ${{ inputs.core-version }}
+        run: ${{ inputs.install }}
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Тесты без тега (основные)
+        run: go test ${{ inputs.test-path }}
+
+      - name: ${{ inputs.core-name }} check golden конфиги
+        run: go test -tags ${{ inputs.build-tag }} ${{ inputs.test-path }} -run ${{ inputs.golden-run }} -v

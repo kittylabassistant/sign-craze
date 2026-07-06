@@ -2,13 +2,8 @@ package service
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"fmt"
-	"os"
 	"text/template"
-
-	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
-	"github.com/kittylabassistant/sign-craze/internal/log"
 )
 
 const (
@@ -84,28 +79,16 @@ type HookParams struct {
 
 // WriteHook генерирует netfilter.d hook и атомарно записывает его в hookPath.
 // Идемпотентно: если файл существует и содержимое совпадает (SHA256) — пропускает.
+// Рендеринг делегирован RenderHook, запись — общему хелперу writeIfChanged
+// (writeutil.go), который использует также WriteShim.
 func WriteHook(hookPath string, p HookParams) error {
-	applyHookDefaults(&p)
-
-	var buf bytes.Buffer
-	if err := hookTemplate.Execute(&buf, p); err != nil {
-		return fmt.Errorf("netfilter hook: рендеринг шаблона: %w", err)
-	}
-	content := buf.Bytes()
-
-	if existing, err := os.ReadFile(hookPath); err == nil {
-		if sha256.Sum256(existing) == sha256.Sum256(content) {
-			log.L().Debug("netfilter hook актуален, запись пропущена", "path", hookPath)
-			return nil
-		}
+	content, err := RenderHook(p)
+	if err != nil {
+		return err
 	}
 
-	if err := atomicfs.WriteFileAtomic(hookPath, content, 0o755); err != nil {
-		return fmt.Errorf("netfilter hook: запись файла: %w", err)
-	}
-
-	log.L().Info("netfilter.d hook записан", "path", hookPath)
-	return nil
+	_, err = writeIfChanged(hookPath, content, 0o755, "netfilter.d hook")
+	return err
 }
 
 // RenderHook возвращает содержимое hook без записи на диск (для тестов).

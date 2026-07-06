@@ -100,9 +100,5 @@ func Download(ctx context.Context, arch types.Arch, dstDir string) (core.Downloa
 		return core.DownloadResult{}, fmt.Errorf("mihomo download: %w", err)
 	}
 
-	return core.DownloadResult{
-		Downloaded: res.Downloaded,
-		Version:    res.Version,
-		Path:       res.Path,
-	}, nil
+	return core.FromFetchResult(res), nil
 }

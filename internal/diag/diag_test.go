@@ -4,9 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
 func TestRun_AnyFail(t *testing.T) {
@@ -104,5 +109,152 @@ func TestCheckGeoFiles(t *testing.T) {
 	r = checkGeoFiles(dir, 7)(context.Background())
 	if r.Status != PASS {
 		t.Errorf("свежий файл: Status = %s, ожидался PASS", r.Status)
+	}
+}
+
+// ===== checkRuleSetURLs (инцидент 2026-05-12, tasks/lessons.md) =====
+
+// writeRoutingJSON — хелпер: сериализует RoutingConfig в файл для теста.
+func writeRoutingJSON(t *testing.T, path string, cfg types.RoutingConfig) {
+	t.Helper()
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("marshal routing config: %v", err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("запись %s: %v", path, err)
+	}
+}
+
+// TestCheckRuleSetURLs_NoRoutingFile — routing.json отсутствует → PASS-skip.
+// diag не должен требовать routing UI: не у всех пользователей он настроен.
+func TestCheckRuleSetURLs_NoRoutingFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing-routing.json")
+	r := checkRuleSetURLs(path)(context.Background())
+	if r.Status != PASS {
+		t.Errorf("routing.json отсутствует: Status = %s, ожидался PASS, detail=%s", r.Status, r.Detail)
+	}
+}
+
+// TestCheckRuleSetURLs_EmptyRuleSets — routing.json есть, но rule_sets пуст → PASS-skip.
+func TestCheckRuleSetURLs_EmptyRuleSets(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "routing.json")
+	writeRoutingJSON(t, path, types.RoutingConfig{Version: 1})
+
+	r := checkRuleSetURLs(path)(context.Background())
+	if r.Status != PASS {
+		t.Errorf("rule_sets пуст: Status = %s, ожидался PASS, detail=%s", r.Status, r.Detail)
+	}
+}
+
+// TestCheckRuleSetURLs_404_WARN — rule_set с 404 URL → WARN (не FAIL: diag не
+// должен считать это аварией сервиса — единичный проблемный rule_set не
+// критичнее, чем, например, остановленный nfqws2).
+func TestCheckRuleSetURLs_404_WARN(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	path := filepath.Join(t.TempDir(), "routing.json")
+	writeRoutingJSON(t, path, types.RoutingConfig{
+		Version: 1,
+		RuleSets: []types.RuleSetRef{
+			{Tag: "ru-sites", Type: "remote", Format: "binary", URL: srv.URL + "/geosite-ru.srs"},
+		},
+	})
+
+	r := checkRuleSetURLs(path)(context.Background())
+	if r.Status != WARN {
+		t.Errorf("404: Status = %s, ожидался WARN, detail=%s", r.Status, r.Detail)
+	}
+	if !strings.Contains(r.Detail, "ru-sites") {
+		t.Errorf("detail не содержит тег проблемного rule_set: %s", r.Detail)
+	}
+}
+
+// TestCheckRuleSetURLs_FormatMismatch_WARN — JSON source вместо compiled SRS
+// под .srs URL (ровно кейс инцидента 2026-05-12) → WARN.
+func TestCheckRuleSetURLs_FormatMismatch_WARN(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"version": 2, "rules": []}`))
+	}))
+	defer srv.Close()
+
+	path := filepath.Join(t.TempDir(), "routing.json")
+	writeRoutingJSON(t, path, types.RoutingConfig{
+		Version: 1,
+		RuleSets: []types.RuleSetRef{
+			{Tag: "ru-sites", Type: "remote", Format: "binary", URL: srv.URL + "/geosite-category-ru.srs"},
+		},
+	})
+
+	r := checkRuleSetURLs(path)(context.Background())
+	if r.Status != WARN {
+		t.Errorf("format mismatch: Status = %s, ожидался WARN, detail=%s", r.Status, r.Detail)
+	}
+}
+
+// TestCheckRuleSetURLs_Unreachable_WARNSkipped — сеть недоступна → WARN с
+// текстом "пропущено: сеть недоступна" (не FAIL — offline-роутер это не
+// ошибка конфигурации, diag не должен об этом кричать как об аварии).
+func TestCheckRuleSetURLs_Unreachable_WARNSkipped(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	url := srv.URL + "/geoip-ru.srs"
+	srv.Close()
+
+	path := filepath.Join(t.TempDir(), "routing.json")
+	writeRoutingJSON(t, path, types.RoutingConfig{
+		Version: 1,
+		RuleSets: []types.RuleSetRef{
+			{Tag: "geoip-ru", Type: "remote", URL: url},
+		},
+	})
+
+	r := checkRuleSetURLs(path)(context.Background())
+	if r.Status != WARN {
+		t.Errorf("сеть недоступна: Status = %s, ожидался WARN, detail=%s", r.Status, r.Detail)
+	}
+	if !strings.Contains(r.Detail, "пропущено: сеть недоступна") {
+		t.Errorf("detail = %q, ожидалась подстрока «пропущено: сеть недоступна»", r.Detail)
+	}
+}
+
+// TestCheckRuleSetURLs_AllOK_PASS — все rule_set URL доступны и формат
+// совпадает → PASS.
+func TestCheckRuleSetURLs_AllOK_PASS(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(append([]byte("SRS"), make([]byte, 16)...))
+	}))
+	defer srv.Close()
+
+	path := filepath.Join(t.TempDir(), "routing.json")
+	writeRoutingJSON(t, path, types.RoutingConfig{
+		Version: 1,
+		RuleSets: []types.RuleSetRef{
+			{Tag: "geoip-ru", Type: "remote", Format: "binary", URL: srv.URL + "/geoip-ru.srs"},
+		},
+	})
+
+	r := checkRuleSetURLs(path)(context.Background())
+	if r.Status != PASS {
+		t.Errorf("все ок: Status = %s, ожидался PASS, detail=%s", r.Status, r.Detail)
+	}
+}
+
+// TestCheckRuleSetURLs_NoURLRuleSets_PASS — rule_sets заданы, но все
+// type=local/inline (без URL) → PASS-skip, без сетевых обращений.
+func TestCheckRuleSetURLs_NoURLRuleSets_PASS(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "routing.json")
+	writeRoutingJSON(t, path, types.RoutingConfig{
+		Version: 1,
+		RuleSets: []types.RuleSetRef{
+			{Tag: "local-set", Type: "local", Path: "/opt/etc/sign-craze/local.srs"},
+		},
+	})
+
+	r := checkRuleSetURLs(path)(context.Background())
+	if r.Status != PASS {
+		t.Errorf("только local rule_set: Status = %s, ожидался PASS, detail=%s", r.Status, r.Detail)
 	}
 }

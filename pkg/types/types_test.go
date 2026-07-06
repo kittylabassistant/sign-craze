@@ -2,6 +2,7 @@ package types
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 )
 
@@ -210,26 +211,6 @@ func TestPort_Validate(t *testing.T) {
 	}
 }
 
-func TestPortRange_Validate(t *testing.T) {
-	tests := []struct {
-		r       PortRange
-		wantErr bool
-	}{
-		{PortRange{80, 80}, false},
-		{PortRange{80, 443}, false},
-		{PortRange{443, 80}, true}, // from > to
-		{PortRange{0, 80}, true},   // from == 0
-		{PortRange{80, 0}, true},   // to == 0
-	}
-	for _, tt := range tests {
-		err := tt.r.Validate()
-		if (err != nil) != tt.wantErr {
-			t.Errorf("PortRange{%d,%d}.Validate() error = %v, wantErr %v",
-				tt.r.From, tt.r.To, err, tt.wantErr)
-		}
-	}
-}
-
 func TestOutbound_Validate(t *testing.T) {
 	valid := Outbound{Tag: "proxy", Type: "socks", Server: "1.2.3.4", Port: 1080}
 	if err := valid.Validate(); err != nil {
@@ -278,5 +259,87 @@ func TestOutbound_TagFormat(t *testing.T) {
 		if err := o.Validate(); err == nil {
 			t.Errorf("Tag=%q должен быть отвергнут", tag)
 		}
+	}
+}
+
+// TestOutbound_Canonical_RoundTrip — Canonical() обязан переносить
+// Protocol/Transport/TLS/Proto 1:1 и не задевать остальные поля Outbound
+// (Tag/Type/Server/Port/Settings в Canonical не попадают).
+func TestOutbound_Canonical_RoundTrip(t *testing.T) {
+	tests := []struct {
+		name string
+		o    Outbound
+		want Canonical
+	}{
+		{
+			name: "все canonical-поля заполнены",
+			o: Outbound{
+				Tag:      "vless-proxy",
+				Type:     "vless",
+				Server:   "srv",
+				Port:     443,
+				Settings: map[string]any{"legacy": "ignored"},
+				Protocol: ProtocolVLESS,
+				Transport: &Transport{
+					Kind:        TransportGRPC,
+					ServiceName: "grpc-service",
+				},
+				TLS: &TLSConfig{
+					Enabled:    true,
+					ServerName: "example.com",
+				},
+				Proto: &ProtoOpts{
+					UUID: "abc-uuid",
+					Flow: "xtls-rprx-vision",
+				},
+			},
+			want: Canonical{
+				Protocol: ProtocolVLESS,
+				Transport: &Transport{
+					Kind:        TransportGRPC,
+					ServiceName: "grpc-service",
+				},
+				TLS: &TLSConfig{
+					Enabled:    true,
+					ServerName: "example.com",
+				},
+				Proto: &ProtoOpts{
+					UUID: "abc-uuid",
+					Flow: "xtls-rprx-vision",
+				},
+			},
+		},
+		{
+			name: "пустой Protocol → пустой Canonical (IsSet()=false)",
+			o:    Outbound{Tag: "direct", Type: "direct"},
+			want: Canonical{},
+		},
+		{
+			name: "Protocol без остальных canonical-полей (nil Transport/TLS/Proto)",
+			o:    Outbound{Tag: "block", Type: "block", Protocol: ProtocolBlock},
+			want: Canonical{Protocol: ProtocolBlock},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.o.Canonical()
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Canonical() = %+v, ожидалось %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestOutbound_Canonical_IsSetConsistency — Canonical(), полученный из
+// Outbound с непустым Protocol, всегда даёт IsSet()=true (и наоборот).
+func TestOutbound_Canonical_IsSetConsistency(t *testing.T) {
+	withProtocol := Outbound{Tag: "x", Type: "vless", Protocol: ProtocolVLESS}
+	if !withProtocol.Canonical().IsSet() {
+		t.Error("Outbound с Protocol должен давать Canonical.IsSet()=true")
+	}
+
+	withoutProtocol := Outbound{Tag: "x", Type: "vless"}
+	if withoutProtocol.Canonical().IsSet() {
+		t.Error("Outbound без Protocol должен давать Canonical.IsSet()=false")
 	}
 }

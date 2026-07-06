@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"time"
@@ -117,6 +118,11 @@ func runUIServer(ctx context.Context) error {
 	runner := exectx.OS
 	singboxLC := singbox.DefaultLifecycle()
 	dpiLC := newDPILifecycle()
+	// ruleSetClient — для RoutingUIDeps.RuleSetChecker (проверка rule_set.URL
+	// при добавлении через Routing UI). Таймаут — на ctx, который выставляет
+	// сам web-хендлер (routingui_rulesets.go), клиент собственного Timeout
+	// не имеет.
+	ruleSetClient := &http.Client{}
 
 	statusReader := state.NewStatusReader(
 		singboxLC, dpiLC,
@@ -170,6 +176,23 @@ func runUIServer(ctx context.Context) error {
 		},
 		Validator: func(ctx context.Context, cfg *types.RoutingConfig) ([]string, error) {
 			return validateRoutingConfig(ctx, runner, cfg, freshStateOr(st))
+		},
+		// RuleSetChecker — синхронная HEAD/GET-проверка rule_set.URL на
+		// POST /api/rule_sets (см. RoutingUIDeps.RuleSetChecker и
+		// tasks/lessons.md, инцидент 2026-05-12: rule_set с 404-URL и rule_set
+		// с mismatch формата (JSON source под .srs) валили sing-box на старте
+		// у живых пользователей — теперь блокируется уже на сохранении).
+		// Сетевая недоступность (offline-роутер) намеренно не блокирует
+		// добавление — см. Unreachable-ветку ниже.
+		RuleSetChecker: func(ctx context.Context, ref types.RuleSetRef) error {
+			res := routing.CheckRuleSetURL(ctx, ruleSetClient, ref)
+			if res.Unreachable {
+				return nil
+			}
+			if res.Mismatch {
+				return fmt.Errorf("%s", res.Detail)
+			}
+			return nil
 		},
 		OnApply: func(ctx context.Context) error {
 			fresh, loadErr := state.Load(state.DefaultPath)

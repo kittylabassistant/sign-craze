@@ -3,23 +3,12 @@
 # Запускать на хосте разработчика.
 set -eu
 
-KEENETIC_HOST="${KEENETIC_HOST:?Укажите KEENETIC_HOST}"
-KEENETIC_USER="${KEENETIC_USER:-root}"
-KEENETIC_KEY="${KEENETIC_KEY:-${HOME}/.ssh/keenetic}"
+# shellcheck source=scripts/e2e/lib.sh
+. "$(dirname "$0")/lib.sh"
+
 DPI_TARGETS="${DPI_TARGETS:-discord.com,youtube.com,googlevideo.com}"
 HOSTLIST_PATH="/opt/etc/sign-craze/dpi-hostlist.txt"
 NFQWS_CONF="/opt/etc/sign-craze/nfqws2.conf"
-STEP="03-dpi-hostlist"
-
-log()  { printf '[%s] %s\n' "${STEP}" "$*"; }
-fail() { log "FAIL:${STEP}: $*"; exit 1; }
-pass() { log "PASS:${STEP}"; }
-
-ssh_cmd() {
-    # shellcheck disable=SC2029
-    ssh -i "${KEENETIC_KEY}" -o StrictHostKeyChecking=accept-new \
-        "${KEENETIC_USER}@${KEENETIC_HOST}" "$@"
-}
 
 # ---------- включаем DPI ----------
 log "Включаем --dpi on..."

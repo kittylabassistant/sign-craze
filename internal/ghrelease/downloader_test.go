@@ -1,11 +1,15 @@
 package ghrelease
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -401,6 +405,44 @@ func TestDownloadAsset_BodyIdleTimeout_FailsOverToNextMirror(t *testing.T) {
 	}
 	if string(got) != string(content) {
 		t.Errorf("содержимое = %q, ожидалось %q (с good mirror)", got, content)
+	}
+}
+
+// TestTryMirrorDownload_SHA256CorrectViaTeeReader — R13: после замены
+// ручного atomic-write блока (CreateTemp+MultiWriter) на
+// atomicfs.WriteFileAtomicFromReader + io.TeeReader хеш должен по-прежнему
+// совпадать с sha256 контента, в том числе когда контент больше внутреннего
+// copy-buffer'а atomicfs (8KB) — то есть Read вызывается несколько раз и
+// TeeReader копит хеш по кускам, а не за один присест.
+func TestTryMirrorDownload_SHA256CorrectViaTeeReader(t *testing.T) {
+	content := bytes.Repeat([]byte("sign-craze-r13-teereader-check-"), 4096) // ~128KB
+	wantSum := sha256.Sum256(content)
+	wantHex := hex.EncodeToString(wantSum[:])
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(content)
+	}))
+	defer srv.Close()
+
+	dst := filepath.Join(t.TempDir(), "asset.bin")
+	d := New()
+	downloaded, _, sum, retriable, err := d.tryMirrorDownload(context.Background(), srv.URL+"/asset.bin", dst, "", "test-host")
+	if err != nil {
+		t.Fatalf("tryMirrorDownload: %v (retriable=%v)", err, retriable)
+	}
+	if !downloaded {
+		t.Fatal("ожидался downloaded=true")
+	}
+	if sum != wantHex {
+		t.Errorf("sha256 = %s, ожидалось %s", sum, wantHex)
+	}
+
+	got, readErr := os.ReadFile(dst)
+	if readErr != nil {
+		t.Fatalf("чтение результата: %v", readErr)
+	}
+	if !bytes.Equal(got, content) {
+		t.Error("содержимое скачанного файла не совпадает с оригиналом")
 	}
 }
 

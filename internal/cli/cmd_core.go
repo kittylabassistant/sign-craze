@@ -8,6 +8,8 @@ import (
 
 	"github.com/kittylabassistant/sign-craze/internal/core"
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
+	"github.com/kittylabassistant/sign-craze/internal/geo"
+	"github.com/kittylabassistant/sign-craze/internal/log"
 	"github.com/kittylabassistant/sign-craze/internal/state"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
@@ -139,6 +141,11 @@ func handleCoreInstall(ctx context.Context, args []string) error {
 		fmt.Printf("%s %s v%s в %s\n", OK("Установлено"), c.Name(), ver, Hint(c.BinaryPath()))
 	}
 
+	// Geo-данные (.dat) — только для ядер с GeoFormat()==GeoDAT (xray).
+	// Неудача скачивания НЕ фейлит установку бинаря — только Warn + подсказка
+	// повторить вручную (см. installGeoDATAssets).
+	installGeoDATAssets(ctx, c)
+
 	st, stErr := loadState()
 	active := state.DefaultCore
 	if stErr == nil && st != nil && st.Core != "" {
@@ -148,6 +155,34 @@ func handleCoreInstall(ctx context.Context, args []string) error {
 		fmt.Printf("%s %s\n", Hint("Активное ядро не изменено"), Hint("(sign-craze --core "+name+" для переключения)"))
 	}
 	return nil
+}
+
+// installGeoDATAssets скачивает geosite.dat/geoip.dat для только что
+// установленного ядра c, если c.GeoFormat()==GeoDAT (xray). No-op для
+// остальных форматов (sing-box/.srs качается через --update-geo отдельно;
+// mihomo/.mrs — mihomo качает rule-providers сам).
+//
+// Ошибка скачивания НЕ фейлит --core-install: бинарь уже установлен успешно,
+// поэтому geo-данные — только Warn-лог + подсказка повторить вручную через
+// --update-geo --core <name>. Без geo-данных xray упадёт при первом --start с
+// понятной ошибкой (internal/core/xray/render_rules.go) — это приемлемо для
+// установки "про запас" (--core-install не активирует ядро сразу).
+func installGeoDATAssets(ctx context.Context, c core.Core) {
+	if c.GeoFormat() != core.GeoDAT {
+		return
+	}
+
+	dstDir := filepath.Join(c.ConfigDir(), "assets")
+	fmt.Printf("%s %s...\n", Info("Загрузка geo-данных (.dat) для"), Bold(c.Name()))
+
+	updated, err := geoDownloadDATFn(ctx, c.CacheDir(), dstDir)
+	if err != nil {
+		log.L().Warn("--core-install: скачивание geo .dat не удалось", "core", c.Name(), "err", err)
+		fmt.Printf("%s %v\n", Warn("Не удалось скачать geo-данные (.dat):"), err)
+		fmt.Printf("  %s\n", Hint("Повторите позже: sign-craze --update-geo --core "+c.Name()))
+		return
+	}
+	fmt.Printf("%s %d/%d geo-файлов (.dat) в %s\n", OK("Готово:"), updated, len(geo.DATFileNames), Hint(dstDir))
 }
 
 func handleCoreList(ctx context.Context, _ []string) error {

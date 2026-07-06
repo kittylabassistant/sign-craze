@@ -12,7 +12,7 @@ import (
 
 func newClashMux(t *testing.T) http.Handler {
 	t.Helper()
-	s, _ := makeTestServer(t)
+	s := makeTestServer(t)
 	mux := http.NewServeMux()
 	registerClashRoutes(mux, s)
 	return mux

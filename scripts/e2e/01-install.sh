@@ -3,23 +3,12 @@
 # Запускать на хосте разработчика.
 set -eu
 
-KEENETIC_HOST="${KEENETIC_HOST:?Укажите KEENETIC_HOST}"
-KEENETIC_USER="${KEENETIC_USER:-root}"
-KEENETIC_KEY="${KEENETIC_KEY:-${HOME}/.ssh/keenetic}"
+# shellcheck source=scripts/e2e/lib.sh
+. "$(dirname "$0")/lib.sh"
+
 DIST="${DIST:-dist}"
 BINARY="${DIST}/sign-craze-mipsle"
 REMOTE_TMP="/tmp/sign-craze"
-STEP="01-install"
-
-log()  { printf '[%s] %s\n' "${STEP}" "$*"; }
-fail() { log "FAIL:${STEP}: $*"; exit 1; }
-pass() { log "PASS:${STEP}"; }
-
-ssh_cmd() {
-    # shellcheck disable=SC2029
-    ssh -i "${KEENETIC_KEY}" -o StrictHostKeyChecking=accept-new \
-        "${KEENETIC_USER}@${KEENETIC_HOST}" "$@"
-}
 
 # ---------- проверяем бинарь ----------
 [ -f "${BINARY}" ] || fail "бинарь ${BINARY} не найден — запустите 00-build.sh"

@@ -8,13 +8,13 @@ import (
 )
 
 // makeTestServer создаёт Server для тестов.
-func makeTestServer(t *testing.T) (*Server, string) {
+func makeTestServer(t *testing.T) *Server {
 	t.Helper()
 	s, err := NewServer(ServerConfig{})
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
-	return s, ""
+	return s
 }
 
 // TestSecurityHeaders_присутствуют — middleware должен ставить X-Content-Type-Options,
@@ -46,7 +46,7 @@ func TestSecurityHeaders_присутствуют(t *testing.T) {
 // TestServer_AdminHasReadHeaderTimeout — admin server (9091) должен иметь
 // ReadHeaderTimeout > 0 для защиты от slowloris.
 func TestServer_AdminHasReadHeaderTimeout(t *testing.T) {
-	s, _ := makeTestServer(t)
+	s := makeTestServer(t)
 	if s.admin.ReadHeaderTimeout <= 0 {
 		t.Errorf("admin.ReadHeaderTimeout=%v, ожидалось > 0", s.admin.ReadHeaderTimeout)
 	}

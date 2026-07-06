@@ -67,7 +67,6 @@ type State struct {
 	// Deprecated: использовать AdminPorts.
 	AdminPort   uint16   `json:"admin_port,omitempty"`
 	AdminPorts  []uint16 `json:"admin_ports,omitempty"`
-	AdminIPs    []string `json:"admin_ips,omitempty"`
 	DPIEnabled  bool     `json:"dpi_enabled"`
 	DPIStrategy string   `json:"dpi_strategy,omitempty"`
 	// DPITargets — список доменов/паттернов для selective DPI desync.
@@ -140,7 +139,6 @@ func Default() *State {
 		Ports:            []uint16{},
 		Excludes:         excludes,
 		AdminPorts:       append([]uint16(nil), DefaultAdminPorts...),
-		AdminIPs:         []string{},
 		PolicyName:       DefaultPolicyName,
 		RoutingUIEnabled: true,
 		RoutingUIPort:    DefaultRoutingUIPort,
@@ -186,9 +184,6 @@ func Load(path string) (*State, error) {
 	}
 	if s.Excludes == nil {
 		s.Excludes = []string{}
-	}
-	if s.AdminIPs == nil {
-		s.AdminIPs = []string{}
 	}
 	if s.AdminPorts == nil {
 		s.AdminPorts = []uint16{}

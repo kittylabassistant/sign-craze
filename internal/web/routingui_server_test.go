@@ -40,7 +40,7 @@ func servingMux(s *Server) http.Handler {
 }
 
 func TestRoutingUI_HealthEndpoint(t *testing.T) {
-	s, _ := makeTestServer(t)
+	s := makeTestServer(t)
 	h := servingMux(s)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
@@ -57,7 +57,7 @@ func TestRoutingUI_HealthEndpoint(t *testing.T) {
 
 // TestRoutingUI_StateEmpty — без RoutingUI deps возвращает default конфиг.
 func TestRoutingUI_StateEmpty(t *testing.T) {
-	s, _ := makeTestServer(t)
+	s := makeTestServer(t)
 	h := servingMux(s)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/state", nil)
@@ -73,7 +73,7 @@ func TestRoutingUI_StateEmpty(t *testing.T) {
 }
 
 func TestRoutingUI_SPARoot(t *testing.T) {
-	s, _ := makeTestServer(t)
+	s := makeTestServer(t)
 	h := servingMux(s)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -120,7 +120,7 @@ func TestNewServer_RoutingUI_FallbackOnBusyPort(t *testing.T) {
 
 // TestNewServer_RoutingUI_Disabled — если RoutingUIEnabled=false, routingUI остаётся nil.
 func TestNewServer_RoutingUI_Disabled(t *testing.T) {
-	s, _ := makeTestServer(t)
+	s := makeTestServer(t)
 	if s.routingUI != nil {
 		t.Error("ожидался nil routingUI при выключенном RoutingUIEnabled")
 	}

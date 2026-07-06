@@ -113,3 +113,37 @@ func TestValidate_VLESS(t *testing.T) {
 		})
 	}
 }
+
+// TestValidate_SupervisedPeer — mieru/naive отклоняются как supervised peer
+// (core.RejectSupervisedPeer) раньше VLESS-специфичной проверки.
+func TestValidate_SupervisedPeer(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		c       types.Canonical
+		wantErr string
+	}{
+		{
+			name:    "mieru отклонён",
+			c:       types.Canonical{Protocol: types.ProtocolMieru},
+			wantErr: "mihomo не поддерживает mieru как supervised peer, используйте --core sing-box",
+		},
+		{
+			name:    "naive отклонён",
+			c:       types.Canonical{Protocol: types.ProtocolNaive},
+			wantErr: "mihomo не поддерживает naive как supervised peer, используйте --core sing-box",
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := Validate(tc.c)
+			if err == nil || err.Error() != tc.wantErr {
+				t.Errorf("Validate() = %v, ожидалось %q", err, tc.wantErr)
+			}
+		})
+	}
+}

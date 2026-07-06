@@ -9,6 +9,41 @@
 
 ---
 
+## [1.6.4] - 2026-07-06
+
+### Added
+
+- **`--update-geo [--core <name>]`**: гео-обновление стало per-core. Для sing-box поведение не изменилось (`.srs` в `/opt/var/lib/sign-craze/geo/`). Для xray — автозагрузка `geosite.dat`/`geoip.dat` (источник [Loyalsoldier/v2ray-rules-dat](https://github.com/Loyalsoldier/v2ray-rules-dat)) в `/opt/etc/sign-craze/xray/assets/` с проверкой SHA256 и структурной валидацией файла; закрывает инцидент 2026-05-12 (xray падал FATAL на старте без `.dat`). Для mihomo — no-op, mihomo качает `rule-providers` сам.
+- **Валидаторы гео-файлов**: `geo.ValidateDAT` (разбор varint-структуры Xray `.dat`, guard 64 МБ) и `geo.ValidateMRSHeader` (заголовок mihomo `.mrs`, guard 128 МБ) — защита от повреждённых или чрезмерно больших загрузок.
+- **Diag-чек `rule-set-urls`**: для каждого `rule_set` из `routing.json` — HEAD-запрос + сверка magic-байтов формата; 404/несовпадение → WARN, сеть недоступна → WARN «пропущено», FAIL по этому пункту не бывает.
+- **Routing UI**: `POST /api/rule_sets` отклоняет URL с подтверждённым 404 или неверной сигнатурой формата (`400 Bad Request`); сетевая недоступность (офлайн-роутер) сохранение не блокирует.
+- **`CoreRenderParams.Preview`**: рендер конфига ядра для предпросмотра (Routing UI) без требования, чтобы гео-ассеты уже лежали на диске.
+
+### Fixed
+
+- **xray падал FATAL на старте без geo-ассетов**: при routing-правилах с `geosite:`/`geoip:`, но отсутствующих `.dat`-файлах xray завершался криптичным FATAL при запуске. Теперь явная ошибка до старта ядра с подсказкой запустить `--update-geo --core xray`, плюс автозагрузка ассетов при `--core-install xray`.
+- **`--stop` останавливал только активное ядро**: при смене ядра (`--core <name> --restart`) старый процесс мог остаться orphan'ом. Теперь `--stop` (через `stopAllCoreLifecycles`) отправляет SIGTERM всем зарегистрированным ядрам (sing-box/xray/mihomo), идемпотентно для незапущенных.
+- **naive-outbound из интерактивного wizard получал порт 0**: путь `wizardURL` не проставлял дефолтный `NaiveListenPort` перед валидацией (в отличие от `--proxy`), из-за чего `--install` падал. Оба пути теперь используют общий `parseURLToOutbound`.
+- **Гонка локов CLI ↔ Web UI на `state.json`**: CLI-мутаторы (`--port-add`, `--dpi-targets` и аналогичные) писали `state.json` в обход менеджеров, которые использует Web UI, что могло приводить к потере параллельно внесённых изменений (lost update). Теперь CLI и Web UI используют общие `state.NewPortsManager`/`state.NewDPITargetsManager`.
+- **Mirror-загрузка без fsync директории**: атомарная замена файла (rename) не гарантировала durability при внезапном отключении питания роутера. Добавлен fsync родительской директории после rename (`internal/atomicfs`).
+
+### Changed (BREAKING)
+
+- **Установка — только через `scripts/install.sh`**: opkg/.ipk-дистрибуция и custom-feed на gh-pages удалены; `opkg install ./sign-craze_<ver>_<arch>.ipk` больше не поддерживается.
+- **Валидация proxy-URL ужесточена**: legacy-парсер удалён. Неизвестное значение `security=` и REALITY-параметры `pbk`/`sid` без `security=reality` теперь возвращают явную ошибку вместо тихого игнорирования.
+- **`--port-list`**: вывод портов теперь отсортирован по возрастанию.
+
+### Removed
+
+- **`state.AdminIPs`**: поле не имело ни одного writer'а в кодовой базе — удалено вместе с `ParsedAdminIPs`.
+- **Мёртвые типы `RoutingRules`, `PortRange`** (не путать с живым полем `RouteRule.PortRange`), устаревшие per-core обёртки (вытеснены общими хелперами — см. Internal), дублирующий CI-workflow `firewall-integration`, неиспользуемый `img/banner_beta.png`.
+
+### Internal
+
+- Дедупликация ~1600 LOC: общий `internal/core/corearchive` для установки xray/mihomo, `withState`/`withStateMutation` в `internal/state`, generic CRUD (`routingui_crud.go`) для Routing UI, общие firewall-хелперы триады DPI/bypass (LAN/admin-ports/policy bypass) с regression-тестом, `scripts/e2e/lib.sh`, переиспользуемый CI-workflow `core-golden.yml`, `go-version-file` вместо хардкода версии Go в большинстве workflow.
+
+---
+
 ## [1.6.3] - 2026-06-30
 
 ### Fixed

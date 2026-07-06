@@ -7,11 +7,10 @@ import (
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
-func TestTranslateRoutingRules(t *testing.T) {
+func TestRenderXrayRoutingRules(t *testing.T) {
 	tests := []struct {
 		name           string
 		rc             *types.RoutingConfig
-		defaultTag     string
 		wantRuleCount  int
 		wantOutbounds  []string // ожидаемые outboundTag в порядке появления
 		wantDomains    []string // подстроки, которые должны встретиться в JSON domain[]
@@ -23,7 +22,6 @@ func TestTranslateRoutingRules(t *testing.T) {
 			rc: &types.RoutingConfig{
 				Version: 1,
 			},
-			defaultTag:    "vpn",
 			wantRuleCount: 0,
 		},
 		{
@@ -32,7 +30,6 @@ func TestTranslateRoutingRules(t *testing.T) {
 				Version: 1,
 				Final:   "vpn",
 			},
-			defaultTag:    "vpn",
 			wantRuleCount: 1,
 			wantOutbounds: []string{"vpn"},
 		},
@@ -51,7 +48,6 @@ func TestTranslateRoutingRules(t *testing.T) {
 				},
 				Final: "direct",
 			},
-			defaultTag:    "vpn",
 			wantRuleCount: 2,
 			wantOutbounds: []string{"vpn", "direct"},
 			wantDomains:   []string{"domain:full:exact.com", "domain:suf.com", "domain:keyword:kw", `regexp:^re\..+`},
@@ -64,7 +60,6 @@ func TestTranslateRoutingRules(t *testing.T) {
 					{RuleSet: []string{"geosite-youtube"}, Outbound: "direct"},
 				},
 			},
-			defaultTag:    "vpn",
 			wantRuleCount: 1,
 			wantDomains:   []string{"geosite:youtube"},
 		},
@@ -76,7 +71,6 @@ func TestTranslateRoutingRules(t *testing.T) {
 					{RuleSet: []string{"geoip-ru"}, Outbound: "direct"},
 				},
 			},
-			defaultTag:    "vpn",
 			wantRuleCount: 1,
 			wantIPs:       []string{"geoip:ru"},
 		},
@@ -88,7 +82,6 @@ func TestTranslateRoutingRules(t *testing.T) {
 					{RuleSet: []string{"refilter-blocked-domains"}, Outbound: "vpn"},
 				},
 			},
-			defaultTag:     "vpn",
 			wantRuleCount:  0, // нет matchers, outbound пустой → skip
 			wantWarningSub: []string{"refilter-blocked-domains", "geosite-/geoip-"},
 		},
@@ -100,7 +93,6 @@ func TestTranslateRoutingRules(t *testing.T) {
 					{Domain: []string{"ads.com"}, Action: "reject"},
 				},
 			},
-			defaultTag:    "vpn",
 			wantRuleCount: 1,
 			wantOutbounds: []string{"block"},
 		},
@@ -112,7 +104,6 @@ func TestTranslateRoutingRules(t *testing.T) {
 					{Port: []uint16{80, 443}, PortRange: []string{"1000:2000"}, Outbound: "vpn"},
 				},
 			},
-			defaultTag:    "vpn",
 			wantRuleCount: 1,
 		},
 		{
@@ -123,7 +114,6 @@ func TestTranslateRoutingRules(t *testing.T) {
 					{Domain: []string{"x.com"}, Action: "sniff"},
 				},
 			},
-			defaultTag:     "vpn",
 			wantRuleCount:  0,
 			wantWarningSub: []string{"sniff", "не поддерживает"},
 		},
@@ -131,7 +121,12 @@ func TestTranslateRoutingRules(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rules, warnings := TranslateRoutingRules(tt.rc, tt.defaultTag)
+			// geoAssetsDir="" отключает geo-check — err всегда nil (см. комментарий
+			// над renderXrayRoutingRules), поэтому в тесте считаем ошибку фатальной.
+			rules, warnings, err := renderXrayRoutingRules(tt.rc, "")
+			if err != nil {
+				t.Fatalf("renderXrayRoutingRules: %v", err)
+			}
 			if len(rules) != tt.wantRuleCount {
 				t.Errorf("rules count: got %d, want %d (rules: %+v)", len(rules), tt.wantRuleCount, rules)
 			}

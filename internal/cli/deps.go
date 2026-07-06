@@ -84,7 +84,6 @@ func newNaiveLifecycleFromOutbound(o types.Outbound) (service.Lifecycle, error) 
 
 // newFirewallApplier строит Applier из state: пробрасывает ports/excludes/admin
 // + PolicyMark + DPIEnabled в Config.
-// AdminIPs мерджатся в Excludes — оба попадают в ipset signcraze_excludes.
 //
 // SkipTUNCheck определяется по активному ядру: sing-box работает через TUN
 // (pre-flight CheckTUNAvailable обязателен), xray/mihomo — через TProxy и
@@ -108,11 +107,6 @@ func newFirewallApplier(s *state.State) (firewall.Applier, error) {
 	if err != nil {
 		return nil, fmt.Errorf("firewall: некорректные excludes: %w", err)
 	}
-	adminPrefixes, err := state.ParsedAdminIPs(s)
-	if err != nil {
-		return nil, fmt.Errorf("firewall: некорректные admin IPs: %w", err)
-	}
-	excl = append(excl, adminPrefixes...)
 	cfg.Excludes = excl
 
 	cfg.VPNExcludeIPs = collectVPNExcludeIPs(s)
@@ -216,6 +210,39 @@ func saveState(s *state.State) error {
 	return state.Save(state.DefaultPath, s)
 }
 
+// withStateMutationLock/Load/Save — сеймы поверх withLock/loadState/saveState,
+// подменяемые в тестах. Продакшен всегда идёт через реальные реализации
+// (значения по умолчанию ниже): withLock/loadState/saveState жёстко используют
+// абсолютные пути (/opt/var/lock/sign-craze.lock, /opt/etc/sign-craze/state.json),
+// недоступные для записи вне роутера/root, поэтому withStateMutation нельзя
+// протестировать "по-настоящему" — тесты подставляют фейки вместо этих трёх var.
+var (
+	withStateMutationLock = withLock
+	withStateMutationLoad = loadState
+	withStateMutationSave = saveState
+)
+
+// withStateMutation — общий скелет CLI-хендлеров, которые сериализованно
+// (withLock) читают state.json, мутируют один-два поля и сохраняют обратно:
+// withLock → loadState → mutate → saveState. Если mutate вернёт ошибку —
+// saveState НЕ вызывается, state.json не трогается.
+//
+// Печать результата (Printf/Println) остаётся на call-site ПОСЛЕ успешного
+// возврата withStateMutation — сам хелпер ничего не печатает и лок к моменту
+// печати уже снят.
+func withStateMutation(ctx context.Context, mutate func(*state.State) error) error {
+	return withStateMutationLock(ctx, func() error {
+		st, err := withStateMutationLoad()
+		if err != nil {
+			return err
+		}
+		if err := mutate(st); err != nil {
+			return err
+		}
+		return withStateMutationSave(st)
+	})
+}
+
 // configPath — путь к /opt/etc/sign-craze/config.json (sing-box).
 // Используется legacy кодом (ConfigRW в cmd_ui для админ REST API).
 // Для активного ядра используйте core.Active(state.Core).ConfigPath().
@@ -303,6 +330,39 @@ func singboxParamsForInstall(s *state.State) singbox.ConfigParams {
 	}
 	params.InboundMode = s.Inbound
 	return params
+}
+
+// installValidatedSingboxBinary валидирует новый бинарь sing-box через
+// PrepareAndValidate (распаковка tarball во временный путь, рендер и проверка
+// конфига через sing-box check -c) и атомарно переносит его в
+// singbox.DefaultBinPath. Извлечено из идентичного блока, дублировавшегося в
+// doInstall (cmd_install.go) и handleUpdateCore (cmd_update.go) — отличались
+// только префиксы ошибок ("--install:"/"--update-core:"), которые остаются на
+// call-site (caller оборачивает возвращённую ошибку).
+//
+// Бинарь переносится потоково через os.Open + BackupAndReplaceFromReader, а не
+// BackupAndReplace([]byte): на 128MB-роутерах чтение ~12MB бинаря целиком в
+// память (os.ReadFile) удваивает расход RAM (файл + копия в []byte) и рискует
+// OOM-Kill.
+func installValidatedSingboxBinary(ctx context.Context, tarPath string, st *state.State) error {
+	params := singboxParamsForInstall(st)
+
+	tempBin, err := singbox.PrepareAndValidate(ctx, exectx.OS, singbox.DefaultCacheDir, tarPath, configPath(), params)
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(filepath.Dir(tempBin))
+
+	binFile, err := os.Open(tempBin)
+	if err != nil {
+		return fmt.Errorf("открытие валидированного бинаря: %w", err)
+	}
+	_, err = atomicfs.BackupAndReplaceFromReader(singbox.DefaultBinPath, binFile, 0o755)
+	_ = binFile.Close()
+	if err != nil {
+		return fmt.Errorf("установка бинаря: %w", err)
+	}
+	return nil
 }
 
 // regenerateConfig — core-aware регенерация конфига активного ядра.

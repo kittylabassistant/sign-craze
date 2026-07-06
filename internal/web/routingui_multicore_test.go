@@ -82,23 +82,23 @@ func setupCoreDeps(t *testing.T, s *Server, c core.Core) {
 // Проверяет: routing.json содержит правила/outbound, preview возвращает xray JSON
 // с dokodemo-door inbound, translation RuleSet→matcher работает.
 func TestE2E_FullFlow_Xray(t *testing.T) {
-	s, pw, _ := makeTestServerWithRouting(t)
+	s, _ := makeTestServerWithRouting(t)
 	setupCoreDeps(t, s, core.MustGet("xray"))
 
 	// add outbound (vless-test — совпадает с DefaultOutboundTag из makeTestServerWithRouting)
-	rec := do(s, authReq("POST", "/api/outbounds", pw, canonicalVLESS("vless-test")))
+	rec := do(s, authReq("POST", "/api/outbounds", canonicalVLESS("vless-test")))
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("add outbound: %d body=%s", rec.Code, rec.Body.String())
 	}
 
 	// apply preset с translation: ru-direct → RuleSet geoip-ru → translated в xray geoip:ru matcher
-	rec = do(s, authReq("POST", "/api/presets/ru-direct/apply", pw, nil))
+	rec = do(s, authReq("POST", "/api/presets/ru-direct/apply", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("apply ru-direct: %d body=%s", rec.Code, rec.Body.String())
 	}
 
 	// preview → xray JSON с dokodemo-door inbound
-	rec = do(s, authReq("GET", "/api/preview", pw, nil))
+	rec = do(s, authReq("GET", "/api/preview", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("preview: %d body=%s", rec.Code, rec.Body.String())
 	}
@@ -116,21 +116,21 @@ func TestE2E_FullFlow_Xray(t *testing.T) {
 // TestE2E_FullFlow_Mihomo — full flow с mihomo Renderer.
 // Проверяет: preview возвращает YAML с tproxy-port + rule-providers (если .mrs URL).
 func TestE2E_FullFlow_Mihomo(t *testing.T) {
-	s, pw, _ := makeTestServerWithRouting(t)
+	s, _ := makeTestServerWithRouting(t)
 	setupCoreDeps(t, s, core.MustGet("mihomo"))
 
-	rec := do(s, authReq("POST", "/api/outbounds", pw, canonicalVLESS("vless-test")))
+	rec := do(s, authReq("POST", "/api/outbounds", canonicalVLESS("vless-test")))
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("add outbound: %d body=%s", rec.Code, rec.Body.String())
 	}
 
 	// apply preset с .mrs URL для mihomo
-	rec = do(s, authReq("POST", "/api/presets/ru-direct/apply", pw, nil))
+	rec = do(s, authReq("POST", "/api/presets/ru-direct/apply", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("apply ru-direct: %d body=%s", rec.Code, rec.Body.String())
 	}
 
-	rec = do(s, authReq("GET", "/api/preview", pw, nil))
+	rec = do(s, authReq("GET", "/api/preview", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("preview: %d body=%s", rec.Code, rec.Body.String())
 	}
@@ -162,16 +162,16 @@ func TestE2E_PresetApply_PerCore(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			s, pw, _ := makeTestServerWithRouting(t)
+			s, _ := makeTestServerWithRouting(t)
 			c := core.MustGet(tc.coreName)
 			s.cfg.RoutingUI.ActiveGeoFormat = func() core.GeoFormat { return c.GeoFormat() }
 
-			rec := do(s, authReq("POST", "/api/presets/ru-direct/apply", pw, nil))
+			rec := do(s, authReq("POST", "/api/presets/ru-direct/apply", nil))
 			if rec.Code != http.StatusOK {
 				t.Fatalf("apply: %d body=%s", rec.Code, rec.Body.String())
 			}
 
-			rec = do(s, authReq("GET", "/api/rule_sets", pw, nil))
+			rec = do(s, authReq("GET", "/api/rule_sets", nil))
 			var rss []types.RuleSetRef
 			_ = json.Unmarshal(rec.Body.Bytes(), &rss)
 			if tc.wantSubstr == "" {
@@ -193,7 +193,7 @@ func TestE2E_PresetApply_PerCore(t *testing.T) {
 
 // TestE2E_Validate_Warnings_XrayTunInbound — TUN inbound + xray → warning через Validator.
 func TestE2E_Validate_Warnings_XrayTunInbound(t *testing.T) {
-	s, pw, _ := makeTestServerWithRouting(t)
+	s, _ := makeTestServerWithRouting(t)
 	xrayCore := core.MustGet("xray")
 	setupCoreDeps(t, s, xrayCore)
 	// Validator — упрощённый: только сбор compat-warnings без CheckConfig.
@@ -202,7 +202,7 @@ func TestE2E_Validate_Warnings_XrayTunInbound(t *testing.T) {
 	}
 
 	// add TUN inbound (нелегально для xray)
-	rec := do(s, authReq("POST", "/api/inbounds", pw, types.Inbound{
+	rec := do(s, authReq("POST", "/api/inbounds", types.Inbound{
 		Tag: "tun-in", Type: "tun",
 		Settings: map[string]any{"address": []string{"172.19.0.1/30"}},
 	}))
@@ -210,7 +210,7 @@ func TestE2E_Validate_Warnings_XrayTunInbound(t *testing.T) {
 		t.Fatalf("add tun inbound: %d body=%s", rec.Code, rec.Body.String())
 	}
 
-	rec = do(s, authReq("POST", "/api/validate", pw, nil))
+	rec = do(s, authReq("POST", "/api/validate", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("validate: %d body=%s", rec.Code, rec.Body.String())
 	}

@@ -114,24 +114,32 @@ func openNfqwsBinaryStreamTarGZ(tarPath string) (*binaryStream, error) {
 	}
 }
 
-// openNfqwsBinaryStreamIPK извлекает бинарь "nfqws2" из Entware .ipk пакета.
-// Формат .ipk: tar.gz → { data.tar.gz, control.tar.gz, debian-binary }.
-// Бинарь находится в data.tar.gz по пути */sbin/nfqws2 или */bin/nfqws2.
+// openIPKDataTar открывает Entware .ipk пакет и возвращает tar.Reader,
+// спозиционированный на начале содержимого data.tar.gz — то есть уже
+// развёрнутый inner tar, готовый к последовательному Next().
+// Формат .ipk: outer tar.gz → { data.tar.gz, control.tar.gz, debian-binary }.
 //
-// Стриминговая реализация: файл остаётся открытым до вызова Close() на возвращённом
-// binaryStream. io.ReadAll не используется — критично для 128MB MIPS-роутеров.
-func openNfqwsBinaryStreamIPK(ipkPath string) (*binaryStream, error) {
+// Возвращаемый cleanup закрывает все открытые ресурсы (inner gzip, outer gzip,
+// файл) в правильном порядке; вызывающая сторона обязана вызвать его ровно
+// один раз после того, как чтение из tar.Reader завершено (успешно или нет).
+// При ошибке внутри самой openIPKDataTar все успевшие открыться ресурсы
+// закрываются здесь же — cleanup в этом случае не возвращается (nil).
+//
+// Стриминговая реализация: файл остаётся открытым до вызова cleanup().
+// io.ReadAll не используется — критично для 128MB MIPS-роутеров.
+func openIPKDataTar(ipkPath string) (*tar.Reader, func() error, error) {
 	f, err := os.Open(ipkPath)
 	if err != nil {
-		return nil, fmt.Errorf("открытие .ipk: %w", err)
+		return nil, nil, fmt.Errorf("открытие .ipk: %w", err)
 	}
 
-	// closeAll закрывает все ресурсы при ошибке (до возврата stream).
+	// closeOpened закрывает все успевшие открыться ресурсы при ошибке
+	// (до того, как cleanup передан вызывающей стороне).
 	var (
 		outerGZ *gzip.Reader
 		innerGZ *gzip.Reader
 	)
-	cleanup := func() {
+	closeOpened := func() {
 		if innerGZ != nil {
 			_ = innerGZ.Close()
 		}
@@ -143,8 +151,8 @@ func openNfqwsBinaryStreamIPK(ipkPath string) (*binaryStream, error) {
 
 	outerGZ, err = gzip.NewReader(f)
 	if err != nil {
-		cleanup()
-		return nil, fmt.Errorf(".ipk gzip reader: %w", err)
+		closeOpened()
+		return nil, nil, fmt.Errorf("outer gzip: %w", err)
 	}
 
 	// Ищем data.tar.gz в outer tar потоково — без io.ReadAll.
@@ -157,8 +165,8 @@ func openNfqwsBinaryStreamIPK(ipkPath string) (*binaryStream, error) {
 			break
 		}
 		if err != nil {
-			cleanup()
-			return nil, fmt.Errorf(".ipk outer tar: %w", err)
+			closeOpened()
+			return nil, nil, fmt.Errorf("outer tar: %w", err)
 		}
 		if hdr.Name == "./data.tar.gz" || hdr.Name == "data.tar.gz" {
 			found = true
@@ -167,26 +175,54 @@ func openNfqwsBinaryStreamIPK(ipkPath string) (*binaryStream, error) {
 		// Пропускаем прочие записи (control.tar.gz, debian-binary).
 	}
 	if !found {
-		cleanup()
-		return nil, fmt.Errorf(".ipk: data.tar.gz не найден в %s", ipkPath)
+		closeOpened()
+		return nil, nil, fmt.Errorf("data.tar.gz не найден в %s", ipkPath)
 	}
 
 	// outerTar стоит на data.tar.gz — читаем его через вложенный gzip прямо из потока.
 	innerGZ, err = gzip.NewReader(outerTar)
 	if err != nil {
-		cleanup()
-		return nil, fmt.Errorf(".ipk inner gzip: %w", err)
+		closeOpened()
+		return nil, nil, fmt.Errorf("inner gzip: %w", err)
 	}
 
-	innerTar := tar.NewReader(innerGZ)
+	cleanup := func() error {
+		_ = innerGZ.Close()
+		_ = outerGZ.Close()
+		return f.Close()
+	}
+	return tar.NewReader(innerGZ), cleanup, nil
+}
+
+// closeIPKQuiet закрывает ресурсы .ipk-потока, логируя ошибку Close в Debug:
+// поток read-only, потеря ошибки закрытия некритична, но молча глотать её
+// (blank assignment) запрещает errcheck (check-blank).
+func closeIPKQuiet(cleanup func() error) {
+	if err := cleanup(); err != nil {
+		log.L().Debug("dpi: закрытие .ipk потока", "err", err)
+	}
+}
+
+// openNfqwsBinaryStreamIPK извлекает бинарь "nfqws2" из Entware .ipk пакета.
+// Общая часть распаковки (outer tar.gz → data.tar.gz → inner tar) — в
+// openIPKDataTar; здесь только поиск бинаря по имени "nfqws2" внутри inner tar.
+//
+// Стриминговая реализация: файл остаётся открытым до вызова Close() на возвращённом
+// binaryStream. io.ReadAll не используется — критично для 128MB MIPS-роутеров.
+func openNfqwsBinaryStreamIPK(ipkPath string) (*binaryStream, error) {
+	innerTar, cleanup, err := openIPKDataTar(ipkPath)
+	if err != nil {
+		return nil, err
+	}
+
 	for {
 		hdr, hdrErr := innerTar.Next()
 		if errors.Is(hdrErr, io.EOF) {
-			cleanup()
+			closeIPKQuiet(cleanup)
 			return nil, fmt.Errorf("бинарь 'nfqws2' не найден в data.tar.gz (%s)", ipkPath)
 		}
 		if hdrErr != nil {
-			cleanup()
+			closeIPKQuiet(cleanup)
 			return nil, fmt.Errorf(".ipk inner tar: %w", hdrErr)
 		}
 		if hdr.Typeflag != tar.TypeReg {
@@ -196,12 +232,7 @@ func openNfqwsBinaryStreamIPK(ipkPath string) (*binaryStream, error) {
 			continue
 		}
 		// Позиция innerTar — начало бинаря; возвращаем stream, держа файл открытым.
-		closer := func() error {
-			_ = innerGZ.Close()
-			_ = outerGZ.Close()
-			return f.Close()
-		}
-		return &binaryStream{Reader: innerTar, closer: closer}, nil
+		return &binaryStream{Reader: innerTar, closer: cleanup}, nil
 	}
 }
 
@@ -228,45 +259,14 @@ func InstallAssets(ipkPath, blobDir, luaDir string) error {
 		return fmt.Errorf("dpi assets: mkdir %s: %w", luaDir, err)
 	}
 
-	f, err := os.Open(ipkPath)
+	// Общая часть распаковки (outer tar.gz → data.tar.gz → inner tar) — в
+	// openIPKDataTar; здесь только цикл поиска blob/lua записей.
+	innerTar, cleanup, err := openIPKDataTar(ipkPath)
 	if err != nil {
-		return fmt.Errorf("dpi assets: открытие .ipk: %w", err)
+		return fmt.Errorf("dpi assets: %w", err)
 	}
-	defer f.Close()
+	defer closeIPKQuiet(cleanup)
 
-	outerGZ, err := gzip.NewReader(f)
-	if err != nil {
-		return fmt.Errorf("dpi assets: outer gzip: %w", err)
-	}
-	defer outerGZ.Close()
-
-	outerTar := tar.NewReader(outerGZ)
-	foundData := false
-	for {
-		hdr, hdrErr := outerTar.Next()
-		if errors.Is(hdrErr, io.EOF) {
-			break
-		}
-		if hdrErr != nil {
-			return fmt.Errorf("dpi assets: outer tar: %w", hdrErr)
-		}
-		if hdr.Name == "./data.tar.gz" || hdr.Name == "data.tar.gz" {
-			foundData = true
-			break
-		}
-	}
-	if !foundData {
-		return fmt.Errorf("dpi assets: data.tar.gz не найден в %s", ipkPath)
-	}
-
-	// outerTar стоит на data.tar.gz — читаем inner gzip прямо из потока без io.ReadAll.
-	innerGZ, err := gzip.NewReader(outerTar)
-	if err != nil {
-		return fmt.Errorf("dpi assets: inner gzip: %w", err)
-	}
-	defer innerGZ.Close()
-
-	innerTar := tar.NewReader(innerGZ)
 	blobCount, luaCount := 0, 0
 	for {
 		hdr, err := innerTar.Next()

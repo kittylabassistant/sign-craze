@@ -202,7 +202,9 @@ const cspAdmin = "default-src 'self'; img-src 'self' data:; style-src 'self' 'un
 // SPA может содержать inline <script> с конфигом приложения.
 // Без 'unsafe-inline' SPA не инициализируется — страница белая.
 // Риск минимален: контент целиком из embed.FS (compile-time),
-// доступ закрыт Basic Auth, источник 'self'.
+// источник 'self'. Basic Auth в проекте отсутствует (каркас удалён в Phase 17) —
+// реальный барьер доступа — WAN INPUT DROP на UI-порты (firewall) и LAN-only
+// bind (см. ServerConfig.ListenHost / netif.DetectLANAddr), а не auth.
 // 'unsafe-eval' нужен на случай dynamic-import-полифиллов.
 // connect-src с ws:/wss: разрешает WebSocket-соединения routing UI.
 const cspSPA = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self' ws: wss:"

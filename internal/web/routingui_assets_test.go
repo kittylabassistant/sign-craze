@@ -43,11 +43,10 @@ func TestRoutingUIAssets_VendorPreact(t *testing.T) {
 
 // TestRoutingUI_SPAServesIndex проверяет что GET / возвращает index.html с заголовком приложения.
 func TestRoutingUI_SPAServesIndex(t *testing.T) {
-	s, password := makeTestServer(t)
+	s := makeTestServer(t)
 	h := servingMux(s)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.SetBasicAuth("admin", password)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -61,11 +60,10 @@ func TestRoutingUI_SPAServesIndex(t *testing.T) {
 
 // TestRoutingUI_SPAServesAppJS проверяет что app.js раздаётся корректно.
 func TestRoutingUI_SPAServesAppJS(t *testing.T) {
-	s, password := makeTestServer(t)
+	s := makeTestServer(t)
 	h := servingMux(s)
 
 	req := httptest.NewRequest(http.MethodGet, "/app.js", nil)
-	req.SetBasicAuth("admin", password)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -79,11 +77,10 @@ func TestRoutingUI_SPAServesAppJS(t *testing.T) {
 
 // TestRoutingUI_SPAFallback проверяет что неизвестный путь возвращает index.html (SPA fallback).
 func TestRoutingUI_SPAFallback(t *testing.T) {
-	s, password := makeTestServer(t)
+	s := makeTestServer(t)
 	h := servingMux(s)
 
 	req := httptest.NewRequest(http.MethodGet, "/some/spa/route", nil)
-	req.SetBasicAuth("admin", password)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 

@@ -4,27 +4,16 @@ on: [push, pull_request]
 
 jobs:
   singbox-check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version: '1.25'
-
-      - name: Установка sing-box
-        run: |
-          SINGBOX_VERSION=1.13.11
-          wget -qO- https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX_VERSION}/sing-box-${SINGBOX_VERSION}-linux-amd64.tar.gz \
-            | tar xz -C /tmp
-          sudo install /tmp/sing-box-${SINGBOX_VERSION}-linux-amd64/sing-box /usr/local/bin/
-          sing-box version
-
-      - name: go vet
-        run: go vet ./...
-
-      - name: Тесты без тега (основные)
-        run: go test ./internal/singbox/...
-
-      - name: sing-box check golden конфиги
-        run: go test -tags singboxcheck ./internal/singbox/... -run TestSingBoxCheck_Golden -v
+    uses: ./.github/workflows/core-golden.yml
+    with:
+      core-name: sing-box
+      core-version: "1.13.11"
+      install: |
+        SINGBOX_VERSION=1.13.11
+        wget -qO- https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX_VERSION}/sing-box-${SINGBOX_VERSION}-linux-amd64.tar.gz \
+          | tar xz -C /tmp
+        sudo install /tmp/sing-box-${SINGBOX_VERSION}-linux-amd64/sing-box /usr/local/bin/
+        sing-box version
+      test-path: ./internal/singbox/...
+      build-tag: singboxcheck
+      golden-run: TestSingBoxCheck_Golden

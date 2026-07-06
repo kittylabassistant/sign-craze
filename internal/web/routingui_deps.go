@@ -48,4 +48,18 @@ type RoutingUIDeps struct {
 	// OnRestart вызывается после OnApply для перезапуска core-сервиса.
 	// Если nil — возвращается {needs_restart: true}, пользователь перезапускает вручную.
 	OnRestart func(ctx context.Context) error
+
+	// RuleSetChecker проверяет rule_set.URL перед добавлением через POST
+	// /api/rule_sets (см. internal/routing.CheckRuleSetURL — HEAD/GET Range +
+	// magic-байты формата). nil (не сконфигурировано — например, в тестах,
+	// строящих RoutingUIDeps напрямую без этого поля) → проверка полностью
+	// пропускается, добавление работает как до этого фикса.
+	//
+	// Должен возвращать non-nil error ТОЛЬКО для подтверждённой проблемы (HTTP
+	// 404/5xx или mismatch формата) — тогда apiRuleSetsAdd отвечает 400.
+	// Сетевая недоступность (offline-роутер) НЕ должна возвращать error: иначе
+	// оператор без интернета не сможет добавить rule_set вообще (см.
+	// tasks/lessons.md, инцидент 2026-05-12 — тот же rule_set, что ломал
+	// sing-box на старте, теперь должен блокироваться уже на сохранении).
+	RuleSetChecker func(ctx context.Context, ref types.RuleSetRef) error
 }

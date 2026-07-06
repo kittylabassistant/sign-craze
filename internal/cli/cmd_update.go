@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
+	"github.com/kittylabassistant/sign-craze/internal/core"
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/firewall"
 	"github.com/kittylabassistant/sign-craze/internal/geo"
@@ -42,11 +42,79 @@ func handleUpdate(ctx context.Context, _ []string) error {
 	})
 }
 
-func handleUpdateGeo(ctx context.Context, _ []string) error {
+// geoDownloadDATFn — точка подмены geo.DownloadDAT для тестов
+// (cmd_update_test.go, cmd_core_test.go). В проде — geo.DownloadDAT, тесты
+// подставляют fake без сети (тот же паттерн, что coreLifecycleFn/uiLifecycleFn
+// в cmd_lifecycle.go).
+var geoDownloadDATFn = geo.DownloadDAT
+
+func handleUpdateGeo(ctx context.Context, args []string) error {
 	return withLock(ctx, func() error {
+		c, err := coreFromArgsOrActive(args)
+		if err != nil {
+			return fmt.Errorf("--update-geo: %w", err)
+		}
+		if err := updateGeoForCore(ctx, c); err != nil {
+			return fmt.Errorf("--update-geo: %w", err)
+		}
+		return nil
+	})
+}
+
+// coreFromArgsOrActive парсит необязательный флаг `--core <name>` из args и
+// возвращает соответствующее ядро; при отсутствии флага — активное ядро
+// (mustActiveCore, т.е. state.Core). Флаг НЕ мутирует state.Core — это
+// разовый override для конкретного вызова (персистентная смена — отдельная
+// команда `--core <name>`, см. cmd_core.go).
+//
+// Формат соответствует документированному в BEHAVIOR_SPEC.md/TROUBLESHOOTING.md:
+// `sign-craze --update-geo --core xray`.
+func coreFromArgsOrActive(args []string) (core.Core, error) {
+	for i, a := range args {
+		if a != "--core" {
+			continue
+		}
+		if i+1 >= len(args) {
+			return nil, fmt.Errorf("--core: требуется имя ядра")
+		}
+		return core.Get(args[i+1])
+	}
+	return mustActiveCore(), nil
+}
+
+// updateGeoForCore выполняет --update-geo для конкретного, уже разрешённого
+// ядра c. Вынесено из handleUpdateGeo отдельной функцией, чтобы её можно было
+// юнит-тестировать без withLock/state.json (см. cmd_update_test.go).
+//
+// Ветвление по Core.GeoFormat() — единый механизм для всех ядер, без
+// хардкода имени ядра:
+//   - GeoDAT (xray)   — скачивание geosite.dat/geoip.dat через geo.DownloadDAT
+//     в <c.ConfigDir()>/assets (тот же путь, что coreImpl.RenderConfig
+//     проставляет в GeoAssetsDir — internal/core/xray/coreadapter.go).
+//   - GeoMRS (mihomo) — no-op: mihomo качает rule-providers сам.
+//   - GeoSRS (sing-box, default) — текущее поведение без изменений: манифест
+//     sign-craze-dat + geo.Update + заполнение kernel ipset.
+func updateGeoForCore(ctx context.Context, c core.Core) error {
+	switch c.GeoFormat() {
+	case core.GeoMRS:
+		fmt.Printf("%s %s\n", Info("mihomo качает rule-providers сам"), Hint("(--update-geo не требуется для .mrs)"))
+		log.L().Info("--update-geo: mihomo управляет geo-данными самостоятельно", "core", c.Name())
+		return nil
+
+	case core.GeoDAT:
+		dstDir := filepath.Join(c.ConfigDir(), "assets")
+		updated, err := geoDownloadDATFn(ctx, c.CacheDir(), dstDir)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("%s %d/%d geo-файлов (.dat) для %s → %s\n",
+			OK("Скачано"), updated, len(geo.DATFileNames), c.Name(), Hint(dstDir))
+		return nil
+
+	default: // core.GeoSRS — sing-box, текущее поведение без изменений
 		manifest, err := geo.FetchManifest(ctx)
 		if err != nil {
-			return fmt.Errorf("--update-geo: manifest: %w", err)
+			return fmt.Errorf("manifest: %w", err)
 		}
 		needed := make([]string, 0, len(manifest.Files))
 		for _, f := range manifest.Files {
@@ -54,7 +122,7 @@ func handleUpdateGeo(ctx context.Context, _ []string) error {
 		}
 		count, err := geo.Update(ctx, needed, geo.DefaultGeoDir)
 		if err != nil {
-			return fmt.Errorf("--update-geo: %w", err)
+			return err
 		}
 		fmt.Printf("%s %d/%d geo-файлов\n", OK("Скачано"), count, len(needed))
 
@@ -65,7 +133,7 @@ func handleUpdateGeo(ctx context.Context, _ []string) error {
 			log.L().Warn("--update-geo: заполнение ipset пропущено", "err", err)
 		}
 		return nil
-	})
+	}
 }
 
 // populateAndSaveIPSet декомпилирует .srs → CIDR → ipset signcraze_ipv4/ipv6
@@ -152,23 +220,8 @@ func handleUpdateCore(ctx context.Context, _ []string) error {
 			if err != nil {
 				return fmt.Errorf("--update-core: state: %w", err)
 			}
-			params := singboxParamsForInstall(st)
-
-			tempBin, err := singbox.PrepareAndValidate(ctx, exectx.OS, singbox.DefaultCacheDir, res.Path, configPath(), params)
-			if err != nil {
+			if err := installValidatedSingboxBinary(ctx, res.Path, st); err != nil {
 				return fmt.Errorf("--update-core: %w", err)
-			}
-			defer os.RemoveAll(filepath.Dir(tempBin))
-
-			// Стримим бинарь, чтобы не держать ~12MB в Go heap (см. cmd_install.go).
-			binFile, err := os.Open(tempBin)
-			if err != nil {
-				return fmt.Errorf("--update-core: открытие валидированного бинаря: %w", err)
-			}
-			_, err = atomicfs.BackupAndReplaceFromReader(singbox.DefaultBinPath, binFile, 0o755)
-			_ = binFile.Close()
-			if err != nil {
-				return fmt.Errorf("--update-core: установка бинаря: %w", err)
 			}
 		} else {
 			if err := c.Install(ctx, exectx.OS, res.Path); err != nil {

@@ -1,6 +1,7 @@
 package proxyparse
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -171,6 +172,81 @@ func buildTLS(q url.Values) (*types.TLSConfig, error) {
 	}
 
 	return tls, nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Общие низкоуровневые хелперы (перенесены из удалённого parse.go при
+// удалении legacy-парсера proxyparse.Parse — см. cmd_install.go::parseURLToOutbound).
+// Используются canonical-парсерами в этом файле и в parse_canonical_mieru.go.
+// ─────────────────────────────────────────────────────────────────────────────
+
+func schemeOf(s string) string {
+	idx := strings.Index(s, "://")
+	if idx < 0 {
+		return ""
+	}
+	return strings.ToLower(s[:idx])
+}
+
+// splitHostPort разделяет "host:port" на компоненты с парсингом порта.
+func splitHostPort(hp string) (string, types.Port, error) {
+	idx := strings.LastIndex(hp, ":")
+	if idx < 0 {
+		return "", 0, fmt.Errorf("отсутствует :port")
+	}
+	host := hp[:idx]
+	port, err := parsePort(hp[idx+1:])
+	if err != nil {
+		return "", 0, err
+	}
+	return host, port, nil
+}
+
+func parsePort(s string) (types.Port, error) {
+	n, err := strconv.Atoi(strings.TrimSpace(s))
+	if err != nil {
+		return 0, fmt.Errorf("невозможно распарсить порт %q: %w", s, err)
+	}
+	if n <= 0 || n > 65535 {
+		return 0, fmt.Errorf("порт вне диапазона: %d", n)
+	}
+	return types.Port(n), nil
+}
+
+func decodeBase64(s string) ([]byte, error) {
+	// Сначала пробуем стандартный, потом URL-safe; обе разновидности — с/без padding.
+	for _, dec := range []*base64.Encoding{
+		base64.StdEncoding,
+		base64.RawStdEncoding,
+		base64.URLEncoding,
+		base64.RawURLEncoding,
+	} {
+		if data, err := dec.DecodeString(s); err == nil {
+			return data, nil
+		}
+	}
+	return nil, fmt.Errorf("base64: ни одна кодировка не подошла")
+}
+
+// validShadowsocksMethods — поддерживаемые шифры sing-box outbound type=shadowsocks.
+// Whitelist отвергает невалидные method'ы на уровне парсера, чтобы sing-box check
+// не падал с криптической ошибкой позже.
+var validShadowsocksMethods = map[string]bool{
+	"none":                          true,
+	"aes-128-gcm":                   true,
+	"aes-192-gcm":                   true,
+	"aes-256-gcm":                   true,
+	"aes-128-ctr":                   true,
+	"aes-192-ctr":                   true,
+	"aes-256-ctr":                   true,
+	"aes-128-cfb":                   true,
+	"aes-192-cfb":                   true,
+	"aes-256-cfb":                   true,
+	"chacha20-ietf-poly1305":        true,
+	"xchacha20-ietf-poly1305":       true,
+	"2022-blake3-aes-128-gcm":       true,
+	"2022-blake3-aes-256-gcm":       true,
+	"2022-blake3-chacha20-poly1305": true,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -43,9 +43,14 @@ func handleDPI(ctx context.Context, args []string) error {
 	}
 	switch args[0] {
 	case "on":
+		// dpiEnable делает side-effects (install/detectISPInterface/writeDPIConfig)
+		// МЕЖДУ load и save, поэтому остаётся на явном withLock (withStateMutation
+		// не подходит — см. R14 в отчёте рефактора).
 		return withLock(ctx, func() error { return dpiEnable(ctx) })
 	case "off":
-		return withLock(ctx, func() error { return dpiDisable(ctx) })
+		// dpiDisable сериализуется сам через withStateMutation — внешний withLock
+		// здесь не нужен (и создал бы двойной захват одного и того же лока).
+		return dpiDisable(ctx)
 	default:
 		return fmt.Errorf("--dpi: неизвестный аргумент %q", args[0])
 	}
@@ -183,13 +188,11 @@ func writeDPIConfig(iface string, st *state.State) error {
 	return nil
 }
 
-func dpiDisable(_ context.Context) error {
-	st, err := loadState()
-	if err != nil {
-		return err
-	}
-	st.DPIEnabled = false
-	if err := saveState(st); err != nil {
+func dpiDisable(ctx context.Context) error {
+	if err := withStateMutation(ctx, func(st *state.State) error {
+		st.DPIEnabled = false
+		return nil
+	}); err != nil {
 		return err
 	}
 	fmt.Println("DPI выключен. Перезапустите сервис: sign-craze --restart")
@@ -231,19 +234,15 @@ func handleDPIStrategy(ctx context.Context, args []string) error {
 	if err := validateDPIStrategy(strategy); err != nil {
 		return err
 	}
-	return withLock(ctx, func() error {
-		st, err := loadState()
-		if err != nil {
-			return err
-		}
+	if err := withStateMutation(ctx, func(st *state.State) error {
 		st.DPIStrategy = strategy
-		if err := saveState(st); err != nil {
-			return err
-		}
-		fmt.Printf("DPI-стратегия установлена: %s\n", strategy)
-		fmt.Println("Перезапустите сервис: sign-craze --restart")
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+	fmt.Printf("DPI-стратегия установлена: %s\n", strategy)
+	fmt.Println("Перезапустите сервис: sign-craze --restart")
+	return nil
 }
 
 func handleDPITargets(ctx context.Context, args []string) error {
@@ -365,22 +364,18 @@ func handleDPIExcludeIPs(ctx context.Context, args []string) error {
 			ips = append(ips, part)
 		}
 	}
-	return withLock(ctx, func() error {
-		st, err := loadState()
-		if err != nil {
-			return err
-		}
+	if err := withStateMutation(ctx, func(st *state.State) error {
 		st.DPIExcludeIPs = ips
-		if err := saveState(st); err != nil {
-			return err
-		}
-		if len(ips) == 0 {
-			fmt.Println("DPI exclude-IPs очищены.")
-		} else {
-			fmt.Printf("DPI exclude-IPs: %d адрес(ов). Перезапустите: sign-craze --restart\n", len(ips))
-		}
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+	if len(ips) == 0 {
+		fmt.Println("DPI exclude-IPs очищены.")
+	} else {
+		fmt.Printf("DPI exclude-IPs: %d адрес(ов). Перезапустите: sign-craze --restart\n", len(ips))
+	}
+	return nil
 }
 
 func handleDPIExcludeIPsList(_ context.Context, _ []string) error {
@@ -419,22 +414,18 @@ func handleDPIUpdateURLs(ctx context.Context, args []string) error {
 			urls = append(urls, part)
 		}
 	}
-	return withLock(ctx, func() error {
-		st, err := loadState()
-		if err != nil {
-			return err
-		}
+	if err := withStateMutation(ctx, func(st *state.State) error {
 		st.DPIUpdateURLs = urls
-		if err := saveState(st); err != nil {
-			return err
-		}
-		if len(urls) == 0 {
-			fmt.Println("DPI auto-update выключен.")
-		} else {
-			fmt.Printf("DPI auto-update URLs: %d. Запустите: sign-craze --dpi-update-now\n", len(urls))
-		}
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+	if len(urls) == 0 {
+		fmt.Println("DPI auto-update выключен.")
+	} else {
+		fmt.Printf("DPI auto-update URLs: %d. Запустите: sign-craze --dpi-update-now\n", len(urls))
+	}
+	return nil
 }
 
 func handleDPIUpdateInterval(ctx context.Context, args []string) error {
@@ -448,22 +439,18 @@ func handleDPIUpdateInterval(ctx context.Context, args []string) error {
 	if hours < 0 {
 		return fmt.Errorf("--dpi-update-interval: значение не может быть отрицательным")
 	}
-	return withLock(ctx, func() error {
-		st, err := loadState()
-		if err != nil {
-			return err
-		}
+	if err := withStateMutation(ctx, func(st *state.State) error {
 		st.DPIUpdateIntervalHours = hours
-		if err := saveState(st); err != nil {
-			return err
-		}
-		if hours == 0 {
-			fmt.Println("DPI auto-update interval=0 (отключено).")
-		} else {
-			fmt.Printf("DPI auto-update interval=%dч.\n", hours)
-		}
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+	if hours == 0 {
+		fmt.Println("DPI auto-update interval=0 (отключено).")
+	} else {
+		fmt.Printf("DPI auto-update interval=%dч.\n", hours)
+	}
+	return nil
 }
 
 func handleDPIUpdateNow(ctx context.Context, _ []string) error {

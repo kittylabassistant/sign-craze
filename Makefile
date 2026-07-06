@@ -1,4 +1,7 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+# ВНИМАНИЕ: набор флагов держать в sync с .github/workflows/release.yml (шаг
+# build, -ldflags) — CI собирает без make, изменение в одном месте не
+# подхватится в другом автоматически.
 LDFLAGS := -s -w -buildid= -X github.com/kittylabassistant/sign-craze/internal/version.Version=$(VERSION)
 DIST    := dist
 
@@ -21,7 +24,7 @@ GO_IMAGE   := golang:1.25
 WORKSPACE  := $(shell pwd)
 GO_RUN     := $(CONTAINER_RT) run --rm -v $(WORKSPACE):/workspace:z -w /workspace $(GO_IMAGE)
 
-.PHONY: all upx lint test test-integration tidy clean bundle mieru mieru-upx ipk
+.PHONY: all upx lint test test-integration tidy clean bundle mieru mieru-upx
 
 all: $(TARGETS:%=$(DIST)/sign-craze-%)
 
@@ -147,12 +150,6 @@ test-integration:
 release: all upx
 	cd $(DIST) && sha256sum sign-craze-* > sha256sums.txt
 	@echo "Release artifacts in $(DIST)/"
-
-ipk: all upx
-	@for arch in $(TARGETS); do \
-	  sh scripts/build-ipk.sh $$arch $(VERSION); \
-	done
-	@echo "IPK packages in $(DIST)/"
 
 # bundle: per-arch tar.gz для offline-установки.
 # Содержит sign-craze, sign-craze.sha256, install.sh, install-offline.sh.

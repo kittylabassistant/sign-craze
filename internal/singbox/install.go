@@ -4,7 +4,6 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
+	"github.com/kittylabassistant/sign-craze/internal/core"
 	"github.com/kittylabassistant/sign-craze/internal/elfcheck"
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
 	"github.com/kittylabassistant/sign-craze/internal/log"
@@ -152,29 +152,19 @@ func extractBinaryToFile(tarPath, dstPath string, perm os.FileMode) error {
 	return nil
 }
 
-// checkConfigTimeout — потолок длительности `sing-box check`. На MIPS softfloat
-// проверка большого конфига может занимать десятки секунд; SIGINT от пользователя
-// не должен убивать процесс посреди валидации (иначе install упадёт с
-// "context canceled" непонятной этиологии). Используем detached ctx + timeout.
-const checkConfigTimeout = 180 * time.Second
-
 // checkConfig запускает `sing-box check -c configPath` для валидации конфига.
-// Изолирован от parent ctx cancel — Ctrl+C пользователя не прерывает проверку.
+// Изолирован от parent ctx cancel — Ctrl+C пользователя не прерывает проверку
+// (см. core.DeadlineCtx).
 func checkConfig(ctx context.Context, runner exectx.Runner, binPath, configPath string) error {
 	log.L().Info("sing-box check: проверка конфига (на slow MIPS CPU до 60s)")
-	cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), checkConfigTimeout)
+	cctx, cancel := core.DeadlineCtx(ctx, core.CheckConfigTimeout)
 	defer cancel()
 
 	start := time.Now()
 	res, err := runner.Run(cctx, binPath, "check", "-c", configPath)
 	dur := time.Since(start)
 	if err != nil {
-		if errors.Is(cctx.Err(), context.DeadlineExceeded) {
-			return fmt.Errorf("sing-box check: таймаут %s — медленный CPU или зависание (stderr: %s, stdout: %s)",
-				checkConfigTimeout, res.Stderr, res.Stdout)
-		}
-		return fmt.Errorf("sing-box check: %w (длительность: %s, exit: %d, stderr: %s, stdout: %s)",
-			err, dur, res.ExitCode, res.Stderr, res.Stdout)
+		return core.CheckConfigError(cctx, "sing-box check", core.CheckConfigTimeout, dur, res, err)
 	}
 	log.L().Info("sing-box check: ok", "duration", dur.String())
 	return nil
