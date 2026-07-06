@@ -4,27 +4,16 @@ on: [push, pull_request]
 
 jobs:
   mihomo-check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version: '1.25'
-
-      - name: Установка mihomo
-        run: |
-          MIHOMO_VERSION=1.19.24
-          wget -qO /tmp/mihomo.gz "https://github.com/MetaCubeX/mihomo/releases/download/v${MIHOMO_VERSION}/mihomo-linux-amd64-v${MIHOMO_VERSION}.gz"
-          gunzip /tmp/mihomo.gz
-          sudo install /tmp/mihomo /usr/local/bin/mihomo
-          mihomo -v
-
-      - name: go vet
-        run: go vet ./...
-
-      - name: Тесты без тега (основные)
-        run: go test ./internal/core/mihomo/...
-
-      - name: mihomo check golden конфиги
-        run: go test -tags mihomocheck ./internal/core/mihomo/... -run TestMihomoCheck_Golden -v
+    uses: ./.github/workflows/core-golden.yml
+    with:
+      core-name: mihomo
+      core-version: "1.19.24"
+      install: |
+        MIHOMO_VERSION=1.19.24
+        wget -qO /tmp/mihomo.gz "https://github.com/MetaCubeX/mihomo/releases/download/v${MIHOMO_VERSION}/mihomo-linux-amd64-v${MIHOMO_VERSION}.gz"
+        gunzip /tmp/mihomo.gz
+        sudo install /tmp/mihomo /usr/local/bin/mihomo
+        mihomo -v
+      test-path: ./internal/core/mihomo/...
+      build-tag: mihomocheck
+      golden-run: TestMihomoCheck_Golden
