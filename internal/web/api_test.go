@@ -58,7 +58,7 @@ func (s *stubCores) ActiveCoreName() string { return s.name }
 
 func newAdminMux(t *testing.T, cfg ServerConfig) (http.Handler, *Server) {
 	t.Helper()
-	s, _ := makeTestServer(t)
+	s := makeTestServer(t)
 	s.cfg = cfg
 	// Обновляем creds в s из makeTestServer (уже установлены), только cfg меняем
 	mux := http.NewServeMux()
