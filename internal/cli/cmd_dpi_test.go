@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -68,12 +69,20 @@ func TestValidateDPIStrategy_СлишкомДлинная(t *testing.T) {
 
 // --- setDPITargets: поведенческие тесты извлечённой логики ---
 //
-// Все тесты ниже держат DPIEnabled=false (нулевое значение Default()), чтобы
-// не заходить в ветку регенерации nfqws2-конфига: та шлётся в реальный
-// `ip route show default` и пишет в захардкоженные абсолютные пути пакета
-// internal/dpi (DefaultConfigPath/DefaultHostlistPath = /opt/etc/sign-craze/...),
-// которые в песочнице/CI недоступны на запись — это отдельно проверяется в
-// TestSetDPITargets_DPIВключён_TargetsСохраненыДажеЕслиРегенерацияУпала.
+// Тесты с DPIEnabled=false (нулевое значение Default()) не заходят в ветку
+// регенерации nfqws2-конфига. Ветка регенерации тестируется через подмену
+// seam'а regenDPIConfigFn — реальная реализация шлётся в `ip route show
+// default` и пишет в захардкоженные пути internal/dpi
+// (/opt/etc/sign-craze/...), поведение которых зависит от окружения
+// (на GitHub-раннере /opt записываем, в песочнице — нет).
+
+// withFakeRegenDPIConfig подменяет regenDPIConfigFn на время теста.
+func withFakeRegenDPIConfig(t *testing.T, fn func(context.Context, *state.State) error) {
+	t.Helper()
+	orig := regenDPIConfigFn
+	regenDPIConfigFn = fn
+	t.Cleanup(func() { regenDPIConfigFn = orig })
+}
 
 func TestSetDPITargets_БазовыйSetGet(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
@@ -125,15 +134,8 @@ func TestSetDPITargets_Clear(t *testing.T) {
 // проверяет порядок действий, явно затребованный при рефакторе: SetTargets
 // сохраняет новые targets ПЕРВЫМ (атомарно, под общим с Web UI локом), и это
 // сохранение остаётся в силе даже если последующая регенерация nfqws2-конфига
-// не удалась.
-//
-// В песочнице/CI регенерация гарантированно падает: internal/dpi.GenerateConfig
-// пишет в захардкоженный /opt/etc/sign-craze/nfqws2.conf, а этот каталог
-// недоступен на запись без root (go test никогда не запускается на самом
-// роутере — см. Makefile: цель test гоняется на build-хосте/в CI). Поэтому
-// тест не проверяет КОНКРЕТНУЮ причину ошибки (не дошли до `ip route` или не
-// удалось создать каталог) — только то, что ошибка есть и targets всё равно
-// сохранены.
+// не удалась. Падение регенерации инжектируется через seam regenDPIConfigFn —
+// детерминированно в любом окружении.
 func TestSetDPITargets_DPIВключён_TargetsСохраненыДажеЕслиРегенерацияУпала(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
 	ctx := context.Background()
@@ -141,12 +143,17 @@ func TestSetDPITargets_DPIВключён_TargetsСохраненыДажеЕсл
 	if err := state.Save(path, &state.State{DPIEnabled: true}); err != nil {
 		t.Fatalf("исходное сохранение (DPIEnabled=true): %v", err)
 	}
+	withFakeRegenDPIConfig(t, func(context.Context, *state.State) error {
+		return fmt.Errorf("инжектированная ошибка регенерации")
+	})
 
 	err := setDPITargets(ctx, path, []string{"example.com"})
 	if err == nil {
-		t.Fatal("ожидалась ошибка регенерации конфига (нет доступа на запись к /opt/etc/sign-craze в тестовом окружении)")
+		t.Fatal("ожидалась инжектированная ошибка регенерации конфига")
 	}
-	t.Logf("setDPITargets вернул ожидаемую ошибку регенерации: %v", err)
+	if !strings.Contains(err.Error(), "инжектированная ошибка регенерации") {
+		t.Fatalf("ошибка должна прийти из регенерации, получено: %v", err)
+	}
 
 	// Ключевая проверка: несмотря на ошибку регенерации, targets уже сохранены —
 	// SetTargets выполнился и закоммитил их до того, как упала регенерация.
@@ -156,6 +163,33 @@ func TestSetDPITargets_DPIВключён_TargetsСохраненыДажеЕсл
 	}
 	if len(fresh.DPITargets) != 1 || fresh.DPITargets[0] != "example.com" {
 		t.Errorf("DPITargets = %v, ожидалось [example.com] (SetTargets должен был сохранить их до регенерации)", fresh.DPITargets)
+	}
+}
+
+// TestSetDPITargets_DPIВключён_РегенерацияВызванаСоСвежимState — позитивный
+// кейс ветки регенерации: seam вызывается ровно один раз и получает
+// СВЕЖЕПРОЧИТАННЫЙ state (с уже сохранёнными targets), а не устаревший снимок.
+func TestSetDPITargets_DPIВключён_РегенерацияВызванаСоСвежимState(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	ctx := context.Background()
+
+	if err := state.Save(path, &state.State{DPIEnabled: true}); err != nil {
+		t.Fatalf("исходное сохранение (DPIEnabled=true): %v", err)
+	}
+	calls := 0
+	withFakeRegenDPIConfig(t, func(_ context.Context, st *state.State) error {
+		calls++
+		if len(st.DPITargets) != 1 || st.DPITargets[0] != "example.com" {
+			t.Errorf("регенерация получила state с DPITargets=%v, ожидалось [example.com]", st.DPITargets)
+		}
+		return nil
+	})
+
+	if err := setDPITargets(ctx, path, []string{"example.com"}); err != nil {
+		t.Fatalf("setDPITargets: %v", err)
+	}
+	if calls != 1 {
+		t.Errorf("регенерация вызвана %d раз, ожидался ровно 1", calls)
 	}
 }
 

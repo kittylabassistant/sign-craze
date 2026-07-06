@@ -302,11 +302,7 @@ func setDPITargets(ctx context.Context, statePath string, targets []string) erro
 	// Регенерация конфига имеет смысл только если DPI уже включён.
 	// Иначе конфиг будет создан при следующем `--dpi on` с актуальными targets.
 	if st.DPIEnabled {
-		iface, ifErr := detectISPInterface(ctx)
-		if ifErr != nil {
-			return fmt.Errorf("--dpi-targets: %w", ifErr)
-		}
-		if err := writeDPIConfig(iface, st); err != nil {
+		if err := regenDPIConfigFn(ctx, st); err != nil {
 			return fmt.Errorf("--dpi-targets: %w", err)
 		}
 	}
@@ -317,6 +313,20 @@ func setDPITargets(ctx context.Context, statePath string, targets []string) erro
 		fmt.Printf("DPI targets: %d домен(ов). Перезапустите: sign-craze --restart\n", len(targets))
 	}
 	return nil
+}
+
+// regenDPIConfigFn — регенерация nfqws2-конфига после смены targets при
+// включённом DPI. Seam для тестов: продакшен-реализация детектит
+// WAN-интерфейс через `ip route` и пишет в захардкоженные пути internal/dpi
+// (/opt/etc/sign-craze/...) — в юнит-тестах и то и другое недетерминировано
+// (на GitHub-раннере /opt записываем, в песочнице — нет), поэтому тесты
+// подменяют функцию целиком.
+var regenDPIConfigFn = func(ctx context.Context, st *state.State) error {
+	iface, ifErr := detectISPInterface(ctx)
+	if ifErr != nil {
+		return ifErr
+	}
+	return writeDPIConfig(iface, st)
 }
 
 func handleDPITargetsList(_ context.Context, _ []string) error {
