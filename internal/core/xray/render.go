@@ -124,9 +124,9 @@ func Render(p ConfigParams) ([]byte, error) {
 	// просто дропает не совпавший трафик; для tproxy режима это означает
 	// потерю трафика, поэтому всегда обеспечиваем default route).
 	// GeoAssetsDir пустой по умолчанию — отключает проверку наличия
-	// geosite.dat/geoip.dat. Production callers (cmd_lifecycle.doStart) обязаны
-	// проставлять его явно. Preview/Web Validator передают "" чтобы не падать
-	// в окружении без скачанных DAT-файлов.
+	// geosite.dat/geoip.dat. Production-путь (coreImpl.RenderConfig без
+	// rp.Preview) проставляет его сам; Preview/Web Validator (rp.Preview=true)
+	// оставляют "" чтобы не падать в окружении без скачанных DAT-файлов.
 	var routingRules []any
 	finalSet := false
 	if p.RoutingConfig != nil && (len(p.RoutingConfig.Rules) > 0 || p.RoutingConfig.Final != "") {
