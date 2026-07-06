@@ -14,6 +14,7 @@ import (
 	"github.com/kittylabassistant/sign-craze/internal/log"
 	"github.com/kittylabassistant/sign-craze/internal/ndm"
 	"github.com/kittylabassistant/sign-craze/internal/peer"
+	"github.com/kittylabassistant/sign-craze/internal/service"
 	"github.com/kittylabassistant/sign-craze/internal/state"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
@@ -232,11 +233,18 @@ func doStop(ctx context.Context) error {
 		log.L().Warn("--stop: naive не остановился чисто", "err", stopErr)
 	}
 
+	// c нужен ниже для needsTUN(c, st) — активное ядро определяет, создаётся
+	// ли TUN-интерфейс при работающем сервисе (см. needsTUN).
 	c := mustActiveCore()
-	coreLC := c.NewLifecycle()
-	if err := coreLC.Stop(ctx); err != nil {
-		log.L().Debug("--stop: core stop", "core", c.Name(), "err", err)
-	}
+
+	// Останавливаем ВСЕ зарегистрированные ядра (core.Names()), а не только
+	// активное. Инвариант (tasks/lessons.md, 2026-05-12): «Stop ядра,
+	// привязанный к state.Core, должен убивать ВСЕ ранее активные
+	// core-процессы» — при смене ядра (`--core xray --restart` после сбоя
+	// предыдущего) процесс СТАРОГО ядра не входит в mustActiveCore() и без
+	// этого цикла вообще не получал бы сигнал на остановку, оставаясь
+	// orphan'ом до перезагрузки роутера.
+	stopAllCoreLifecycles(ctx)
 
 	// Удалить firewall — даже если state нечитаем.
 	st, err := loadState()
@@ -269,6 +277,45 @@ func doStop(ctx context.Context) error {
 
 	fmt.Println(Info("Сервис остановлен"))
 	return nil
+}
+
+// coreLifecycleFn — фабрика service.Lifecycle по имени зарегистрированного
+// ядра, переопределяемая в тестах (см. uiLifecycleFn далее в файле — тот же
+// паттерн для UI-демона) для инъекции fake без реальных PID-файлов и процессов.
+var coreLifecycleFn = func(name string) (service.Lifecycle, error) {
+	c, err := core.Get(name)
+	if err != nil {
+		return nil, err
+	}
+	return c.NewLifecycle(), nil
+}
+
+// stopAllCoreLifecycles останавливает КАЖДОЕ зарегистрированное прокси-ядро
+// (core.Names(): sing-box, xray, mihomo), а не только активное.
+//
+// Почему все ядра: инвариант из tasks/lessons.md (2026-05-12) — Stop ядра,
+// привязанный к state.Core, должен убивать ВСЕ ранее активные core-процессы.
+// При смене ядра (`--core xray --restart` после сбоя предыдущего) старый
+// процесс не входит в mustActiveCore() и раньше вообще не получал сигнал на
+// остановку — оставался orphan'ом до перезагрузки роутера.
+//
+// Это безопасно: service.processLifecycle.Stop идемпотентен — если ядро не
+// запущено, Status() по его PID-файлу вернёт !Running и Stop() станет no-op
+// без ошибки (internal/service/lifecycle.go). Ошибка Stop одного ядра
+// логируется на уровне Debug и НЕ прерывает остановку остальных — иначе
+// зависший процесс одного ядра помешал бы --stop/--restart остановить прочие
+// ядра и снять firewall.
+func stopAllCoreLifecycles(ctx context.Context) {
+	for _, name := range core.Names() {
+		lc, err := coreLifecycleFn(name)
+		if err != nil {
+			log.L().Debug("--stop: получение lifecycle ядра", "core", name, "err", err)
+			continue
+		}
+		if err := lc.Stop(ctx); err != nil {
+			log.L().Debug("--stop: core stop", "core", name, "err", err)
+		}
+	}
 }
 
 func handleRestart(ctx context.Context, _ []string) error {
