@@ -509,13 +509,28 @@ func detectCoreFromProxyURL(url string) (recommended string, allCompatible []str
 	return rec, all, true
 }
 
-// parseProxyURLToOutbound — общий парсер URL для CLI-флага --proxy.
-// Тот же путь, что и в wizardURL: ParseCanonical с fallback на legacy Parse.
+// parseURLToOutbound — единая точка разбора proxy-URL, общая для CLI-флага
+// --proxy (parseProxyURLToOutbound) и интерактивного wizard (wizardURL).
+// Раньше эти два call-site дублировали парсинг независимо, и только один из
+// них (--proxy) проставлял naive-порт-дефолт — баг B3: naive+https://... URL,
+// введённый через wizard, давал Outbound с NaiveListenPort=0, и
+// singbox/render.go (renderCanonical, case ProtocolNaive) падал с "NaiveListenPort
+// не выделен" уже на PrepareAndValidate при --install.
+//
+// Порядок шагов: ParseCanonical → fallback legacy Parse (пока сохраняется,
+// удаление — отдельная фаза) → перенос canonical-полей в Outbound →
+// naive-порт-дефолт → Validate → RecommendCore.
+//
+// Naive-порт-дефолт обязан жить именно здесь (на этапе парсинга URL, до
+// Validate() и записи в state.json), а не в рендере ядра:
+// internal/naiveproxy/config.go независимо читает то же самое поле
+// Proto.NaiveListenPort для аргументов запуска naive-демона — если дефолтить
+// в render, а не тут, порты sing-box outbound'а и naive-демона могут разойтись.
 //
 // Возвращает Outbound с встроенным canonical и имя рекомендованного ядра
 // для auto-detect. recommendedCore="" при невалидном URL или fallback-парсе
 // без canonical-данных.
-func parseProxyURLToOutbound(url string) (types.Outbound, string, error) {
+func parseURLToOutbound(url string) (types.Outbound, string, error) {
 	o, canon, err := proxyparse.ParseCanonical(url)
 	if err != nil {
 		var legacyErr error
@@ -543,6 +558,14 @@ func parseProxyURLToOutbound(url string) (types.Outbound, string, error) {
 	}
 	recommended, _ := core.RecommendCore(o)
 	return o, recommended, nil
+}
+
+// parseProxyURLToOutbound — алиас parseURLToOutbound для call-site'ов
+// CLI-флага --proxy (doInstall, detectCoreFromProxyURL). Имя сохранено
+// отдельно ради читаемости вызовов и обратной совместимости существующих
+// тестов.
+func parseProxyURLToOutbound(url string) (types.Outbound, string, error) {
+	return parseURLToOutbound(url)
 }
 
 func checkOptMounted() error {
@@ -603,27 +626,12 @@ func wizardURL(r *bufio.Reader, out io.Writer) ([]types.Outbound, error) {
 		return nil, nil
 	}
 
-	// Пробуем ParseCanonical — возвращает Outbound с базовыми полями
-	// и отдельный Canonical aggregator с Protocol/Transport/TLS/Proto.
-	o, canon, err := proxyparse.ParseCanonical(url)
+	// Общий парсер: ParseCanonical → fallback legacy Parse → naive-порт-дефолт →
+	// Validate → RecommendCore. Тексты ошибок ("парсинг URL: %w", "валидация:
+	// %w") формирует parseURLToOutbound — здесь просто пробрасываем их дальше.
+	o, _, err := parseURLToOutbound(url)
 	if err != nil {
-		// Fallback на legacy Parse для схем, которые ParseCanonical не охватывает.
-		var legacyErr error
-		o, legacyErr = proxyparse.Parse(url)
-		if legacyErr != nil {
-			// Возвращаем оригинальную ошибку ParseCanonical — она точнее.
-			return nil, fmt.Errorf("парсинг URL: %w", err)
-		}
-	} else {
-		// Переносим canonical-поля в Outbound.
-		o.Protocol = canon.Protocol
-		o.Transport = canon.Transport
-		o.TLS = canon.TLS
-		o.Proto = canon.Proto
-	}
-
-	if err := o.Validate(); err != nil {
-		return nil, fmt.Errorf("валидация: %w", err)
+		return nil, err
 	}
 	fmt.Fprintf(out, "%s type=%s server=%s port=%d\n", OK("Outbound:"), o.Type, o.Server, o.Port)
 	return []types.Outbound{o}, nil
