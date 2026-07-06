@@ -347,17 +347,3 @@ func ParsedExcludes(s *State) ([]netip.Prefix, error) {
 	}
 	return out, nil
 }
-
-// ParsedAdminIPs возвращает AdminIPs как []netip.Prefix.
-// Используется для дополнения signcraze_excludes IP-адресами админа.
-func ParsedAdminIPs(s *State) ([]netip.Prefix, error) {
-	out := make([]netip.Prefix, 0, len(s.AdminIPs))
-	for _, e := range s.AdminIPs {
-		p, err := netip.ParsePrefix(e)
-		if err != nil {
-			return nil, fmt.Errorf("admin_ips: %s: %w", e, err)
-		}
-		out = append(out, p)
-	}
-	return out, nil
-}

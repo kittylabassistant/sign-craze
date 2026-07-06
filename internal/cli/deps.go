@@ -84,7 +84,6 @@ func newNaiveLifecycleFromOutbound(o types.Outbound) (service.Lifecycle, error) 
 
 // newFirewallApplier строит Applier из state: пробрасывает ports/excludes/admin
 // + PolicyMark + DPIEnabled в Config.
-// AdminIPs мерджатся в Excludes — оба попадают в ipset signcraze_excludes.
 //
 // SkipTUNCheck определяется по активному ядру: sing-box работает через TUN
 // (pre-flight CheckTUNAvailable обязателен), xray/mihomo — через TProxy и
@@ -108,11 +107,6 @@ func newFirewallApplier(s *state.State) (firewall.Applier, error) {
 	if err != nil {
 		return nil, fmt.Errorf("firewall: некорректные excludes: %w", err)
 	}
-	adminPrefixes, err := state.ParsedAdminIPs(s)
-	if err != nil {
-		return nil, fmt.Errorf("firewall: некорректные admin IPs: %w", err)
-	}
-	excl = append(excl, adminPrefixes...)
 	cfg.Excludes = excl
 
 	cfg.VPNExcludeIPs = collectVPNExcludeIPs(s)
