@@ -59,12 +59,7 @@ func (coreImpl) RenderConfig(rp types.CoreRenderParams) ([]byte, error) {
 	p.Canonicals = make(map[string]types.Canonical, len(p.Outbounds))
 	for _, ob := range p.Outbounds {
 		if ob.Protocol != "" {
-			p.Canonicals[ob.Tag] = types.Canonical{
-				Protocol:  ob.Protocol,
-				Transport: ob.Transport,
-				TLS:       ob.TLS,
-				Proto:     ob.Proto,
-			}
+			p.Canonicals[ob.Tag] = ob.Canonical()
 		}
 	}
 	p.DefaultTag = core.EffectiveDefaultTag(rp, p.Outbounds)
@@ -73,13 +68,7 @@ func (coreImpl) RenderConfig(rp types.CoreRenderParams) ([]byte, error) {
 }
 
 func (coreImpl) ValidateOutbound(ob types.Outbound) error {
-	c := types.Canonical{
-		Protocol:  ob.Protocol,
-		Transport: ob.Transport,
-		TLS:       ob.TLS,
-		Proto:     ob.Proto,
-	}
-	return Validate(c)
+	return Validate(ob.Canonical())
 }
 
 func init() {

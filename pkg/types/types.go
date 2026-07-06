@@ -196,6 +196,20 @@ func (o Outbound) Validate() error {
 	return o.Port.Validate()
 }
 
+// Canonical возвращает canonical-описание outbound'а, собранное из его
+// собственных полей Protocol/Transport/TLS/Proto. Адаптеры ядер (xray,
+// mihomo) используют этот метод в RenderConfig/ValidateOutbound вместо
+// повторения одинакового литерала сборки types.Canonical{...} на каждом
+// call-site.
+func (o Outbound) Canonical() Canonical {
+	return Canonical{
+		Protocol:  o.Protocol,
+		Transport: o.Transport,
+		TLS:       o.TLS,
+		Proto:     o.Proto,
+	}
+}
+
 // Release описывает релиз на GitHub.
 type Release struct {
 	TagName string  `json:"tag_name"`

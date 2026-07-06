@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -219,5 +220,41 @@ func TestExtractBinary_NotFound(t *testing.T) {
 	err := extractBinaryToFile(tarPath, dstPath, 0o755)
 	if err == nil {
 		t.Fatal("ожидалась ошибка для архива без sing-box")
+	}
+}
+
+// TestCheckConfig_Success — argv `sing-box check -c <config>` собран верно,
+// ошибки нет.
+func TestCheckConfig_Success(t *testing.T) {
+	var calls [][]string
+	r := exectx.MockMatcher(func(name string, args ...string) (exectx.Result, error) {
+		calls = append(calls, append([]string{name}, args...))
+		return exectx.Result{ExitCode: 0}, nil
+	})
+
+	if err := checkConfig(context.Background(), r, "/opt/sbin/sing-box", "/opt/etc/sign-craze/config.json"); err != nil {
+		t.Fatalf("checkConfig: %v", err)
+	}
+	want := []string{"/opt/sbin/sing-box", "check", "-c", "/opt/etc/sign-craze/config.json"}
+	if len(calls) != 1 || !reflect.DeepEqual(calls[0], want) {
+		t.Errorf("argv = %v, ожидалось [%v]", calls, want)
+	}
+}
+
+// TestCheckConfig_GenericError — ошибка форматируется в едином для всех ядер
+// стиле (core.CheckConfigError) с префиксом "sing-box check:".
+func TestCheckConfig_GenericError(t *testing.T) {
+	r := exectx.MockMatcher(func(_ string, _ ...string) (exectx.Result, error) {
+		return exectx.Result{ExitCode: 1, Stderr: []byte("bad config"), Stdout: []byte("")}, fmt.Errorf("exit status 1")
+	})
+
+	err := checkConfig(context.Background(), r, "/opt/sbin/sing-box", "/tmp/config.json")
+	if err == nil {
+		t.Fatal("ожидалась ошибка")
+	}
+	for _, want := range []string{"sing-box check:", "exit status 1", "exit: 1", "stderr: bad config", "длительность:"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("ошибка %q не содержит %q", err.Error(), want)
+		}
 	}
 }

@@ -86,11 +86,7 @@ func Download(ctx context.Context, arch types.Arch, dstDir string) (core.Downloa
 		if err != nil {
 			return core.DownloadResult{}, fmt.Errorf("xray download (mips, custom build): %w", err)
 		}
-		return core.DownloadResult{
-			Downloaded: res.Downloaded,
-			Version:    res.Version,
-			Path:       res.Path,
-		}, nil
+		return core.FromFetchResult(res), nil
 	}
 
 	pattern, ok := assetPattern[arch]
@@ -113,9 +109,5 @@ func Download(ctx context.Context, arch types.Arch, dstDir string) (core.Downloa
 		return core.DownloadResult{}, fmt.Errorf("xray download: %w", err)
 	}
 
-	return core.DownloadResult{
-		Downloaded: res.Downloaded,
-		Version:    res.Version,
-		Path:       res.Path,
-	}, nil
+	return core.FromFetchResult(res), nil
 }
