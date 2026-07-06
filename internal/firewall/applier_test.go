@@ -412,6 +412,118 @@ func TestApplier_Apply_Policy_BypassBeforeTProxy(t *testing.T) {
 	}
 }
 
+// TestApply_AllPolicyVariants_HaveDPIPrecleanupAndBypass — regression-фиксация
+// поведения ДО рефакторинга R7 (дедупликация триады pre-cleanup DPI-jump /
+// DPIForwardRules-в-batch / LAN+admin bypass, общей для applyPolicyTUNMode,
+// applyPolicyTProxyReal и applyPolicyRedirect). Для каждой из 3 policy-веток
+// проверяет:
+//
+//	(а) DeleteJumpAll(mangle, FORWARD, signcraze_dpi_fwd) вызван ДО того как
+//	    jump на signcraze_dpi_fwd снова появляется в FORWARD (в составе batch);
+//	(б) DPIForwardRules реально попали в batch: цепочка signcraze_dpi_fwd
+//	    объявлена и хотя бы одно NFQUEUE-правило присутствует;
+//	(в) LOCAL bypass и admin-ports bypass вставлены через `-I signcraze_policy 1`
+//	    в ожидаемой таблице (mangle для TUN-mode/TProxyReal, nat для Redirect).
+//
+// applyPolicyTProxyReal недостижима через публичный Apply(): выбор этой ветки
+// в applyPolicyMode зависит от EnsureKernelModule(xt_socket/xt_TPROXY), которая
+// делает os.Stat на реальный Keenetic-путь (/lib/modules/4.9-ndm-5/...) — вне
+// роутера всегда возвращает ошибку, и applyPolicyMode детерминированно уходит
+// в Redirect-fallback. Поэтому тест вызывает все 3 приватных метода напрямую
+// (white-box, тот же package firewall) через приведение Applier к *applierImpl.
+func TestApply_AllPolicyVariants_HaveDPIPrecleanupAndBypass(t *testing.T) {
+	tests := []struct {
+		name        string
+		call        func(a *applierImpl, ctx context.Context) error
+		bypassTable string
+	}{
+		{
+			name:        "TUN-mode",
+			call:        func(a *applierImpl, ctx context.Context) error { return a.applyPolicyTUNMode(ctx) },
+			bypassTable: "mangle",
+		},
+		{
+			name:        "TProxy-real",
+			call:        func(a *applierImpl, ctx context.Context) error { return a.applyPolicyTProxyReal(ctx) },
+			bypassTable: "mangle",
+		},
+		{
+			name:        "Redirect",
+			call:        func(a *applierImpl, ctx context.Context) error { return a.applyPolicyRedirect(ctx) },
+			bypassTable: "nat",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &autoRunner{}
+			cfg := DefaultConfig()
+			cfg.PolicyMark = 0xffffaab
+			cfg.DPIEnabled = true
+			cfg.WANIface = "eth3"
+			cfg.AdminPorts = []uint16{22, 222}
+			cfg.LANAddrs = []string{"172.16.0.1"}
+			ai, ok := NewApplier(r, cfg).(*applierImpl)
+			if !ok {
+				t.Fatal("NewApplier не вернул *applierImpl")
+			}
+
+			if err := tt.call(ai, context.Background()); err != nil {
+				t.Fatalf("%s: вызов вернул ошибку: %v", tt.name, err)
+			}
+
+			// (а) pre-cleanup ДО повторного добавления FORWARD-jump.
+			precleanupIdx := -1
+			jumpAddIdx := -1
+			for i, c := range r.calls {
+				if precleanupIdx == -1 && strings.Contains(c, "-D FORWARD -j signcraze_dpi_fwd") {
+					precleanupIdx = i
+				}
+				if jumpAddIdx == -1 && strings.Contains(c, "-A FORWARD") && strings.Contains(c, "signcraze_dpi_fwd") {
+					jumpAddIdx = i
+				}
+			}
+			if precleanupIdx == -1 {
+				t.Error("pre-cleanup DeleteJumpAll(mangle, FORWARD, signcraze_dpi_fwd) не вызван")
+			}
+			if jumpAddIdx == -1 {
+				t.Error("FORWARD jump на signcraze_dpi_fwd не добавлен")
+			}
+			if precleanupIdx != -1 && jumpAddIdx != -1 && precleanupIdx > jumpAddIdx {
+				t.Errorf(
+					"pre-cleanup (idx=%d) вызван ПОСЛЕ добавления jump (idx=%d): при re-apply jump задублируется",
+					precleanupIdx, jumpAddIdx,
+				)
+			}
+
+			// (б) DPIForwardRules присутствуют.
+			if !r.hasCall("iptables -t mangle -N signcraze_dpi_fwd") {
+				t.Error("цепочка signcraze_dpi_fwd не создана")
+			}
+			foundNFQUEUE := false
+			for _, c := range r.calls {
+				if strings.Contains(c, "signcraze_dpi_fwd") && strings.Contains(c, "NFQUEUE") {
+					foundNFQUEUE = true
+					break
+				}
+			}
+			if !foundNFQUEUE {
+				t.Error("ни одного NFQUEUE-правила в signcraze_dpi_fwd не найдено")
+			}
+
+			// (в) LOCAL bypass и admin-ports bypass вставлены с pos=1 в ожидаемой таблице.
+			lanBypass := fmt.Sprintf("iptables -t %s -I signcraze_policy 1 -d 172.16.0.1 -j RETURN", tt.bypassTable)
+			adminBypass := fmt.Sprintf("iptables -t %s -I signcraze_policy 1 -p tcp --dport 22 -j RETURN", tt.bypassTable)
+			if !r.hasCall(lanBypass) {
+				t.Errorf("LOCAL bypass не найден: %s", lanBypass)
+			}
+			if !r.hasCall(adminBypass) {
+				t.Errorf("admin-ports bypass не найден: %s", adminBypass)
+			}
+		})
+	}
+}
+
 func TestApplier_Apply_Policy_НулевойMarkОшибка(t *testing.T) {
 	r := &autoRunner{}
 	cfg := DefaultConfig()
