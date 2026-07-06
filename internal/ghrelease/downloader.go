@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -15,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
 	"github.com/kittylabassistant/sign-craze/internal/log"
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
@@ -38,6 +40,13 @@ const (
 	// Azure blob, типичный block в РФ) ждёт defaultDownloadTimeout (10 min).
 	// 10s — баланс: достаточно для медленного TLS на МIPS, fail-fast при drop.
 	dialTimeout = 10 * time.Second
+	// downloadTempPerm — права скачанного asset-файла. 0600 сохраняет
+	// поведение до R13 (os.CreateTemp создавал файл с неявным дефолтом 0600,
+	// явного chmod не было). Скачанный файл — как правило .tar.gz/бинарь,
+	// который дальше читает extractBinaryToFile или BackupAndReplaceFromReader
+	// — они сами выставляют нужные права финальному артефакту, поэтому
+	// исполняемый бит здесь не нужен.
+	downloadTempPerm = 0o600
 )
 
 // bodyIdleTimeout — потолок паузы между байтами тела ответа. Без него
@@ -323,18 +332,6 @@ func (d *Downloader) tryMirrorDownload(ctx context.Context, url, dstFile, savedE
 		return false, "", "", false, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
-	tmp, terr := os.CreateTemp(filepath.Dir(dstFile), ".dl-*")
-	if terr != nil {
-		return false, "", "", false, fmt.Errorf("создание temp-файла: %w", terr)
-	}
-	tmpName := tmp.Name()
-	success := false
-	defer func() {
-		if !success {
-			_ = os.Remove(tmpName)
-		}
-	}()
-
 	pr := newProgressReader(resp.Body, resp.ContentLength)
 
 	idleStop := make(chan struct{})
@@ -365,29 +362,40 @@ func (d *Downloader) tryMirrorDownload(ctx context.Context, url, dstFile, savedE
 		}
 	}()
 
+	// tracker оборачивает pr, чтобы после ошибки WriteFileAtomicFromReader
+	// отличить сетевую причину (idle timeout/обрыв соединения при чтении
+	// тела ответа — retriable, стоит пробовать следующее зеркало) от
+	// локальной (temp-файл/fsync/rename — соседнее зеркало упрётся в ту же
+	// проблему с диском, retry бессмысленен).
 	h := sha256.New()
-	_, cpErr := io.Copy(io.MultiWriter(tmp, h), pr)
+	tracker := &readErrTracker{Reader: pr}
+	writeErr := atomicfs.WriteFileAtomicFromReader(dstFile, io.TeeReader(tracker, h), downloadTempPerm)
 	close(idleStop)
-	if cpErr != nil {
-		_ = tmp.Close()
-		return false, "", "", true, fmt.Errorf("чтение тела ответа: %w", cpErr)
-	}
-	if syncErr := tmp.Sync(); syncErr != nil {
-		_ = tmp.Close()
-		return false, "", "", false, fmt.Errorf("fsync: %w", syncErr)
-	}
-	if closeErr := tmp.Close(); closeErr != nil {
-		return false, "", "", false, fmt.Errorf("закрытие tmp-файла: %w", closeErr)
+	if writeErr != nil {
+		return false, "", "", tracker.err != nil, fmt.Errorf("сохранение файла: %w", writeErr)
 	}
 
 	checksum := hex.EncodeToString(h.Sum(nil))
 	log.L().Debug("ghrelease: загрузка завершена", "sha256", checksum, "bytes", pr.bytesRead())
 
-	if rnErr := os.Rename(tmpName, dstFile); rnErr != nil {
-		return false, "", "", false, fmt.Errorf("атомарный rename %s → %s: %w", tmpName, dstFile, rnErr)
-	}
-	success = true
 	return true, resp.Header.Get("ETag"), checksum, false, nil
+}
+
+// readErrTracker оборачивает io.Reader и запоминает последнюю ошибку чтения
+// (кроме io.EOF). Используется в tryMirrorDownload: WriteFileAtomicFromReader
+// возвращает одну ошибку на все фазы (copy/fsync/chmod/rename), а retriable
+// должен зависеть только от того, оборвалось ли именно чтение сетевого тела.
+type readErrTracker struct {
+	io.Reader
+	err error
+}
+
+func (t *readErrTracker) Read(p []byte) (int, error) {
+	n, err := t.Reader.Read(p)
+	if err != nil && !errors.Is(err, io.EOF) {
+		t.err = err
+	}
+	return n, err
 }
 
 // progressReader логирует прогресс загрузки каждые progressInterval.
