@@ -328,6 +328,10 @@ validate: проверяет теги outbound, синтаксис rule_set, д�
 <span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="ex">xray</span> test <span class="at">-c</span> /opt/etc/sign-craze/xray/config.json</span>
 <span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="co"># mihomo</span></span>
 <span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="ex">mihomo</span> <span class="at">-t</span> <span class="at">-d</span> /opt/etc/sign-craze/mihomo/</span></code></pre></div>
+<p>При добавлении rule_set с URL (Tab <strong>Rule Sets</strong> → «+
+Добавить» или <code>POST /api/rule_sets</code>) URL проверяется на
+доступность и формат; битый URL отклоняется с ошибкой 400, при
+отсутствии сети проверка пропускается.</p>
 <h2 id="применение-изменений">Применение изменений</h2>
 <div class="sourceCode" id="cb5"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Из SSH на роутере:</span></span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="ex">sign-craze</span> <span class="at">--restart</span></span></code></pre></div>

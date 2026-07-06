@@ -347,7 +347,9 @@ rule-provider</td>
 <tr class="odd">
 <td>xray</td>
 <td>translation в matcher</td>
-<td>URL не нужен — geosite:/geoip: данные встроены в xray</td>
+<td>URL не нужен — geosite:/geoip: данные из
+<code>geosite.dat</code>/<code>geoip.dat</code>
+(<code>sign-craze --update-geo --core xray</code>)</td>
 </tr>
 </tbody>
 </table>
@@ -471,6 +473,9 @@ class="sourceCode json"><code class="sourceCode json"><span id="cb5-1"><a href="
 <span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
 <p>После добавления тег <code>my-list</code> доступен в поле
 <code>rule_set</code> любого правила.</p>
+<p>При добавлении URL проверяется доступность и формат (magic-байты):
+подтверждённый 404 или несоответствие формата → ошибка 400. Если сети
+нет — проверка пропускается, офлайн-редактирование работает.</p>
 <p><strong>Persistence:</strong> изменения сохраняются в
 <code>/opt/etc/sign-craze/routing.json</code>. Файлы с
 <code>"version": 0</code> (отсутствующее поле) мигрируют в

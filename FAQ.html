@@ -365,15 +365,22 @@ block-ads не работает на xray?</h3>
 вместо этого sign-craze автоматически транслирует
 <code>geosite-category-ads-all</code> в xray matcher
 <code>domain: ["geosite:category-ads-all"]</code>, что требует наличия
-<code>geosite.dat</code> на роутере.</p>
-<p>Если xray у вас работает через встроенные geosite/geoip данные —
-пресет будет работать. Если нет — Validate покажет warning
+<code>geosite.dat</code> на роутере (скачивается через
+<code>sign-craze --update-geo --core xray</code>).</p>
+<p>Если <code>geosite.dat</code> скачан — пресет будет работать. Если
+нет — Validate покажет warning
 <code>refilter rule_set без .dat-эквивалента</code>.</p>
 <p>Для надёжной блокировки рекламы на xray добавьте явное правило через
 <strong>Routing → + Добавить</strong> с полем
 <code>domain_keyword</code> или <code>domain_suffix</code>, либо
 переключитесь на sing-box (<code>--core sing-box</code>) где
 <code>.srs</code> работает нативно.</p>
+<h3 id="xray-пишет-geositedat-отсутствует-для-xray--что-делать">Xray
+пишет «geosite.dat отсутствует для xray» — что делать?</h3>
+<p>Выполните <code>sign-craze --update-geo --core xray</code> — команда
+скачает <code>geosite.dat</code>/<code>geoip.dat</code> в
+<code>/opt/etc/sign-craze/xray/assets</code> (с проверкой SHA256 и
+структуры), затем повторите <code>sign-craze --start</code>.</p>
 <h2 id="routing">Routing</h2>
 <h3 id="как-сделать-чтобы-рф-сайты-не-шли-через-vpn">Как сделать чтобы
 РФ-сайты не шли через VPN?</h3>

@@ -549,6 +549,14 @@ class="sourceCode sh"><code class="sourceCode bash"><span id="cb16-1"><a href="#
 <p>Ядро скачивается с GitHub Releases через тот же mirror chain, что и
 sign-craze (Fastly raw.githubusercontent.com как приоритетный канал).
 SHA256 проверяется автоматически.</p>
+<blockquote>
+<p>Для xray гео-ассеты (<code>geosite.dat</code>/<code>geoip.dat</code>)
+докачиваются в <code>/opt/etc/sign-craze/xray/assets</code>
+автоматически после <code>--core-install xray</code> (с проверкой SHA256
+и структуры). Если их всё же нет — <code>sign-craze --start</code>
+завершится ошибкой «geosite.dat отсутствует для xray»; решение —
+<code>sign-craze --update-geo --core xray</code>.</p>
+</blockquote>
 <h3 id="62-supervised-peers-naiveproxy-и-mieru-v130">6.2. Supervised
 peers: naiveproxy и mieru (v1.3.0+)</h3>
 <p>sign-craze поддерживает <a
