@@ -403,7 +403,7 @@ internal/cli  (диспетчер команд, ANSI-цвет, --no-color)
 
 ```bash
 # 1. Скачать артефакты нужной архитектуры
-gh release download v1.6.3 -p 'sign-craze-mipsle' -p 'sign-craze-mipsle.sig' \
+gh release download v1.6.4 -p 'sign-craze-mipsle' -p 'sign-craze-mipsle.sig' \
   -p 'sign-craze-mipsle.pem' -p 'sha256sums.txt'
 
 # 2. Проверить SHA-256 целостность

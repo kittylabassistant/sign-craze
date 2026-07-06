@@ -324,7 +324,7 @@ sign-craze --version
 Ожидаемый вывод:
 
 ```
-sign-craze v1.6.3 (commit <актуальный>, built 2026-06-30)
+sign-craze v1.6.4 (commit <актуальный>, built 2026-07-06)
 sing-box: not installed
 ```
 
@@ -494,7 +494,7 @@ sign-craze --status
 sing-box: running (PID 12345)
 nfqws2: running (PID 12346)
 режим: policy
-версия: v1.6.3
+версия: v1.6.4
 ```
 
 ---

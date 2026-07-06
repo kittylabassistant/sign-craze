@@ -55,7 +55,7 @@ Go-утилита для управления межсетевым экрано�
 
 ## История версий (ключевое)
 
-Текущая версия — **v1.6.3**. Полный журнал изменений — в [CHANGELOG.md](https://github.com/kittylabassistant/sign-craze/blob/main/CHANGELOG.md).
+Текущая версия — **v1.6.4**. Полный журнал изменений — в [CHANGELOG.md](https://github.com/kittylabassistant/sign-craze/blob/main/CHANGELOG.md).
 
 | Версия | Ключевое |
 | ------ | -------- |
@@ -66,6 +66,7 @@ Go-утилита для управления межсетевым экрано�
 | v1.4.x | Пост-аудитный hardening: firewall batching, `--diag --json`, cosign/SLSA provenance, reproducible builds |
 | v1.5.0 | CLI `--preset <name>` / `--preset-list` — пресеты роутинга прямо при установке |
 | v1.6.x | удаление мёртвого кода и bcrypt auth-каркаса |
+| v1.6.4 | Cleanup-pass: `--update-geo --core xray` (гео-данные для xray), установка только через `install.sh` (opkg/.ipk-дистрибуция вырезана) |
 
 ## Структура файлов на роутере
 

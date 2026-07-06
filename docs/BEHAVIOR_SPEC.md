@@ -1,6 +1,6 @@
 # BEHAVIOR_SPEC.md
 
-> Версия: 2026-07-01. Спецификация v1.6.3.
+> Версия: 2026-07-06. Спецификация v1.6.4.
 
 Функциональная спецификация sign-craze, написанная в режиме clean-room.
 Исходники XKeen не читались. Только публичные источники.
@@ -128,7 +128,7 @@
 **Эффекты в системе**:
 
 - Захватывает блокировку.
-- Читает PID-файлы; отправляет SIGTERM процессу sing-box (и nfqws2, если запущен).
+- Читает PID-файлы; отправляет SIGTERM **всем зарегистрированным ядрам** (sing-box/xray/mihomo — через `stopAllCoreLifecycles`, идемпотентно для незапущенных; страховка от orphan-процесса при смене `--core`), и nfqws2, если запущен.
 - Ждёт до 10 с; отправляет SIGKILL, если процесс ещё жив.
 - Удаляет правила iptables (все правила с меткой `signcraze:*`).
 - Удаляет PID-файлы.
@@ -152,7 +152,7 @@
 <active_core>:  запущен  (pid 1234)
 nfqws2:         остановлен
 режим:          policy
-версия:         sign-craze v1.6.3 / <core> v<core-version>
+версия:         sign-craze v1.6.4 / <core> v<core-version>
 ```
 
 Метка ядра соответствует активному core (`sing-box`, `xray`, `mihomo`) из `--core <name>`.
@@ -167,9 +167,13 @@ nfqws2:         остановлен
 
 ---
 
-### `--update-geo` / `-g`
+### `--update-geo [--core <name>]` / `-g`
 
-Скачивает обновлённые [SRS rule-set](https://sing-box.sagernet.org/configuration/rule-set/) файлы из манифеста релиза `sign-craze-dat`. Загружает только файлы, чей SHA256 отличается от локального. Сохраняет в `/opt/var/lib/sign-craze/geo/`. Атомарная замена каждого файла.
+Обновляет гео-данные для указанного (или активного, если `--core` не передан) ядра. Поведение зависит от ядра:
+
+- **sing-box** (по умолчанию): скачивает обновлённые [SRS rule-set](https://sing-box.sagernet.org/configuration/rule-set/) файлы из манифеста релиза `sign-craze-dat`. Загружает только файлы, чей SHA256 отличается от локального. Сохраняет в `/opt/var/lib/sign-craze/geo/`. Атомарная замена каждого файла.
+- **xray**: скачивает `geosite.dat`/`geoip.dat` (источник — релизы [Loyalsoldier/v2ray-rules-dat](https://github.com/Loyalsoldier/v2ray-rules-dat)) в `/opt/etc/sign-craze/xray/assets/`. Каждый файл проверяется по SHA256 (сверка с `<file>.sha256sum` из релиза) и структурно валидируется (разбор внутреннего varint-формата); при несовпадении хеша или структурной ошибке файл удаляется, команда завершается ошибкой.
+- **mihomo**: no-op — mihomo скачивает `rule-providers` самостоятельно при старте; команда печатает сообщение и завершается без действий.
 
 ---
 
@@ -201,7 +205,7 @@ sing-box   v<VERSION>  (установлен в /opt/sbin/sing-box)
 Запускает диагностику. Для каждого пункта выводит PASS/WARN/FAIL:
 
 - Бинарь sign-craze существует и исполняемый
-- Бинарь sing-box существует, версия читается
+- Бинарь sing-box существует и исполняемый (проверяются только наличие файла и executable-bit; версия не парсится)
 - Конфиг валиден (`sing-box check -c`)
 - iptables/ip6tables доступны
 - ipset доступен
@@ -209,6 +213,9 @@ sing-box   v<VERSION>  (установлен в /opt/sbin/sing-box)
 - Сервис запущен (PID-файлы + проверка /proc)
 - Geo-файлы присутствуют и не устарели (>7 дней → WARN)
 - Блокировка не удерживается другим процессом
+- Keenetic IP Policy настроена корректно (`keenetic-policy`, актуально для режима `policy`)
+- mieru-peers: для каждого supervised peer mieru — имя, pid, порт
+- rule-set-urls: HEAD-запрос + сверка magic-байтов для каждого `rule_set` из `routing.json`; 404 или несовпадение формата → WARN; сеть недоступна → WARN «пропущено»; FAIL по этому пункту не бывает
 
 ---
 
@@ -222,7 +229,7 @@ sing-box   v<VERSION>  (установлен в /opt/sbin/sing-box)
 
 ### `--port-list`
 
-Выводит список настроенных портов.
+Выводит список настроенных портов в отсортированном по возрастанию порядке.
 
 ### `--exclude-add` / `--exclude-del` / `--exclude-list`
 
@@ -404,6 +411,12 @@ sing-box-only: пишет в `c.ConfigPath()` (зависит от `core.Active(
 Built-in presets (`/api/presets/<name>/apply`) используют translation table
 `ruleSetSources` для резолва per-core URL — один и тот же preset работает на
 всех трёх ядрах.
+
+---
+
+### `--preset-list`
+
+Печатает список встроенных routing-пресетов (`internal/cli/cmd_preset.go`).
 
 ---
 
@@ -666,35 +679,52 @@ ip route:   table 83: default dev signbox-tun
 
 ### 3b. Режим `full` (legacy)
 
-Эквивалент бывшего hybrid. Включается через `--mode full`.
+Устаревшая схема (эквивалент бывшего `hybrid`): маркировка по dst-ipset и,
+опционально, по портам (`multiport`) — без интеграции с Keenetic IP Policy.
+Включается через `--mode full`.
 
 #### iptables (mangle)
 
 ```plain
 Chain PREROUTING (policy ACCEPT)
-  -j signcraze_dpi          # цепочка DPI первой (пустая если DPIEnabled=false)
-  -j signcraze              # mark-маршрутизация
+  -j signcraze_dpi          # jump всегда; NFQUEUE-правила внутри — только если DPIEnabled=true
+  -j signcraze              # mark-маршрутизация по ipset (всегда)
+  -j signcraze_ports        # jump и правила внутри — только если state.Ports непуст
 
 Chain signcraze
-  -m set --match-set signcraze_ipv4 dst -j MARK --set-mark 0x53 -m comment --comment "signcraze:mark-ipv4"
-  -m set --match-set signcraze_ipv6 dst -j MARK --set-mark 0x53 -m comment --comment "signcraze:mark-ipv6"
+  -m set --match-set signcraze_ipv4 dst -j MARK --set-mark 0x53
 
-Chain signcraze_full
-  -p tcp -j MARK --set-mark 0x53 -m comment --comment "signcraze:mark-full-tcp"
-  -p udp -j MARK --set-mark 0x53 -m comment --comment "signcraze:mark-full-udp"
+Chain signcraze_ports  # создаётся всегда; без jump/правил, если Ports пуст. До 15 портов на правило (лимит iptables multiport)
+  -p tcp -m multiport --dports <ports> -j MARK --set-mark 0x53
+  -p udp -m multiport --dports <ports> -j MARK --set-mark 0x53
 
 Chain signcraze_dpi  # пустая если DPIEnabled=false
-  -m mark ! --mark 0x53 -p tcp -j NFQUEUE --queue-num 300 --queue-bypass -m comment --comment "signcraze:dpi-tcp"
-  -m mark ! --mark 0x53 -p udp -j NFQUEUE --queue-num 300 --queue-bypass -m comment --comment "signcraze:dpi-udp"
+  -m mark ! --mark 0x53 -p tcp -j NFQUEUE --queue-num 300 --queue-bypass
+  -m mark ! --mark 0x53 -p udp -j NFQUEUE --queue-num 300 --queue-bypass
 ```
+
+`signcraze_full` — ghost-цепочка: `Apply` её больше не создаёт (объявляются
+только `signcraze`/`signcraze_dpi`/`signcraze_ports`); упоминается только в
+cleanup-логике `Remove()` для безопасного апгрейда с версий, которые её ещё
+создавали (`internal/firewall/applier.go`).
+
+Тэги `-m comment --comment "..."` в правилах **не используются** ни в одном
+режиме — busybox iptables на Entware/Keenetic может быть собран без
+`libxt_comment.so`; диагностика правил sign-craze опирается на имена цепочек,
+а не на comment-match.
+
+IPv6-маркировка в режиме `full` **не реализована**: ipset `signcraze_ipv6`
+создаётся наравне с `signcraze_ipv4`, но ни одно правило mangle на него не
+ссылается — явно вне scope (`internal/firewall/modes/tproxy.go`: IPv6 требует
+отдельного `ip6tables`-пути).
 
 #### ip rule + ip route + ipset
 
 ```plain
 ip rule:   32765: from all fwmark 0x53 lookup 83
 ip route:  table 83: default dev signbox-tun
-ipset:     signcraze_ipv4   Type: hash:net  Family: inet
-           signcraze_ipv6   Type: hash:net  Family: inet6
+ipset:     signcraze_ipv4      Type: hash:net  Family: inet
+           signcraze_ipv6      Type: hash:net  Family: inet6  (создаётся, правилами mangle не используется)
            signcraze_excludes  Type: hash:net  Family: inet
 ```
 
@@ -857,6 +887,13 @@ SIGHUP-перезагрузки нет. Изменения конфига тре
 ├── etc/
 │   ├── sign-craze/
 │   │   ├── config.json             # конфиг sing-box (генерируется)
+│   │   ├── xray/
+│   │   │   ├── config.json         # конфиг xray (генерируется, только при --core xray)
+│   │   │   └── assets/
+│   │   │       ├── geosite.dat     # гео-домены xray (--update-geo --core xray)
+│   │   │       └── geoip.dat       # гео-IP xray (--update-geo --core xray)
+│   │   ├── mihomo/
+│   │   │   └── config.yaml         # конфиг mihomo (генерируется, только при --core mihomo)
 │   │   ├── nfqws2.conf             # конфиг nfqws2 (генерируется, опционально)
 │   │   ├── dpi-hostlist.txt        # SNI-цели Selective DPI (генерируется, опционально)
 │   │   └── mieru-<tag>.conf.json   # конфиг mieru-клиента (генерируется, mode 0600, один файл на mieru-outbound)
@@ -931,12 +968,55 @@ POST   /api/dpi/presets/{name}/apply — применить пресет по и
   "nfqws2":   {"running": false, "pid": 0},
   "mode":     "policy",
   "core":     "<active_core>",
-  "version":  {"sign_craze": "v1.6.3", "core": "v<core-version>"},
+  "version":  {"sign_craze": "v1.6.4", "core": "v<core-version>"},
   "uptime_s": 3600
 }
 ```
 
 Коды ответов: `200 OK`, `400 Bad Request` (ошибка валидации), `500 Internal Server Error`.
+
+### Routing Editor REST (порт 9092)
+
+REST API для Preact SPA редактора маршрутизации (`internal/web/routingui_server.go`), core-agnostic (см. «Унифицированный routing» в §1):
+
+```plain
+GET    /api/health
+GET    /api/state
+PUT    /api/routing
+PUT    /api/final
+GET    /api/inbounds
+POST   /api/inbounds
+PUT    /api/inbounds/{tag}
+DELETE /api/inbounds/{tag}
+GET    /api/outbounds
+POST   /api/outbounds
+PUT    /api/outbounds/{tag}
+DELETE /api/outbounds/{tag}
+GET    /api/rules
+POST   /api/rules
+PUT    /api/rules/{idx}
+DELETE /api/rules/{idx}
+POST   /api/rules/reorder
+GET    /api/rule_sets
+POST   /api/rule_sets
+DELETE /api/rule_sets/{tag}
+GET    /api/presets
+POST   /api/presets/{name}/apply
+POST   /api/presets/{name}/preview
+POST   /api/validate
+GET    /api/preview
+POST   /api/apply
+GET    /                       # статические ассеты SPA (embed.FS) + fallback на index.html
+```
+
+**Валидация `rule_set.url` при `POST /api/rule_sets`**: sign-craze делает HTTP
+HEAD (fallback — GET с `Range`, если HEAD вернул 405/501) по указанному URL и
+сверяет первые байты ответа с ожидаемой сигнатурой формата (`"SRS"` для
+`.srs`/binary, `{` для `.json`/source; нераспознанный формат проверку
+пропускает). Подтверждённый `404`/5xx или несовпадение сигнатуры →
+`400 Bad Request`. Сетевая недоступность (DNS/connection refused/timeout —
+офлайн-роутер без WAN) **не блокирует** сохранение: это отдельный от
+несовпадения формата исход (`Unreachable`), rule_set сохраняется без проверки.
 
 ### Инвариант: LAN-only доступ к Web UI
 
@@ -989,7 +1069,7 @@ sign-craze выделяет `MieruLocalPort` при первом `--start` по�
 `--start` (упорядоченно):
 
 1. Загрузка state, валидация.
-2. `peer.AllocateMieruPorts` (только для mieru-outbound'ов; persist в state).
+2. `peer.AllocateAllMieruPorts` (только для mieru-outbound'ов; persist в state).
 3. `peer.WriteMieruConfig` для каждого mieru-outbound → `/opt/etc/sign-craze/mieru-<tag>.conf.json` (mode 0600, atomic write).
 4. `peer.StartMieruPeers` (по одному `service.Lifecycle.Start` на каждый mieru-outbound).
 5. `ensureConfigFreshForCore` (sing-box config содержит `socks` outbound `127.0.0.1:<MieruLocalPort>`).
@@ -999,7 +1079,7 @@ sign-craze выделяет `MieruLocalPort` при первом `--start` по�
 `--stop` — обратный порядок:
 
 1. `stopWatchdog`.
-2. `coreLC.Stop` (sing-box).
+2. `stopAllCoreLifecycles` — SIGTERM всем зарегистрированным ядрам (sing-box/xray/mihomo), идемпотентно для незапущенных.
 3. `peer.StopMieruPeers` (SIGTERM, grace 10 s, затем SIGKILL).
 4. `firewall.Remove`.
 
@@ -1036,10 +1116,14 @@ mieru **не** имеет собственного S97mieru.sh init.d shim. Уп
 
 ### 7.8. CLI-команды (диагностика)
 
+> ⚠ **Не реализовано (roadmap)**: support-bundle и redaction для mieru-логов, описанные в этом разделе и в §7.9, в текущем коде отсутствуют. `--diag` (чек `mieru-peers`) показывает только `tag`/`pid`/`port` — без экспорта bundle и без redaction.
+
 - `sign-craze --status` — в JSON-выводе появляется секция `"peers": [{"name":"mieru-<tag>","running":true,"pid":1234,"local_port":40000}, ...]`.
 - `sign-craze --diag` — в support-bundle включается `mieru-<tag>.log` с redaction username/password в первой строке конфига (см. 7.9).
 
 ### 7.9. Redaction в логах и diag
+
+> ⚠ **Не реализовано (roadmap)** — см. пометку в §7.8.
 
 При диагностическом выводе sign-craze redact'ит `username`/`password` mieru-клиента — заменяет на `***`. Это касается:
 

@@ -118,7 +118,7 @@ sign-craze --status
 # sing-box:  запущен  (pid 1234)
 # nfqws2:    остановлен
 # режим:     policy
-# версия:    sign-craze v1.6.3 / sing-box v1.13.x
+# версия:    sign-craze v1.6.4 / sing-box v1.13.x
 ```
 
 ---

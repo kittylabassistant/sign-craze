@@ -1,6 +1,6 @@
 # RISK_REGISTER.md — sign-craze
 
-> Версия: 2026-07-01 (v1.6.3)
+> Версия: 2026-07-06 (v1.6.4)
 > Методология: Severity × Likelihood.
 > Содержит только **активные** риски (open / mitigated / accepted / partial).
 > Закрытые (DONE) риски — в §5 с отсылкой на `tasks/safety-fixes.md`.
