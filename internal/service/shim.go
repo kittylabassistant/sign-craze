@@ -2,13 +2,8 @@ package service
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"fmt"
-	"os"
 	"text/template"
-
-	"github.com/kittylabassistant/sign-craze/internal/atomicfs"
-	"github.com/kittylabassistant/sign-craze/internal/log"
 )
 
 const (
@@ -89,31 +84,17 @@ type ShimParams struct {
 
 // WriteShim генерирует init.d shim и атомарно записывает его в shimPath.
 // Если файл уже существует и содержимое совпадает (по SHA256) — запись пропускается.
+// Рендеринг делегирован RenderShim (единственный источник шаблонной логики,
+// не дублируем здесь), запись — общему хелперу writeIfChanged (writeutil.go),
+// который использует также WriteHook.
 func WriteShim(shimPath string, p ShimParams) error {
-	if p.BinPath == "" {
-		p.BinPath = DefaultSignCrazeBin
+	content, err := RenderShim(p)
+	if err != nil {
+		return err
 	}
 
-	var buf bytes.Buffer
-	if err := shimTemplate.Execute(&buf, p); err != nil {
-		return fmt.Errorf("service shim: рендеринг шаблона: %w", err)
-	}
-	content := buf.Bytes()
-
-	// идемпотентность: пропускаем запись если содержимое не изменилось
-	if existing, err := os.ReadFile(shimPath); err == nil {
-		if sha256.Sum256(existing) == sha256.Sum256(content) {
-			log.L().Debug("shim актуален, запись пропущена", "path", shimPath)
-			return nil
-		}
-	}
-
-	if err := atomicfs.WriteFileAtomic(shimPath, content, 0o755); err != nil {
-		return fmt.Errorf("service shim: запись файла: %w", err)
-	}
-
-	log.L().Info("init.d shim записан", "path", shimPath)
-	return nil
+	_, err = writeIfChanged(shimPath, content, 0o755, "init.d shim")
+	return err
 }
 
 // RenderShim возвращает содержимое shim без записи на диск (используется в тестах).
