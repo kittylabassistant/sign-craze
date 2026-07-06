@@ -276,4 +276,12 @@ type CoreRenderParams struct {
 	// DefaultOutboundTag — fallback тег для final outbound, если RoutingConfig.Final
 	// пустой. Берётся из state.Outbounds[0].Tag в CLI слое.
 	DefaultOutboundTag string
+
+	// Preview — рендер для предпросмотра/валидации (Web UI /api/preview,
+	// Routing Editor), а не для реального старта ядра. Отключает проверки
+	// наличия локальных geo-ассетов (geosite.dat/geoip.dat у xray): preview
+	// не должен падать в окружении без скачанных файлов, тогда как
+	// production-путь (doStart) обязан вернуть понятную ошибку до запуска
+	// ядра (инцидент 2026-05-12, tasks/lessons.md).
+	Preview bool
 }

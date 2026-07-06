@@ -3,8 +3,10 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
+	"github.com/kittylabassistant/sign-craze/internal/core"
 	"github.com/kittylabassistant/sign-craze/internal/service"
 )
 
@@ -114,5 +116,109 @@ func TestStartUI_DelegatesToLifecycle(t *testing.T) {
 	}
 	if !fake.running {
 		t.Error("UI должен быть запущен")
+	}
+}
+
+// --- stopAllCoreLifecycles (баг B2: doStop останавливал только активное ядро) ---
+
+// fakeCoreLifecycle — минимальная реализация service.Lifecycle для тестов
+// stopAllCoreLifecycles: фиксирует вызовы Stop и позволяет задать ошибку.
+// Start/Status/Restart не используются в этих тестах, но нужны для
+// удовлетворения интерфейса service.Lifecycle.
+type fakeCoreLifecycle struct {
+	stopErr   error
+	stopCalls int
+}
+
+func (f *fakeCoreLifecycle) Start(_ context.Context) error { return nil }
+
+func (f *fakeCoreLifecycle) Stop(_ context.Context) error {
+	f.stopCalls++
+	return f.stopErr
+}
+
+func (f *fakeCoreLifecycle) Status(_ context.Context) (service.Status, error) {
+	return service.Status{}, nil
+}
+
+func (f *fakeCoreLifecycle) Restart(ctx context.Context) error {
+	if err := f.Stop(ctx); err != nil {
+		return err
+	}
+	return f.Start(ctx)
+}
+
+// withFakeCoreLifecycles подменяет coreLifecycleFn на карту fake-lifecycle по
+// имени ядра — по образцу withFakeUILifecycle выше. Имя ядра, не найденное в
+// map, трактуется как ошибка получения lifecycle (аналог core.Get на
+// незарегистрированное имя) — stopAllCoreLifecycles обязан залогировать и
+// продолжить со следующим ядром.
+func withFakeCoreLifecycles(t *testing.T, fakes map[string]*fakeCoreLifecycle) {
+	t.Helper()
+	prev := coreLifecycleFn
+	coreLifecycleFn = func(name string) (service.Lifecycle, error) {
+		f, ok := fakes[name]
+		if !ok {
+			return nil, fmt.Errorf("fake lifecycle для ядра %q не задан", name)
+		}
+		return f, nil
+	}
+	t.Cleanup(func() { coreLifecycleFn = prev })
+}
+
+// TestStopAllCoreLifecycles_StopsEveryRegisteredCore — регрессия бага B2:
+// раньше doStop останавливал только mustActiveCore(), поэтому при смене ядра
+// (`--core xray --restart` после сбоя предыдущего) процесс ПРЕДЫДУЩЕГО ядра
+// оставался orphan'ом (tasks/lessons.md, 2026-05-12). stopAllCoreLifecycles
+// должен останавливать ВСЕ зарегистрированные ядра (core.Names()), а не
+// только то, что сейчас активно в state.Core.
+func TestStopAllCoreLifecycles_StopsEveryRegisteredCore(t *testing.T) {
+	names := core.Names()
+	if len(names) < 2 {
+		t.Fatalf("тест требует минимум 2 зарегистрированных ядра (core.Names()=%v) — проверьте blank-imports в cores.go", names)
+	}
+
+	fakes := make(map[string]*fakeCoreLifecycle, len(names))
+	for _, name := range names {
+		fakes[name] = &fakeCoreLifecycle{}
+	}
+	withFakeCoreLifecycles(t, fakes)
+
+	stopAllCoreLifecycles(context.Background())
+
+	for _, name := range names {
+		if fakes[name].stopCalls != 1 {
+			t.Errorf("ядро %q: Stop вызван %d раз, ожидался 1 (должны останавливаться ВСЕ ядра, не только активное)",
+				name, fakes[name].stopCalls)
+		}
+	}
+}
+
+// TestStopAllCoreLifecycles_ErrorOnOneCoreDoesNotStopOthers проверяет, что
+// ошибка Stop одного ядра (например, зависший процесс) не прерывает
+// остановку остальных — иначе orphan одного ядра помешал бы --stop/--restart
+// остановить прочие и снять firewall.
+func TestStopAllCoreLifecycles_ErrorOnOneCoreDoesNotStopOthers(t *testing.T) {
+	names := core.Names()
+	if len(names) < 2 {
+		t.Fatalf("тест требует минимум 2 зарегистрированных ядра (core.Names()=%v)", names)
+	}
+
+	fakes := make(map[string]*fakeCoreLifecycle, len(names))
+	for _, name := range names {
+		fakes[name] = &fakeCoreLifecycle{}
+	}
+	// Первое (в алфавитном порядке) ядро падает при Stop — остальные должны
+	// быть остановлены несмотря на это.
+	fakes[names[0]].stopErr = errors.New("stop failed: process not responding")
+	withFakeCoreLifecycles(t, fakes)
+
+	stopAllCoreLifecycles(context.Background())
+
+	for _, name := range names {
+		if fakes[name].stopCalls != 1 {
+			t.Errorf("ядро %q: Stop вызван %d раз, ожидался 1 (ошибка одного ядра не должна прерывать цикл по остальным)",
+				name, fakes[name].stopCalls)
+		}
 	}
 }

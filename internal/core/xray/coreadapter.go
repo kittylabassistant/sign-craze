@@ -2,6 +2,7 @@ package xray
 
 import (
 	"context"
+	"path/filepath"
 
 	"github.com/kittylabassistant/sign-craze/internal/core"
 	"github.com/kittylabassistant/sign-craze/internal/exectx"
@@ -58,6 +59,17 @@ func (coreImpl) ParseVersion(line string) (string, error) {
 // fallback для legacy CLI flows без routing.json).
 func (coreImpl) RenderConfig(rp types.CoreRenderParams) ([]byte, error) {
 	p := DefaultConfigParams()
+	// GeoAssetsDir: DefaultConfigParams оставляет поле пустым, а пустой
+	// GeoAssetsDir отключает проверку наличия geosite.dat/geoip.dat в
+	// renderXrayRoutingRules (см. doc-комментарий ConfigParams.GeoAssetsDir).
+	// Без явного заполнения баг B1: config.json рендерится "успешно" с
+	// geo rule_set'ами, для которых физически нет .dat файлов, а реальный
+	// xray падает при старте FATAL'ом failed to open file: geosite.dat.
+	// Preview (Web UI) — единственный путь, где проверка осознанно выключена:
+	// предпросмотр не должен требовать скачанных .dat (rp.Preview).
+	if !rp.Preview {
+		p.GeoAssetsDir = filepath.Join(DefaultConfigDir, "assets")
+	}
 	p.Outbounds = core.EffectiveOutbounds(rp)
 	// Собираем Canonicals из inline-полей каждого Outbound.
 	p.Canonicals = make(map[string]types.Canonical, len(p.Outbounds))

@@ -99,6 +99,55 @@ func TestWizardURL_Socks5_LegacyFallback(t *testing.T) {
 	}
 }
 
+// TestWizardURL_NaiveHTTPS_DefaultsListenPort — регрессия бага B3: интерактивный
+// wizard должен проставлять NaiveListenPort=18443 по умолчанию точно так же,
+// как это делает --proxy флаг (parseProxyURLToOutbound). До фикса wizardURL
+// не применял naive-порт-дефолт → NaiveListenPort оставался 0, из-за чего
+// singbox/render.go (renderCanonical, case ProtocolNaive) падал с ошибкой
+// "NaiveListenPort не выделен" уже на PrepareAndValidate при --install.
+func TestWizardURL_NaiveHTTPS_DefaultsListenPort(t *testing.T) {
+	rawURL := "naive+https://user:pass@example.com:443"
+	input := rawURL + "\n"
+
+	r := bufio.NewReader(bytes.NewBufferString(input))
+	out := &bytes.Buffer{}
+
+	obs, err := wizardURL(r, out)
+	if err != nil {
+		t.Fatalf("wizardURL naive+https: %v", err)
+	}
+	if len(obs) != 1 {
+		t.Fatalf("ожидался 1 outbound, получено %d", len(obs))
+	}
+	o := obs[0]
+
+	if o.Protocol != types.ProtocolNaive {
+		t.Fatalf("Protocol = %q, ожидалось %q", o.Protocol, types.ProtocolNaive)
+	}
+	if o.Proto == nil {
+		t.Fatal("Proto = nil, ожидался заполненный NaiveListenPort")
+	}
+	if o.Proto.NaiveListenPort != 18443 {
+		t.Errorf("NaiveListenPort = %d, ожидалось 18443 (default)", o.Proto.NaiveListenPort)
+	}
+}
+
+// TestWizardURL_EmptyURL_ReturnsNil фиксирует существующий контракт: если
+// пользователь ничего не ввёл (просто Enter), wizardURL возвращает (nil, nil)
+// без ошибки — doInstall в этом случае откатывается на stub direct outbound.
+func TestWizardURL_EmptyURL_ReturnsNil(t *testing.T) {
+	r := bufio.NewReader(bytes.NewBufferString("\n"))
+	out := &bytes.Buffer{}
+
+	obs, err := wizardURL(r, out)
+	if err != nil {
+		t.Fatalf("wizardURL empty: %v", err)
+	}
+	if obs != nil {
+		t.Errorf("obs = %v, ожидалось nil", obs)
+	}
+}
+
 // TestDetectCoreFromProxyURL_PQVLESS — PQ-VLESS должен дать recommended=xray.
 // Регрессия на случай если кто-то ослабит singbox/mihomo Validate без обновления тестов.
 func TestDetectCoreFromProxyURL_PQVLESS(t *testing.T) {

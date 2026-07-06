@@ -61,6 +61,9 @@ func renderForCore(c core.Core) func(context.Context, *types.RoutingConfig) ([]b
 			RoutingConfig:      cfg,
 			InboundMode:        "tproxy",
 			DefaultOutboundTag: defaultTag,
+			// Preview: как в uiRenderParams — предпросмотр не требует
+			// локальных geo-ассетов (geosite.dat/geoip.dat).
+			Preview: true,
 		})
 	}
 }

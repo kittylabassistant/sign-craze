@@ -29,6 +29,10 @@ func freshStateOr(fallback *state.State) *state.State {
 func uiRenderParams(st *state.State, cfg *types.RoutingConfig) types.CoreRenderParams {
 	p := types.CoreRenderParams{
 		RoutingConfig: cfg,
+		// Preview: UI-рендер/валидация не должны требовать локальных
+		// geo-ассетов (geosite.dat/geoip.dat) — в отличие от production-пути
+		// doStart, где их отсутствие обязано давать ошибку до старта ядра.
+		Preview: true,
 	}
 	if st != nil {
 		p.Mode = st.Mode
