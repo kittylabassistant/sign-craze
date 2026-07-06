@@ -3,7 +3,6 @@ package types
 import (
 	"encoding/json"
 	"fmt"
-	"net/netip"
 	"regexp"
 	"runtime"
 )
@@ -115,26 +114,6 @@ func (p Port) Validate() error {
 	return nil
 }
 
-// PortRange — диапазон портов [From, To] включительно.
-type PortRange struct {
-	From Port
-	To   Port
-}
-
-// Validate проверяет корректность диапазона.
-func (r PortRange) Validate() error {
-	if err := r.From.Validate(); err != nil {
-		return fmt.Errorf("начало диапазона: %w", err)
-	}
-	if err := r.To.Validate(); err != nil {
-		return fmt.Errorf("конец диапазона: %w", err)
-	}
-	if r.From > r.To {
-		return fmt.Errorf("начало диапазона %d > конца %d", r.From, r.To)
-	}
-	return nil
-}
-
 // IPSetName — имя ipset-набора.
 type IPSetName string
 
@@ -215,20 +194,6 @@ func (o Outbound) Validate() error {
 		return fmt.Errorf("outbound.Server не может быть пустым (type=%s)", o.Type)
 	}
 	return o.Port.Validate()
-}
-
-// RoutingRules содержит настройки маршрутизации sing-box.
-type RoutingRules struct {
-	// GeoSiteProxy — список geosite-категорий, направляемых через прокси.
-	GeoSiteProxy []string
-	// GeoSiteDPI — список geosite-категорий, направляемых через DPI-обход (только hybrid).
-	GeoSiteDPI []string
-	// GeoSiteDirect — список geosite-категорий для прямого подключения.
-	GeoSiteDirect []string
-	// ExcludeIPs — IP-адреса/подсети, всегда обходящие прокси.
-	ExcludeIPs []netip.Prefix
-	// FinalOutbound — тег outbound для трафика, не совпавшего ни с одним правилом.
-	FinalOutbound string
 }
 
 // Release описывает релиз на GitHub.

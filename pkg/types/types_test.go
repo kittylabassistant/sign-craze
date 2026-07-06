@@ -210,26 +210,6 @@ func TestPort_Validate(t *testing.T) {
 	}
 }
 
-func TestPortRange_Validate(t *testing.T) {
-	tests := []struct {
-		r       PortRange
-		wantErr bool
-	}{
-		{PortRange{80, 80}, false},
-		{PortRange{80, 443}, false},
-		{PortRange{443, 80}, true}, // from > to
-		{PortRange{0, 80}, true},   // from == 0
-		{PortRange{80, 0}, true},   // to == 0
-	}
-	for _, tt := range tests {
-		err := tt.r.Validate()
-		if (err != nil) != tt.wantErr {
-			t.Errorf("PortRange{%d,%d}.Validate() error = %v, wantErr %v",
-				tt.r.From, tt.r.To, err, tt.wantErr)
-		}
-	}
-}
-
 func TestOutbound_Validate(t *testing.T) {
 	valid := Outbound{Tag: "proxy", Type: "socks", Server: "1.2.3.4", Port: 1080}
 	if err := valid.Validate(); err != nil {

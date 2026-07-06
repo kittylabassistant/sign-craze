@@ -23,22 +23,22 @@ func TestDetectLANAddr_NoCandidates(t *testing.T) {
 	}
 }
 
-// TestLANAddrOf_Loopback — резолв конкретного интерфейса (lo) даёт 127.0.0.1.
+// TestLanAddrFromIface_Loopback — резолв конкретного интерфейса (lo) даёт 127.0.0.1.
 // Проверяет что lanAddrFromIface работает корректно на любом существующем iface.
-func TestLANAddrOf_Loopback(t *testing.T) {
+func TestLanAddrFromIface_Loopback(t *testing.T) {
 	loopback := loopbackName(t)
-	addr, err := lanAddrOf(loopback)
+	addr, err := lanAddrFromIface(loopback)
 	if err != nil {
-		t.Fatalf("lanAddrOf(%q): %v", loopback, err)
+		t.Fatalf("lanAddrFromIface(%q): %v", loopback, err)
 	}
 	if addr != "127.0.0.1" {
 		t.Fatalf("ожидался 127.0.0.1, получен %q", addr)
 	}
 }
 
-// TestLANAddrOf_Missing — несуществующий интерфейс даёт ошибку.
-func TestLANAddrOf_Missing(t *testing.T) {
-	_, err := lanAddrOf("sign-craze-nonexistent-iface-x9k7")
+// TestLanAddrFromIface_Missing — несуществующий интерфейс даёт ошибку.
+func TestLanAddrFromIface_Missing(t *testing.T) {
+	_, err := lanAddrFromIface("sign-craze-nonexistent-iface-x9k7")
 	if err == nil {
 		t.Fatal("ожидалась ошибка для несуществующего интерфейса")
 	}

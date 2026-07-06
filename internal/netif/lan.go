@@ -32,13 +32,6 @@ func DetectLANAddr() (string, error) {
 	return "", fmt.Errorf("%w (искали %v)", ErrLANNotFound, LANBridgeCandidates)
 }
 
-// lanAddrOf возвращает IPv4-адрес заданного интерфейса; если интерфейса нет
-// или у него нет IPv4 — ошибка. Использовать когда имя bridge известно
-// (например через CLI-флаг или config override).
-func lanAddrOf(name string) (string, error) {
-	return lanAddrFromIface(name)
-}
-
 func lanAddrFromIface(name string) (string, error) {
 	ifi, err := net.InterfaceByName(name)
 	if err != nil {

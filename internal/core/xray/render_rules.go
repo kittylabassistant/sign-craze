@@ -11,23 +11,6 @@ import (
 	"github.com/kittylabassistant/sign-craze/pkg/types"
 )
 
-// TranslateRoutingRules — публичная обёртка над renderXrayRoutingRules для
-// использования из Validator (web layer): собирает warnings для surfac в UI.
-// defaultTag — не используется внутри translation (зарезервирован для future
-// fallback логики); xray.Render самостоятельно добавляет catch-all при пустом Final.
-func TranslateRoutingRules(rc *types.RoutingConfig, defaultTag string) ([]map[string]any, []string) {
-	_ = defaultTag // зарезервирован, см. комментарий
-	// Validator в web layer: geo-check отключён (пустой geoAssetsDir).
-	// При geoAssetsDir="" renderXrayRoutingRules не делает os.Stat и всегда
-	// возвращает nil-ошибку — err обрабатываем для strictness.
-	rules, warnings, err := renderXrayRoutingRules(rc, "")
-	if err != nil {
-		// Не должно произойти при geoAssetsDir="": geo-check пропускается.
-		warnings = append(warnings, err.Error())
-	}
-	return rules, warnings
-}
-
 // renderXrayRoutingRules транслирует RoutingConfig.Rules в xray routing.rules.
 // Final → catch-all rule с inboundTag=tproxy-in в конце.
 // Catch-all fallback при пустом Final добавляется на уровне Render (не здесь).
